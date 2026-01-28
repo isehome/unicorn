@@ -17,9 +17,12 @@ import {
   RefreshCw,
   Sparkles,
   AlertTriangle,
-  Clock,
   Zap,
   RotateCcw,
+  Filter,
+  Eye,
+  EyeOff,
+  FileText,
 } from 'lucide-react';
 import { queryKeys } from '../lib/queryClient';
 
@@ -35,16 +38,26 @@ const SKIP_PATTERNS = [
 const CREDITS_PER_PART = 100;
 const MONTHLY_BUDGET = 4000;
 
+// Filter options
+const FILTER_OPTIONS = {
+  ALL: 'all',
+  NOT_SUBMITTED: 'not_submitted',
+  PROCESSING: 'processing',
+  COMPLETED: 'completed',
+  ERROR: 'error',
+};
+
 const PartsAILookupPage = () => {
   const [search, setSearch] = useState('');
   const [selectedParts, setSelectedParts] = useState(new Set());
-  const [processingParts, setProcessingParts] = useState(new Set());
-  const [completedParts, setCompletedParts] = useState(new Set());
+  const [localProcessingParts, setLocalProcessingParts] = useState(new Set());
   const [errorParts, setErrorParts] = useState(new Map()); // partId -> error message
   const [usedCredits, setUsedCredits] = useState(0);
   const [isPolling, setIsPolling] = useState(false);
   const [isResyncing, setIsResyncing] = useState(false);
   const [resyncResult, setResyncResult] = useState(null);
+  const [activeFilter, setActiveFilter] = useState(FILTER_OPTIONS.ALL);
+  const [hideCompleted, setHideCompleted] = useState(false);
   const queryClient = useQueryClient();
   const { theme, mode } = useTheme();
 
@@ -82,63 +95,98 @@ const PartsAILookupPage = () => {
     };
   }, [theme, mode]);
 
-  // Filter parts that need AI lookup and aren't prewire items
-  const partsNeedingLookup = useMemo(() => {
-    return allParts.filter(part => {
-      // Check if needs AI lookup (null, pending, or error status)
-      const needsLookup = !part.ai_enrichment_status ||
-        part.ai_enrichment_status === 'pending' ||
-        part.ai_enrichment_status === 'error';
-
-      if (!needsLookup) return false;
-
-      // Skip prewire items
-      if (part.required_for_prewire === true) return false;
-
-      // Skip items matching skip patterns
-      const name = (part.name || '').toLowerCase();
-      const category = (part.category || '').toLowerCase();
-      for (const pattern of SKIP_PATTERNS) {
-        if (pattern.test(name) || pattern.test(category)) {
-          return false;
-        }
+  // Helper to check if a part is a prewire item (should be skipped)
+  const isPrewireItem = useCallback((part) => {
+    if (part.required_for_prewire === true) return true;
+    const name = (part.name || '').toLowerCase();
+    const category = (part.category || '').toLowerCase();
+    for (const pattern of SKIP_PATTERNS) {
+      if (pattern.test(name) || pattern.test(category)) {
+        return true;
       }
+    }
+    return false;
+  }, []);
 
-      return true;
+  // Helper to determine part status
+  const getPartStatus = useCallback((part) => {
+    const status = part.ai_enrichment_status;
+
+    // Check if has documents/enrichment data (completed successfully)
+    const hasDocuments = part.documentation_url ||
+      part.spec_sheet_url ||
+      (part.resource_links && part.resource_links.length > 0) ||
+      status === 'completed' ||
+      status === 'enriched';
+
+    if (hasDocuments) return 'completed';
+    if (localProcessingParts.has(part.id) || status === 'processing') return 'processing';
+    if (status === 'error' || errorParts.has(part.id)) return 'error';
+
+    // Not submitted yet (null, undefined, pending, or any other status without docs)
+    return 'not_submitted';
+  }, [localProcessingParts, errorParts]);
+
+  // Filter all parts (excluding prewire items)
+  const eligibleParts = useMemo(() => {
+    return allParts.filter(part => !isPrewireItem(part));
+  }, [allParts, isPrewireItem]);
+
+  // Categorize parts by status
+  const partsByStatus = useMemo(() => {
+    const result = {
+      not_submitted: [],
+      processing: [],
+      completed: [],
+      error: [],
+    };
+
+    eligibleParts.forEach(part => {
+      const status = getPartStatus(part);
+      result[status].push(part);
     });
-  }, [allParts]);
 
-  // Filter parts that are currently processing (awaiting Manus results)
-  const partsProcessing = useMemo(() => {
-    return allParts.filter(part => part.ai_enrichment_status === 'processing');
-  }, [allParts]);
+    return result;
+  }, [eligibleParts, getPartStatus]);
 
-  // Filter by search
+  // Apply filters
   const filteredParts = useMemo(() => {
-    if (!search) return partsNeedingLookup;
+    let parts = eligibleParts;
 
-    const term = search.toLowerCase();
-    return partsNeedingLookup.filter(part => {
-      return [
-        part.part_number,
-        part.name,
-        part.manufacturer,
-        part.category,
-      ]
-        .filter(Boolean)
-        .some(value => value.toLowerCase().includes(term));
-    });
-  }, [partsNeedingLookup, search]);
+    // Apply status filter
+    if (activeFilter !== FILTER_OPTIONS.ALL) {
+      parts = partsByStatus[activeFilter] || [];
+    } else if (hideCompleted) {
+      parts = parts.filter(p => getPartStatus(p) !== 'completed');
+    }
+
+    // Apply search
+    if (search) {
+      const term = search.toLowerCase();
+      parts = parts.filter(part => {
+        return [
+          part.part_number,
+          part.name,
+          part.manufacturer,
+          part.category,
+        ]
+          .filter(Boolean)
+          .some(value => value.toLowerCase().includes(term));
+      });
+    }
+
+    return parts;
+  }, [eligibleParts, activeFilter, hideCompleted, search, partsByStatus, getPartStatus]);
 
   // Count parts currently processing
   const processingCount = useMemo(() => {
-    return allParts.filter(p => p.ai_enrichment_status === 'processing').length;
-  }, [allParts]);
+    return partsByStatus.processing.length;
+  }, [partsByStatus]);
 
   // Enable/disable polling based on processing count
   useEffect(() => {
-    setIsPolling(processingCount > 0 || processingParts.size > 0);
-  }, [processingCount, processingParts.size]);
+    setIsPolling(processingCount > 0 || localProcessingParts.size > 0);
+  }, [processingCount, localProcessingParts.size]);
 
   // Calculate stats
   const stats = useMemo(() => {
@@ -148,16 +196,17 @@ const PartsAILookupPage = () => {
     const wouldExceedBudget = estimatedCredits > remainingBudget;
 
     return {
-      totalNeedingLookup: partsNeedingLookup.length,
+      total: eligibleParts.length,
+      notSubmitted: partsByStatus.not_submitted.length,
+      processing: partsByStatus.processing.length,
+      completed: partsByStatus.completed.length,
+      errors: partsByStatus.error.length,
       selected,
       estimatedCredits,
       remainingBudget,
       wouldExceedBudget,
-      processing: processingCount + processingParts.size,
-      completed: completedParts.size,
-      errors: errorParts.size,
     };
-  }, [partsNeedingLookup, selectedParts, usedCredits, processingCount, processingParts, completedParts, errorParts]);
+  }, [eligibleParts, partsByStatus, selectedParts, usedCredits]);
 
   // Toggle part selection
   const togglePartSelection = useCallback((partId) => {
@@ -172,10 +221,14 @@ const PartsAILookupPage = () => {
     });
   }, []);
 
-  // Select/deselect all
+  // Select/deselect all visible parts that aren't completed or processing
   const handleSelectAll = useCallback(() => {
-    setSelectedParts(new Set(filteredParts.map(p => p.id)));
-  }, [filteredParts]);
+    const selectableParts = filteredParts.filter(p => {
+      const status = getPartStatus(p);
+      return status === 'not_submitted' || status === 'error';
+    });
+    setSelectedParts(new Set(selectableParts.map(p => p.id)));
+  }, [filteredParts, getPartStatus]);
 
   const handleDeselectAll = useCallback(() => {
     setSelectedParts(new Set());
@@ -230,7 +283,7 @@ const PartsAILookupPage = () => {
 
         const batchResults = await Promise.allSettled(
           batch.map(async (partId) => {
-            setProcessingParts(prev => new Set([...prev, partId]));
+            setLocalProcessingParts(prev => new Set([...prev, partId]));
 
             try {
               const response = await fetch(`${getApiBase()}/api/enrich-single-part-manus`, {
@@ -250,7 +303,7 @@ const PartsAILookupPage = () => {
               setErrorParts(prev => new Map(prev).set(partId, err.message));
               throw err;
             } finally {
-              setProcessingParts(prev => {
+              setLocalProcessingParts(prev => {
                 const next = new Set(prev);
                 next.delete(partId);
                 return next;
@@ -274,13 +327,6 @@ const PartsAILookupPage = () => {
       // Clear selection
       setSelectedParts(new Set());
 
-      // Track completed
-      results.forEach((r, i) => {
-        if (r.status === 'fulfilled') {
-          setCompletedParts(prev => new Set([...prev, r.value.partId]));
-        }
-      });
-
       // Refetch parts list
       queryClient.invalidateQueries({ queryKey: queryKeys.parts });
 
@@ -291,33 +337,63 @@ const PartsAILookupPage = () => {
     },
   });
 
-  // Render status badge for a part
-  const renderStatusBadge = (part) => {
-    const status = part.ai_enrichment_status;
+  // Render AI status icon for a part
+  const renderAIStatusIcon = (part) => {
+    const status = getPartStatus(part);
 
-    if (processingParts.has(part.id) || status === 'processing') {
+    if (status === 'completed') {
       return (
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+        <div className="flex items-center gap-1.5" title="AI enriched with documents">
+          <Bot className="h-5 w-5 text-green-500" />
+          <FileText className="h-3 w-3 text-green-500" />
+        </div>
+      );
+    }
+
+    if (status === 'processing') {
+      return (
+        <div className="flex items-center gap-1.5" title="Processing - awaiting Manus results">
+          <Bot className="h-5 w-5 text-blue-500" />
+          <Loader2 className="h-3 w-3 text-blue-500 animate-spin" />
+        </div>
+      );
+    }
+
+    if (status === 'error') {
+      return (
+        <div className="flex items-center gap-1.5" title={errorParts.get(part.id) || 'Error during enrichment'}>
+          <Bot className="h-5 w-5 text-red-500" />
+          <AlertCircle className="h-3 w-3 text-red-500" />
+        </div>
+      );
+    }
+
+    // Not submitted
+    return (
+      <div className="flex items-center gap-1.5" title="Not submitted for AI lookup">
+        <Bot className="h-5 w-5 text-amber-500" />
+      </div>
+    );
+  };
+
+  // Render status badge text
+  const renderStatusBadge = (part) => {
+    const status = getPartStatus(part);
+
+    if (status === 'completed') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+          <CheckCircle className="h-3 w-3" />
+          Enriched
+        </span>
+      );
+    }
+
+    if (status === 'processing') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
           <Loader2 className="h-3 w-3 animate-spin" />
           Processing
-        </span>
-      );
-    }
-
-    if (completedParts.has(part.id)) {
-      return (
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400">
-          <CheckCircle className="h-3 w-3" />
-          Started
-        </span>
-      );
-    }
-
-    if (errorParts.has(part.id)) {
-      return (
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" title={errorParts.get(part.id)}>
-          <AlertCircle className="h-3 w-3" />
-          Error
         </span>
       );
     }
@@ -331,21 +407,37 @@ const PartsAILookupPage = () => {
       );
     }
 
-    if (status === 'pending') {
-      return (
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-400">
-          <Clock className="h-3 w-3" />
-          Pending
-        </span>
-      );
-    }
-
-    // null or undefined status
+    // Not submitted
     return (
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
         <Bot className="h-3 w-3" />
-        Not Run
+        Not Submitted
       </span>
+    );
+  };
+
+  // Filter tab button component
+  const FilterTab = ({ filter, label, count, color }) => {
+    const isActive = activeFilter === filter;
+    const colorClasses = {
+      zinc: 'border-zinc-300 bg-zinc-100 text-zinc-700 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-300',
+      amber: 'border-amber-300 bg-amber-100 text-amber-700 dark:border-amber-600 dark:bg-amber-900/50 dark:text-amber-300',
+      blue: 'border-blue-300 bg-blue-100 text-blue-700 dark:border-blue-600 dark:bg-blue-900/50 dark:text-blue-300',
+      green: 'border-green-300 bg-green-100 text-green-700 dark:border-green-600 dark:bg-green-900/50 dark:text-green-300',
+      red: 'border-red-300 bg-red-100 text-red-700 dark:border-red-600 dark:bg-red-900/50 dark:text-red-300',
+    };
+
+    return (
+      <button
+        onClick={() => setActiveFilter(filter)}
+        className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-all ${
+          isActive
+            ? colorClasses[color]
+            : 'border-transparent bg-transparent text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+        }`}
+      >
+        {label} <span className="ml-1 opacity-70">({count})</span>
+      </button>
     );
   };
 
@@ -370,9 +462,9 @@ const PartsAILookupPage = () => {
             icon={RotateCcw}
             onClick={handleResyncTasks}
             disabled={isResyncing}
-            title="Resync pending Manus tasks - recovers results if webhooks failed"
+            title="Pull results from Manus for processing parts"
           >
-            {isResyncing ? 'Resyncing...' : 'Resync Tasks'}
+            {isResyncing ? 'Pulling...' : 'Pull Manus Results'}
           </Button>
           <Button
             variant="secondary"
@@ -396,7 +488,7 @@ const PartsAILookupPage = () => {
             <>
               <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
               <div>
-                <p className="font-medium text-red-800 dark:text-red-200">Resync failed</p>
+                <p className="font-medium text-red-800 dark:text-red-200">Pull failed</p>
                 <p className="text-sm text-red-600 dark:text-red-400">{resyncResult.error}</p>
               </div>
             </>
@@ -405,7 +497,7 @@ const PartsAILookupPage = () => {
               <CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400" />
               <div>
                 <p className="font-medium text-green-800 dark:text-green-200">
-                  Resync complete: {resyncResult.tasks_completed || 0} tasks processed
+                  Pull complete: {resyncResult.tasks_completed || 0} tasks processed
                 </p>
                 <p className="text-sm text-green-600 dark:text-green-400">
                   Checked: {resyncResult.tasks_checked || 0} |
@@ -425,14 +517,44 @@ const PartsAILookupPage = () => {
       )}
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         <div className="rounded-xl border p-4" style={styles.card}>
           <div className="flex items-center gap-2 text-sm text-zinc-500 dark:text-zinc-400">
             <Package className="h-4 w-4" />
-            Need Lookup
+            Total Parts
           </div>
           <p className="text-2xl font-bold mt-1" style={{ color: styles.textPrimary }}>
-            {stats.totalNeedingLookup}
+            {stats.total}
+          </p>
+        </div>
+
+        <div className="rounded-xl border p-4 border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-900/10">
+          <div className="flex items-center gap-2 text-sm text-amber-600 dark:text-amber-400">
+            <Bot className="h-4 w-4" />
+            Not Submitted
+          </div>
+          <p className="text-2xl font-bold mt-1 text-amber-600 dark:text-amber-400">
+            {stats.notSubmitted}
+          </p>
+        </div>
+
+        <div className="rounded-xl border p-4 border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-900/10">
+          <div className="flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400">
+            <Loader2 className={`h-4 w-4 ${stats.processing > 0 ? 'animate-spin' : ''}`} />
+            Processing
+          </div>
+          <p className="text-2xl font-bold mt-1 text-blue-600 dark:text-blue-400">
+            {stats.processing}
+          </p>
+        </div>
+
+        <div className="rounded-xl border p-4 border-green-200 dark:border-green-800 bg-green-50/50 dark:bg-green-900/10">
+          <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
+            <CheckCircle className="h-4 w-4" />
+            Enriched
+          </div>
+          <p className="text-2xl font-bold mt-1 text-green-600 dark:text-green-400">
+            {stats.completed}
           </p>
         </div>
 
@@ -445,27 +567,32 @@ const PartsAILookupPage = () => {
             {stats.selected}
           </p>
         </div>
-
-        <div className="rounded-xl border p-4" style={styles.card}>
-          <div className="flex items-center gap-2 text-sm text-zinc-500 dark:text-zinc-400">
-            <Zap className="h-4 w-4" />
-            Est. Credits
-          </div>
-          <p className={`text-2xl font-bold mt-1 ${stats.wouldExceedBudget ? 'text-red-600 dark:text-red-400' : ''}`} style={!stats.wouldExceedBudget ? { color: styles.textPrimary } : undefined}>
-            {stats.estimatedCredits}
-          </p>
-        </div>
-
-        <div className="rounded-xl border p-4" style={styles.card}>
-          <div className="flex items-center gap-2 text-sm text-zinc-500 dark:text-zinc-400">
-            <Loader2 className={`h-4 w-4 ${stats.processing > 0 ? 'animate-spin' : ''}`} />
-            Processing
-          </div>
-          <p className="text-2xl font-bold mt-1 text-amber-600 dark:text-amber-400">
-            {stats.processing}
-          </p>
-        </div>
       </div>
+
+      {/* Processing Alert - Show when parts are processing */}
+      {stats.processing > 0 && (
+        <div className="flex items-center gap-3 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 dark:border-blue-800 dark:bg-blue-900/20">
+          <Loader2 className="h-5 w-5 text-blue-600 dark:text-blue-400 animate-spin" />
+          <div className="flex-1">
+            <p className="font-medium text-blue-800 dark:text-blue-200">
+              {stats.processing} part{stats.processing !== 1 ? 's' : ''} awaiting Manus results
+            </p>
+            <p className="text-sm text-blue-600 dark:text-blue-400">
+              Click "Pull Manus Results" to check if they're complete.
+            </p>
+          </div>
+          <Button
+            variant="secondary"
+            size="sm"
+            icon={RotateCcw}
+            onClick={handleResyncTasks}
+            disabled={isResyncing}
+            className="bg-blue-200 hover:bg-blue-300 dark:bg-blue-800 dark:hover:bg-blue-700 text-blue-800 dark:text-blue-200 border-blue-300 dark:border-blue-700"
+          >
+            {isResyncing ? 'Pulling...' : 'Pull Results'}
+          </Button>
+        </div>
+      )}
 
       {/* Budget Warning */}
       {stats.wouldExceedBudget && stats.selected > 0 && (
@@ -482,52 +609,34 @@ const PartsAILookupPage = () => {
         </div>
       )}
 
-      {/* Processing Section - Parts Awaiting Manus Results */}
-      {partsProcessing.length > 0 && (
-        <div className="rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-900/10 overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-3 bg-amber-100/50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800">
-            <div className="flex items-center gap-2">
-              <Loader2 className="h-5 w-5 text-amber-600 dark:text-amber-400 animate-spin" />
-              <h2 className="font-semibold text-amber-800 dark:text-amber-200">
-                Awaiting Manus Results ({partsProcessing.length})
-              </h2>
-            </div>
-            <Button
-              variant="secondary"
-              size="sm"
-              icon={RotateCcw}
-              onClick={handleResyncTasks}
-              disabled={isResyncing}
-              className="bg-amber-200 hover:bg-amber-300 dark:bg-amber-800 dark:hover:bg-amber-700 text-amber-800 dark:text-amber-200 border-amber-300 dark:border-amber-700"
-            >
-              {isResyncing ? 'Pulling Results...' : 'Pull Results from Manus'}
-            </Button>
-          </div>
-          <div className="p-4">
-            <p className="text-sm text-amber-700 dark:text-amber-300 mb-3">
-              These parts have been submitted for AI research. Click "Pull Results from Manus" to check if they're complete.
-            </p>
-            <div className="divide-y divide-amber-200 dark:divide-amber-800">
-              {partsProcessing.map((part) => (
-                <div key={part.id} className="py-2 flex items-center gap-4">
-                  <Loader2 className="h-4 w-4 text-amber-500 animate-spin shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-amber-800 dark:text-amber-200 truncate">
-                      {part.part_number}
-                    </p>
-                    <p className="text-xs text-amber-600 dark:text-amber-400 truncate">
-                      {part.manufacturer} - {part.name || 'Untitled'}
-                    </p>
-                  </div>
-                  <span className="text-xs text-amber-600 dark:text-amber-400 bg-amber-200/50 dark:bg-amber-800/50 px-2 py-1 rounded-full">
-                    Processing
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Filter Tabs */}
+      <div className="flex flex-wrap items-center gap-2 rounded-xl border p-3" style={styles.card}>
+        <Filter className="h-4 w-4 text-zinc-400 mr-1" />
+        <FilterTab filter={FILTER_OPTIONS.ALL} label="All" count={stats.total} color="zinc" />
+        <FilterTab filter={FILTER_OPTIONS.NOT_SUBMITTED} label="Not Submitted" count={stats.notSubmitted} color="amber" />
+        <FilterTab filter={FILTER_OPTIONS.PROCESSING} label="Processing" count={stats.processing} color="blue" />
+        <FilterTab filter={FILTER_OPTIONS.COMPLETED} label="Enriched" count={stats.completed} color="green" />
+        {stats.errors > 0 && (
+          <FilterTab filter={FILTER_OPTIONS.ERROR} label="Errors" count={stats.errors} color="red" />
+        )}
+
+        <div className="flex-1" />
+
+        {/* Hide Completed Toggle */}
+        {activeFilter === FILTER_OPTIONS.ALL && (
+          <button
+            onClick={() => setHideCompleted(!hideCompleted)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-colors ${
+              hideCompleted
+                ? 'bg-violet-100 text-violet-700 dark:bg-violet-900/50 dark:text-violet-300'
+                : 'text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+            }`}
+          >
+            {hideCompleted ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            {hideCompleted ? 'Show Completed' : 'Hide Completed'}
+          </button>
+        )}
+      </div>
 
       {/* Action Bar */}
       <div className="flex flex-wrap items-center gap-3 rounded-xl border p-4" style={styles.card}>
@@ -535,9 +644,9 @@ const PartsAILookupPage = () => {
           variant="secondary"
           size="sm"
           onClick={handleSelectAll}
-          disabled={filteredParts.length === 0}
+          disabled={filteredParts.filter(p => getPartStatus(p) === 'not_submitted' || getPartStatus(p) === 'error').length === 0}
         >
-          Select All ({filteredParts.length})
+          Select All Eligible
         </Button>
         <Button
           variant="secondary"
@@ -548,13 +657,17 @@ const PartsAILookupPage = () => {
           Deselect All
         </Button>
         <div className="flex-1" />
+        <span className="text-sm text-zinc-500 dark:text-zinc-400">
+          <Zap className="h-4 w-4 inline mr-1" />
+          Est: {stats.estimatedCredits} credits
+        </span>
         <Button
           icon={Play}
           onClick={() => runSelectedMutation.mutate()}
-          disabled={selectedParts.size === 0 || runSelectedMutation.isLoading}
+          disabled={selectedParts.size === 0 || runSelectedMutation.isPending}
           className="bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white"
         >
-          {runSelectedMutation.isLoading ? (
+          {runSelectedMutation.isPending ? (
             <>
               <Loader2 className="h-4 w-4 animate-spin mr-2" />
               Starting...
@@ -602,49 +715,52 @@ const PartsAILookupPage = () => {
           <Bot className="w-10 h-10 mx-auto text-zinc-400" />
           <div>
             <h2 className="text-lg font-semibold" style={{ color: styles.textPrimary }}>
-              {partsNeedingLookup.length === 0 ? 'All parts have been processed!' : 'No matching parts'}
+              {search ? 'No matching parts' : 'No parts in this category'}
             </h2>
             <p className="text-sm" style={{ color: styles.textSecondary }}>
-              {partsNeedingLookup.length === 0
-                ? 'All eligible parts have AI enrichment data.'
-                : 'Try adjusting your search terms.'}
+              {search ? 'Try adjusting your search terms.' : 'Try a different filter.'}
             </p>
           </div>
         </div>
       ) : (
         <div className="rounded-xl border overflow-hidden" style={styles.card}>
           {/* Table Header */}
-          <div className="hidden sm:grid grid-cols-[40px_1fr_1fr_150px_120px_100px] gap-4 px-4 py-3 bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-700 text-xs font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-wide">
+          <div className="hidden sm:grid grid-cols-[40px_50px_1fr_1fr_140px] gap-4 px-4 py-3 bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-700 text-xs font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-wide">
             <div></div>
+            <div>AI</div>
             <div>Part Number / Name</div>
             <div>Manufacturer / Category</div>
             <div>Status</div>
-            <div></div>
           </div>
 
           {/* Table Body */}
           <div className="divide-y divide-zinc-200 dark:divide-zinc-700">
             {filteredParts.map((part) => {
               const isSelected = selectedParts.has(part.id);
-              const isProcessing = processingParts.has(part.id) || part.ai_enrichment_status === 'processing';
+              const status = getPartStatus(part);
+              const isProcessing = status === 'processing';
+              const isCompleted = status === 'completed';
+              const canSelect = !isProcessing && !isCompleted;
 
               return (
                 <div
                   key={part.id}
-                  className={`grid sm:grid-cols-[40px_1fr_1fr_150px_120px_100px] gap-2 sm:gap-4 p-4 items-center transition-colors ${
+                  className={`grid sm:grid-cols-[40px_50px_1fr_1fr_140px] gap-2 sm:gap-4 p-4 items-center transition-colors ${
                     isSelected ? 'bg-violet-50 dark:bg-violet-900/20' : 'hover:bg-zinc-50 dark:hover:bg-zinc-800/50'
-                  } ${isProcessing ? 'opacity-70' : ''}`}
+                  } ${isProcessing ? 'bg-blue-50/30 dark:bg-blue-900/10' : ''} ${isCompleted ? 'opacity-60' : ''}`}
                 >
                   {/* Checkbox */}
                   <div className="flex items-center">
                     <button
                       type="button"
-                      onClick={() => togglePartSelection(part.id)}
-                      disabled={isProcessing}
+                      onClick={() => canSelect && togglePartSelection(part.id)}
+                      disabled={!canSelect}
                       className={`p-1 rounded transition-colors ${
-                        isSelected
-                          ? 'text-violet-600 dark:text-violet-400'
-                          : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300'
+                        !canSelect
+                          ? 'text-zinc-300 dark:text-zinc-600 cursor-not-allowed'
+                          : isSelected
+                            ? 'text-violet-600 dark:text-violet-400'
+                            : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300'
                       }`}
                     >
                       {isSelected ? (
@@ -653,6 +769,11 @@ const PartsAILookupPage = () => {
                         <Square className="h-5 w-5" />
                       )}
                     </button>
+                  </div>
+
+                  {/* AI Status Icon */}
+                  <div className="flex items-center justify-center">
+                    {renderAIStatusIcon(part)}
                   </div>
 
                   {/* Part Number / Name */}
@@ -680,13 +801,10 @@ const PartsAILookupPage = () => {
                     )}
                   </div>
 
-                  {/* Status */}
+                  {/* Status Badge */}
                   <div>
                     {renderStatusBadge(part)}
                   </div>
-
-                  {/* Spacer for alignment */}
-                  <div></div>
                 </div>
               );
             })}
@@ -697,10 +815,13 @@ const PartsAILookupPage = () => {
       {/* Footer Info */}
       <div className="text-xs text-zinc-500 dark:text-zinc-400 space-y-1">
         <p>
-          <strong>Note:</strong> AI lookup uses Manus to research product documentation. Results typically complete in 5-10 minutes.
+          <strong>AI Status:</strong>{' '}
+          <span className="text-green-600">●</span> Enriched (has documents){' '}
+          <span className="text-blue-600">●</span> Processing (awaiting results){' '}
+          <span className="text-amber-600">●</span> Not submitted
         </p>
         <p>
-          Prewire items (wires, cables, brackets, tools, connectors, etc.) are automatically excluded.
+          Prewire items (wires, cables, brackets, etc.) are automatically excluded.
         </p>
         <p>
           Budget: ~{CREDITS_PER_PART} credits per part | {MONTHLY_BUDGET} credits/month
