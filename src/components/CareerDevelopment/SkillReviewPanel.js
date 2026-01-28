@@ -441,10 +441,10 @@ const SkillReviewPanel = ({
           />
         </div>
 
-        {/* Rating Legend */}
+        {/* Rating Legend - only show the 3 actual levels (no 'none') */}
         <div className="flex flex-wrap items-center gap-4 mt-4 pt-3 border-t border-zinc-200 dark:border-zinc-700">
-          <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">Rating Levels:</span>
-          {RATING_LEVELS.map(level => {
+          <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">Ratings:</span>
+          {RATING_LEVELS.filter(l => l.id !== 'none').map(level => {
             const Icon = level.icon;
             return (
               <div key={level.id} className="flex items-center gap-1.5" title={level.description}>
@@ -453,21 +453,16 @@ const SkillReviewPanel = ({
               </div>
             );
           })}
+          {mode === 'manager' && (
+            <>
+              <span className="text-zinc-300 dark:text-zinc-600">|</span>
+              <div className="flex items-center gap-1.5" title="Mark skill for focused development">
+                <Target size={14} className="text-violet-500" />
+                <span className="text-xs text-zinc-600 dark:text-zinc-400">Focus Goal</span>
+              </div>
+            </>
+          )}
         </div>
-
-        {/* Manager-specific legend */}
-        {mode === 'manager' && (
-          <div className="flex items-center gap-4 mt-2 text-xs">
-            <div className="flex items-center gap-1.5">
-              <div className="w-3 h-3 rounded bg-amber-200 dark:bg-amber-900/50" />
-              <span className="text-zinc-600 dark:text-zinc-400">Changed from last review</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <div className="w-3 h-3 rounded bg-violet-200 dark:bg-violet-900/50" />
-              <span className="text-zinc-600 dark:text-zinc-400">Development focus</span>
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Skills by Category */}

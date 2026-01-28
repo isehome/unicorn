@@ -73,10 +73,11 @@ const SkillRatingPicker = ({
   disabled = false,
   showLabels = true,
   size = 'md', // 'sm', 'md', 'lg'
-  excludeNone = false,
+  includeNone = false, // Changed: exclude 'none' by default
   className = ''
 }) => {
-  const levels = excludeNone ? RATING_LEVELS.filter(r => r.id !== 'none') : RATING_LEVELS;
+  // Only show Training, Proficient, Expert by default (3 icons)
+  const levels = includeNone ? RATING_LEVELS : RATING_LEVELS.filter(r => r.id !== 'none');
 
   const sizeClasses = {
     sm: 'min-h-[36px] px-2 text-xs',

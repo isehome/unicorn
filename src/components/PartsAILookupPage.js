@@ -1,4 +1,5 @@
 import React, { useMemo, useState, useCallback, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTheme } from '../contexts/ThemeContext';
 import { partsService } from '../services/partsService';
@@ -23,6 +24,7 @@ import {
   Eye,
   EyeOff,
   FileText,
+  ChevronRight,
 } from 'lucide-react';
 import { queryKeys } from '../lib/queryClient';
 
@@ -48,6 +50,7 @@ const FILTER_OPTIONS = {
 };
 
 const PartsAILookupPage = () => {
+  const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [selectedParts, setSelectedParts] = useState(new Set());
   const [localProcessingParts, setLocalProcessingParts] = useState(new Set());
@@ -338,14 +341,15 @@ const PartsAILookupPage = () => {
   });
 
   // Render AI status icon for a part
+  // Brand colors: success=#94AF32, violet=#8B5CF6
   const renderAIStatusIcon = (part) => {
     const status = getPartStatus(part);
 
     if (status === 'completed') {
       return (
         <div className="flex items-center gap-1.5" title="AI enriched with documents">
-          <Bot className="h-5 w-5 text-green-500" />
-          <FileText className="h-3 w-3 text-green-500" />
+          <Bot className="h-5 w-5" style={{ color: '#94AF32' }} />
+          <FileText className="h-3 w-3" style={{ color: '#94AF32' }} />
         </div>
       );
     }
@@ -353,8 +357,8 @@ const PartsAILookupPage = () => {
     if (status === 'processing') {
       return (
         <div className="flex items-center gap-1.5" title="Processing - awaiting Manus results">
-          <Bot className="h-5 w-5 text-blue-500" />
-          <Loader2 className="h-3 w-3 text-blue-500 animate-spin" />
+          <Bot className="h-5 w-5" style={{ color: '#8B5CF6' }} />
+          <Loader2 className="h-3 w-3 animate-spin" style={{ color: '#8B5CF6' }} />
         </div>
       );
     }
@@ -371,18 +375,22 @@ const PartsAILookupPage = () => {
     // Not submitted
     return (
       <div className="flex items-center gap-1.5" title="Not submitted for AI lookup">
-        <Bot className="h-5 w-5 text-amber-500" />
+        <Bot className="h-5 w-5 text-zinc-400" />
       </div>
     );
   };
 
   // Render status badge text
+  // Brand colors: success=#94AF32, violet=#8B5CF6
   const renderStatusBadge = (part) => {
     const status = getPartStatus(part);
 
     if (status === 'completed') {
       return (
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+        <span
+          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium"
+          style={{ backgroundColor: 'rgba(148, 175, 50, 0.15)', color: '#94AF32' }}
+        >
           <CheckCircle className="h-3 w-3" />
           Enriched
         </span>
@@ -391,7 +399,10 @@ const PartsAILookupPage = () => {
 
     if (status === 'processing') {
       return (
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
+        <span
+          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium"
+          style={{ backgroundColor: 'rgba(139, 92, 246, 0.15)', color: '#8B5CF6' }}
+        >
           <Loader2 className="h-3 w-3 animate-spin" />
           Processing
         </span>
@@ -409,7 +420,7 @@ const PartsAILookupPage = () => {
 
     // Not submitted
     return (
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">
         <Bot className="h-3 w-3" />
         Not Submitted
       </span>
@@ -417,24 +428,39 @@ const PartsAILookupPage = () => {
   };
 
   // Filter tab button component
+  // Brand colors: success=#94AF32, violet=#8B5CF6
   const FilterTab = ({ filter, label, count, color }) => {
     const isActive = activeFilter === filter;
+
+    // Use brand colors for processing (violet) and enriched (green)
+    const getActiveStyles = () => {
+      if (color === 'violet') {
+        return { borderColor: '#8B5CF6', backgroundColor: 'rgba(139, 92, 246, 0.15)', color: '#8B5CF6' };
+      }
+      if (color === 'green') {
+        return { borderColor: '#94AF32', backgroundColor: 'rgba(148, 175, 50, 0.15)', color: '#94AF32' };
+      }
+      return {}; // Use Tailwind classes for others
+    };
+
     const colorClasses = {
       zinc: 'border-zinc-300 bg-zinc-100 text-zinc-700 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-300',
-      amber: 'border-amber-300 bg-amber-100 text-amber-700 dark:border-amber-600 dark:bg-amber-900/50 dark:text-amber-300',
-      blue: 'border-blue-300 bg-blue-100 text-blue-700 dark:border-blue-600 dark:bg-blue-900/50 dark:text-blue-300',
-      green: 'border-green-300 bg-green-100 text-green-700 dark:border-green-600 dark:bg-green-900/50 dark:text-green-300',
       red: 'border-red-300 bg-red-100 text-red-700 dark:border-red-600 dark:bg-red-900/50 dark:text-red-300',
     };
+
+    const activeStyles = isActive ? getActiveStyles() : {};
 
     return (
       <button
         onClick={() => setActiveFilter(filter)}
         className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-all ${
-          isActive
+          isActive && (color === 'zinc' || color === 'red')
             ? colorClasses[color]
-            : 'border-transparent bg-transparent text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+            : !isActive
+              ? 'border-transparent bg-transparent text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+              : ''
         }`}
+        style={isActive && (color === 'violet' || color === 'green') ? activeStyles : undefined}
       >
         {label} <span className="ml-1 opacity-70">({count})</span>
       </button>
@@ -516,9 +542,15 @@ const PartsAILookupPage = () => {
         </div>
       )}
 
-      {/* Stats Cards */}
+      {/* Stats Cards - Clickable to filter */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-        <div className="rounded-xl border p-4" style={styles.card}>
+        <button
+          onClick={() => setActiveFilter(FILTER_OPTIONS.ALL)}
+          className={`rounded-xl border p-4 text-left transition-all hover:shadow-md ${
+            activeFilter === FILTER_OPTIONS.ALL ? 'ring-2 ring-violet-500' : ''
+          }`}
+          style={styles.card}
+        >
           <div className="flex items-center gap-2 text-sm text-zinc-500 dark:text-zinc-400">
             <Package className="h-4 w-4" />
             Total Parts
@@ -526,44 +558,69 @@ const PartsAILookupPage = () => {
           <p className="text-2xl font-bold mt-1" style={{ color: styles.textPrimary }}>
             {stats.total}
           </p>
-        </div>
+        </button>
 
-        <div className="rounded-xl border p-4 border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-900/10">
-          <div className="flex items-center gap-2 text-sm text-amber-600 dark:text-amber-400">
+        <button
+          onClick={() => setActiveFilter(FILTER_OPTIONS.NOT_SUBMITTED)}
+          className={`rounded-xl border p-4 text-left transition-all hover:shadow-md border-zinc-200 dark:border-zinc-700 bg-zinc-50/50 dark:bg-zinc-800/30 ${
+            activeFilter === FILTER_OPTIONS.NOT_SUBMITTED ? 'ring-2 ring-zinc-500' : ''
+          }`}
+        >
+          <div className="flex items-center gap-2 text-sm text-zinc-500 dark:text-zinc-400">
             <Bot className="h-4 w-4" />
             Not Submitted
           </div>
-          <p className="text-2xl font-bold mt-1 text-amber-600 dark:text-amber-400">
+          <p className="text-2xl font-bold mt-1 text-zinc-600 dark:text-zinc-300">
             {stats.notSubmitted}
           </p>
-        </div>
+        </button>
 
-        <div className="rounded-xl border p-4 border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-900/10">
-          <div className="flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400">
+        <button
+          onClick={() => setActiveFilter(FILTER_OPTIONS.PROCESSING)}
+          className={`rounded-xl border p-4 text-left transition-all hover:shadow-md ${
+            activeFilter === FILTER_OPTIONS.PROCESSING ? 'ring-2' : ''
+          }`}
+          style={{
+            borderColor: 'rgba(139, 92, 246, 0.3)',
+            backgroundColor: 'rgba(139, 92, 246, 0.05)',
+            ...(activeFilter === FILTER_OPTIONS.PROCESSING ? { '--tw-ring-color': '#8B5CF6' } : {})
+          }}
+        >
+          <div className="flex items-center gap-2 text-sm" style={{ color: '#8B5CF6' }}>
             <Loader2 className={`h-4 w-4 ${stats.processing > 0 ? 'animate-spin' : ''}`} />
             Processing
           </div>
-          <p className="text-2xl font-bold mt-1 text-blue-600 dark:text-blue-400">
+          <p className="text-2xl font-bold mt-1" style={{ color: '#8B5CF6' }}>
             {stats.processing}
           </p>
-        </div>
+        </button>
 
-        <div className="rounded-xl border p-4 border-green-200 dark:border-green-800 bg-green-50/50 dark:bg-green-900/10">
-          <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
+        <button
+          onClick={() => setActiveFilter(FILTER_OPTIONS.COMPLETED)}
+          className={`rounded-xl border p-4 text-left transition-all hover:shadow-md ${
+            activeFilter === FILTER_OPTIONS.COMPLETED ? 'ring-2' : ''
+          }`}
+          style={{
+            borderColor: 'rgba(148, 175, 50, 0.3)',
+            backgroundColor: 'rgba(148, 175, 50, 0.05)',
+            ...(activeFilter === FILTER_OPTIONS.COMPLETED ? { '--tw-ring-color': '#94AF32' } : {})
+          }}
+        >
+          <div className="flex items-center gap-2 text-sm" style={{ color: '#94AF32' }}>
             <CheckCircle className="h-4 w-4" />
             Enriched
           </div>
-          <p className="text-2xl font-bold mt-1 text-green-600 dark:text-green-400">
+          <p className="text-2xl font-bold mt-1" style={{ color: '#94AF32' }}>
             {stats.completed}
           </p>
-        </div>
+        </button>
 
         <div className="rounded-xl border p-4" style={styles.card}>
           <div className="flex items-center gap-2 text-sm text-zinc-500 dark:text-zinc-400">
             <CheckSquare className="h-4 w-4" />
             Selected
           </div>
-          <p className="text-2xl font-bold mt-1 text-violet-600 dark:text-violet-400">
+          <p className="text-2xl font-bold mt-1" style={{ color: '#8B5CF6' }}>
             {stats.selected}
           </p>
         </div>
@@ -571,26 +628,19 @@ const PartsAILookupPage = () => {
 
       {/* Processing Alert - Show when parts are processing */}
       {stats.processing > 0 && (
-        <div className="flex items-center gap-3 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 dark:border-blue-800 dark:bg-blue-900/20">
-          <Loader2 className="h-5 w-5 text-blue-600 dark:text-blue-400 animate-spin" />
+        <div
+          className="flex items-center gap-3 rounded-lg border px-4 py-3"
+          style={{ borderColor: 'rgba(139, 92, 246, 0.3)', backgroundColor: 'rgba(139, 92, 246, 0.08)' }}
+        >
+          <Loader2 className="h-5 w-5 animate-spin" style={{ color: '#8B5CF6' }} />
           <div className="flex-1">
-            <p className="font-medium text-blue-800 dark:text-blue-200">
+            <p className="font-medium" style={{ color: '#7C3AED' }}>
               {stats.processing} part{stats.processing !== 1 ? 's' : ''} awaiting Manus results
             </p>
-            <p className="text-sm text-blue-600 dark:text-blue-400">
-              Click "Pull Manus Results" to check if they're complete.
+            <p className="text-sm" style={{ color: '#8B5CF6' }}>
+              Use "Pull Manus Results" button above to check if they're complete.
             </p>
           </div>
-          <Button
-            variant="secondary"
-            size="sm"
-            icon={RotateCcw}
-            onClick={handleResyncTasks}
-            disabled={isResyncing}
-            className="bg-blue-200 hover:bg-blue-300 dark:bg-blue-800 dark:hover:bg-blue-700 text-blue-800 dark:text-blue-200 border-blue-300 dark:border-blue-700"
-          >
-            {isResyncing ? 'Pulling...' : 'Pull Results'}
-          </Button>
         </div>
       )}
 
@@ -613,8 +663,8 @@ const PartsAILookupPage = () => {
       <div className="flex flex-wrap items-center gap-2 rounded-xl border p-3" style={styles.card}>
         <Filter className="h-4 w-4 text-zinc-400 mr-1" />
         <FilterTab filter={FILTER_OPTIONS.ALL} label="All" count={stats.total} color="zinc" />
-        <FilterTab filter={FILTER_OPTIONS.NOT_SUBMITTED} label="Not Submitted" count={stats.notSubmitted} color="amber" />
-        <FilterTab filter={FILTER_OPTIONS.PROCESSING} label="Processing" count={stats.processing} color="blue" />
+        <FilterTab filter={FILTER_OPTIONS.NOT_SUBMITTED} label="Not Submitted" count={stats.notSubmitted} color="zinc" />
+        <FilterTab filter={FILTER_OPTIONS.PROCESSING} label="Processing" count={stats.processing} color="violet" />
         <FilterTab filter={FILTER_OPTIONS.COMPLETED} label="Enriched" count={stats.completed} color="green" />
         {stats.errors > 0 && (
           <FilterTab filter={FILTER_OPTIONS.ERROR} label="Errors" count={stats.errors} color="red" />
@@ -626,11 +676,11 @@ const PartsAILookupPage = () => {
         {activeFilter === FILTER_OPTIONS.ALL && (
           <button
             onClick={() => setHideCompleted(!hideCompleted)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-colors ${
-              hideCompleted
-                ? 'bg-violet-100 text-violet-700 dark:bg-violet-900/50 dark:text-violet-300'
-                : 'text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800'
-            }`}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-colors"
+            style={hideCompleted
+              ? { backgroundColor: 'rgba(139, 92, 246, 0.15)', color: '#8B5CF6' }
+              : {}
+            }
           >
             {hideCompleted ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             {hideCompleted ? 'Show Completed' : 'Hide Completed'}
@@ -725,12 +775,13 @@ const PartsAILookupPage = () => {
       ) : (
         <div className="rounded-xl border overflow-hidden" style={styles.card}>
           {/* Table Header */}
-          <div className="hidden sm:grid grid-cols-[40px_50px_1fr_1fr_140px] gap-4 px-4 py-3 bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-700 text-xs font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-wide">
+          <div className="hidden sm:grid grid-cols-[40px_50px_1fr_1fr_140px_40px] gap-4 px-4 py-3 bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-700 text-xs font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-wide">
             <div></div>
             <div>AI</div>
             <div>Part Number / Name</div>
             <div>Manufacturer / Category</div>
             <div>Status</div>
+            <div></div>
           </div>
 
           {/* Table Body */}
@@ -745,12 +796,13 @@ const PartsAILookupPage = () => {
               return (
                 <div
                   key={part.id}
-                  className={`grid sm:grid-cols-[40px_50px_1fr_1fr_140px] gap-2 sm:gap-4 p-4 items-center transition-colors ${
+                  className={`grid sm:grid-cols-[40px_50px_1fr_1fr_140px_40px] gap-2 sm:gap-4 p-4 items-center transition-colors cursor-pointer ${
                     isSelected ? 'bg-violet-50 dark:bg-violet-900/20' : 'hover:bg-zinc-50 dark:hover:bg-zinc-800/50'
-                  } ${isProcessing ? 'bg-blue-50/30 dark:bg-blue-900/10' : ''} ${isCompleted ? 'opacity-60' : ''}`}
+                  } ${isProcessing ? 'bg-blue-50/30 dark:bg-blue-900/10' : ''} ${isCompleted ? 'opacity-70' : ''}`}
+                  onClick={() => navigate(`/parts/${part.id}`)}
                 >
                   {/* Checkbox */}
-                  <div className="flex items-center">
+                  <div className="flex items-center" onClick={(e) => e.stopPropagation()}>
                     <button
                       type="button"
                       onClick={() => canSelect && togglePartSelection(part.id)}
@@ -805,6 +857,11 @@ const PartsAILookupPage = () => {
                   <div>
                     {renderStatusBadge(part)}
                   </div>
+
+                  {/* View Detail Arrow */}
+                  <div className="flex items-center justify-center">
+                    <ChevronRight className="h-5 w-5 text-zinc-400" />
+                  </div>
                 </div>
               );
             })}
@@ -816,9 +873,9 @@ const PartsAILookupPage = () => {
       <div className="text-xs text-zinc-500 dark:text-zinc-400 space-y-1">
         <p>
           <strong>AI Status:</strong>{' '}
-          <span className="text-green-600">●</span> Enriched (has documents){' '}
-          <span className="text-blue-600">●</span> Processing (awaiting results){' '}
-          <span className="text-amber-600">●</span> Not submitted
+          <span style={{ color: '#94AF32' }}>●</span> Enriched (has documents){' '}
+          <span style={{ color: '#8B5CF6' }}>●</span> Processing (awaiting results){' '}
+          <span className="text-zinc-400">●</span> Not submitted
         </p>
         <p>
           Prewire items (wires, cables, brackets, etc.) are automatically excluded.
