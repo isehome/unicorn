@@ -1,45 +1,42 @@
 /**
  * DevelopmentGoalsSection.js
- * Component to display and manage development goals (5 focus skills per quarter)
+ * Simplified component showing development goals as a checklist
+ *
+ * For employees: Shows their focus skills for the quarter (read-only)
+ * For managers: Allows toggling skills as focus areas (checkboxes)
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { careerDevelopmentService } from '../../services/careerDevelopmentService';
-import { SkillRatingBadge, getRatingLevel } from './SkillRatingPicker';
+import { SkillRatingBadge } from './SkillRatingPicker';
 import {
   Target,
-  Plus,
-  Trash2,
-  ExternalLink,
-  ChevronRight,
   Loader2,
-  CheckCircle,
-  Edit2,
-  X,
-  ArrowRight,
-  GraduationCap
+  GraduationCap,
+  CheckSquare,
+  Square,
+  ChevronDown,
+  ChevronRight
 } from 'lucide-react';
 
 const DevelopmentGoalsSection = ({
   cycle,
-  employeeId = null, // If null, use current user
+  employeeId = null, // If null, use current user (employee viewing their own)
   isManager = false, // Manager view allows editing
-  onGoalsChange
+  onGoalsChange,
+  readOnly = false
 }) => {
   const { user } = useAuth();
   const [goals, setGoals] = useState([]);
+  const [skillsGrouped, setSkillsGrouped] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [addingGoal, setAddingGoal] = useState(false);
-  const [skillsGrouped, setSkillsGrouped] = useState({});
-  const [selectedSkill, setSelectedSkill] = useState(null);
-  const [targetLevel, setTargetLevel] = useState('proficient');
-  const [actionPlan, setActionPlan] = useState('');
-  const [savingGoal, setSavingGoal] = useState(false);
-  const [editingGoal, setEditingGoal] = useState(null);
+  const [savingSkillId, setSavingSkillId] = useState(null);
+  const [expandedCategories, setExpandedCategories] = useState({});
 
   const targetUserId = employeeId || user?.id;
+  const canEdit = isManager && !readOnly;
 
   // Load goals and skills
   const loadData = useCallback(async () => {
@@ -56,6 +53,16 @@ const DevelopmentGoalsSection = ({
 
       setGoals(goalsData);
       setSkillsGrouped(skillsData);
+
+      // Auto-expand categories that have goals
+      const goalSkillIds = new Set(goalsData.map(g => g.skill_id));
+      const catsWithGoals = {};
+      Object.entries(skillsData).forEach(([cat, data]) => {
+        if (data.skills.some(s => goalSkillIds.has(s.id))) {
+          catsWithGoals[cat] = true;
+        }
+      });
+      setExpandedCategories(catsWithGoals);
     } catch (err) {
       console.error('[DevelopmentGoalsSection] Load error:', err);
       setError('Failed to load goals');
@@ -68,89 +75,62 @@ const DevelopmentGoalsSection = ({
     loadData();
   }, [loadData]);
 
-  // Add a new goal
-  const handleAddGoal = async () => {
-    if (!selectedSkill || !targetLevel) return;
+  // Get goal for a skill (if exists)
+  const getGoalForSkill = (skillId) => {
+    return goals.find(g => g.skill_id === skillId);
+  };
+
+  // Toggle a skill as a development goal
+  const toggleGoal = async (skill) => {
+    if (!canEdit || savingSkillId) return;
+
+    const existingGoal = getGoalForSkill(skill.id);
 
     try {
-      setSavingGoal(true);
+      setSavingSkillId(skill.id);
 
-      // Find next available priority
-      const usedPriorities = goals.map(g => g.priority);
-      let nextPriority = 1;
-      while (usedPriorities.includes(nextPriority) && nextPriority <= 5) {
-        nextPriority++;
+      if (existingGoal) {
+        // Remove the goal
+        await careerDevelopmentService.removeGoal(existingGoal.id);
+      } else {
+        // Check if we're at max (allow more than 5 but warn)
+        if (goals.length >= 10) {
+          setError('Maximum of 10 development goals reached');
+          return;
+        }
+
+        // Add as a goal with next priority
+        const nextPriority = goals.length + 1;
+        await careerDevelopmentService.setGoal(
+          cycle.id,
+          targetUserId,
+          skill.id,
+          nextPriority > 5 ? 5 : nextPriority, // Cap priority at 5 for DB constraint
+          'proficient', // Default target level
+          null, // No action plan needed
+          user?.id, // Manager who set it
+          user?.id  // Created by
+        );
       }
-
-      if (nextPriority > 5) {
-        setError('Maximum 5 goals allowed');
-        return;
-      }
-
-      await careerDevelopmentService.setGoal(
-        cycle.id,
-        targetUserId,
-        selectedSkill.id,
-        nextPriority,
-        targetLevel,
-        actionPlan,
-        isManager ? user?.id : null,
-        user?.id
-      );
-
-      // Reset form
-      setSelectedSkill(null);
-      setTargetLevel('proficient');
-      setActionPlan('');
-      setAddingGoal(false);
 
       // Reload goals
       await loadData();
-
       if (onGoalsChange) onGoalsChange();
     } catch (err) {
-      console.error('[DevelopmentGoalsSection] Add goal error:', err);
-      setError(err.message || 'Failed to add goal');
+      console.error('[DevelopmentGoalsSection] Toggle goal error:', err);
+      setError(err.message || 'Failed to update goal');
     } finally {
-      setSavingGoal(false);
+      setSavingSkillId(null);
     }
   };
 
-  // Remove a goal
-  const handleRemoveGoal = async (goalId) => {
-    if (!confirm('Remove this development goal?')) return;
-
-    try {
-      await careerDevelopmentService.removeGoal(goalId);
-      await loadData();
-      if (onGoalsChange) onGoalsChange();
-    } catch (err) {
-      console.error('[DevelopmentGoalsSection] Remove goal error:', err);
-      setError('Failed to remove goal');
-    }
+  // Toggle category expansion
+  const toggleCategory = (category) => {
+    setExpandedCategories(prev => ({
+      ...prev,
+      [category]: !prev[category]
+    }));
   };
-
-  // Mark goal as achieved
-  const handleMarkAchieved = async (goalId, achievedLevel) => {
-    try {
-      await careerDevelopmentService.updateGoalProgress(goalId, null, true, achievedLevel);
-      await loadData();
-      if (onGoalsChange) onGoalsChange();
-    } catch (err) {
-      console.error('[DevelopmentGoalsSection] Mark achieved error:', err);
-      setError('Failed to update goal');
-    }
-  };
-
-  // Get skills not already in goals
-  const availableSkills = Object.entries(skillsGrouped).reduce((acc, [category, data]) => {
-    const usedSkillIds = goals.map(g => g.skill_id);
-    const available = (data.skills || []).filter(s => !usedSkillIds.includes(s.id));
-    if (available.length > 0) {
-      acc[category] = { ...data, skills: available };
-    }
-    return acc;
-  }, {});
 
   if (loading) {
     return (
@@ -161,9 +141,86 @@ const DevelopmentGoalsSection = ({
     );
   }
 
+  // Employee view: Just show their goals as a list
+  if (!isManager) {
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-semibold text-zinc-900 dark:text-white flex items-center gap-2">
+              <Target size={20} className="text-violet-500" />
+              Development Focus
+            </h3>
+            <p className="text-sm text-zinc-500 dark:text-zinc-400">
+              Skills your manager has highlighted for focus this quarter
+            </p>
+          </div>
+          <span className="text-sm font-medium text-zinc-600 dark:text-zinc-400">
+            {goals.length} skill{goals.length !== 1 ? 's' : ''}
+          </span>
+        </div>
+
+        {error && (
+          <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl">
+            <p className="text-sm text-red-700 dark:text-red-400">{error}</p>
+          </div>
+        )}
+
+        {goals.length > 0 ? (
+          <div className="space-y-2">
+            {goals.map((goal) => {
+              const skill = goal.skill;
+              const trainingUrls = skill?.training_urls || [];
+
+              return (
+                <div
+                  key={goal.id}
+                  className="flex items-center justify-between p-3 bg-violet-50 dark:bg-violet-900/20 rounded-xl border border-violet-200 dark:border-violet-700"
+                >
+                  <div className="flex items-center gap-3">
+                    <CheckSquare size={20} className="text-violet-600 dark:text-violet-400" />
+                    <div>
+                      <p className="font-medium text-zinc-900 dark:text-white">
+                        {skill?.name}
+                      </p>
+                      <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                        {skill?.category}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <SkillRatingBadge rating={goal.current_level || 'none'} size="sm" />
+                    {trainingUrls.length > 0 && (
+                      <a
+                        href={trainingUrls[0]}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="p-2 rounded-lg hover:bg-violet-100 dark:hover:bg-violet-800/30 text-violet-600 dark:text-violet-400 min-h-[44px] min-w-[44px] flex items-center justify-center"
+                        title="Open training"
+                      >
+                        <GraduationCap size={20} />
+                      </a>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="text-center py-8 text-zinc-500 dark:text-zinc-400">
+            <Target size={40} className="mx-auto mb-2 opacity-50" />
+            <p>No development goals set for this quarter</p>
+            <p className="text-sm mt-1">Your manager will select focus skills during your review</p>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Manager view: Checkboxes to toggle skills as goals
   return (
     <div className="space-y-4">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-lg font-semibold text-zinc-900 dark:text-white flex items-center gap-2">
@@ -171,307 +228,150 @@ const DevelopmentGoalsSection = ({
             Development Goals
           </h3>
           <p className="text-sm text-zinc-500 dark:text-zinc-400">
-            Focus on up to 5 skills this quarter
+            {canEdit
+              ? 'Select skills for this employee to focus on this quarter'
+              : 'Skills selected for focus this quarter'
+            }
           </p>
         </div>
         <span className="text-sm font-medium text-zinc-600 dark:text-zinc-400">
-          {goals.length} / 5 goals
+          {goals.length} selected
         </span>
       </div>
 
       {error && (
         <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl">
           <p className="text-sm text-red-700 dark:text-red-400">{error}</p>
+          <button
+            onClick={() => setError(null)}
+            className="text-xs text-red-600 underline mt-1"
+          >
+            Dismiss
+          </button>
         </div>
       )}
 
-      {/* Goals List */}
-      <div className="space-y-3">
-        {goals.map((goal, index) => {
-          const skill = goal.skill;
-          const trainingUrls = skill?.training_urls || [];
-          const currentLevel = getRatingLevel(goal.current_level);
-          const targetLevelInfo = getRatingLevel(goal.target_level);
-          const isAchieved = !!goal.achieved_at;
+      {/* Skills grouped by category with checkboxes */}
+      <div className="space-y-2">
+        {Object.entries(skillsGrouped).map(([category, data]) => {
+          const isExpanded = expandedCategories[category];
+          const categoryGoalsCount = data.skills.filter(s => getGoalForSkill(s.id)).length;
 
           return (
-            <div
-              key={goal.id}
-              className={`
-                bg-white dark:bg-zinc-800 rounded-xl border
-                ${isAchieved
-                  ? 'border-green-300 dark:border-green-700'
-                  : 'border-zinc-200 dark:border-zinc-700'
-                }
-                p-4
-              `}
-            >
-              <div className="flex items-start gap-4">
-                {/* Priority Badge */}
-                <div
-                  className={`
-                    w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 font-bold text-sm
-                    ${isAchieved
-                      ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
-                      : 'bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-400'
-                    }
-                  `}
-                >
-                  {isAchieved ? <CheckCircle size={18} /> : goal.priority}
+            <div key={category} className="border border-zinc-200 dark:border-zinc-700 rounded-xl overflow-hidden">
+              {/* Category Header */}
+              <button
+                onClick={() => toggleCategory(category)}
+                className="w-full flex items-center justify-between p-3 bg-zinc-50 dark:bg-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-750 transition-colors min-h-[44px]"
+              >
+                <div className="flex items-center gap-2">
+                  {isExpanded ? (
+                    <ChevronDown size={18} className="text-zinc-400" />
+                  ) : (
+                    <ChevronRight size={18} className="text-zinc-400" />
+                  )}
+                  <span
+                    className="font-medium"
+                    style={{ color: data.info?.color || '#6B7280' }}
+                  >
+                    {data.info?.label || category}
+                  </span>
                 </div>
+                {categoryGoalsCount > 0 && (
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-400">
+                    {categoryGoalsCount} selected
+                  </span>
+                )}
+              </button>
 
-                {/* Content */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <h4 className="font-semibold text-zinc-900 dark:text-white">
-                        {skill?.name}
-                      </h4>
-                      {skill?.class && (
-                        <span className="text-xs text-zinc-500 dark:text-zinc-400">
-                          {skill.class.label}
-                        </span>
-                      )}
-                    </div>
+              {/* Skills List */}
+              {isExpanded && (
+                <div className="divide-y divide-zinc-100 dark:divide-zinc-700">
+                  {data.skills.map((skill) => {
+                    const goal = getGoalForSkill(skill.id);
+                    const isSelected = !!goal;
+                    const isSaving = savingSkillId === skill.id;
+                    const trainingUrls = skill.training_urls || [];
 
-                    {/* Actions */}
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      {trainingUrls.length > 0 && (
-                        <a
-                          href={trainingUrls[0]}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-700 text-violet-600 dark:text-violet-400"
-                          title="Open training"
-                        >
-                          <GraduationCap size={18} />
-                        </a>
-                      )}
-                      {!isAchieved && (isManager || targetUserId === user?.id) && (
-                        <button
-                          onClick={() => handleRemoveGoal(goal.id)}
-                          className="p-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500"
-                          title="Remove goal"
-                        >
-                          <Trash2 size={18} />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Level Progress */}
-                  <div className="flex items-center gap-2 mt-2">
-                    <SkillRatingBadge rating={goal.current_level || 'none'} size="sm" />
-                    <ArrowRight size={16} className="text-zinc-400" />
-                    <SkillRatingBadge rating={goal.target_level} size="sm" />
-                    {isAchieved && (
-                      <span
-                        className="ml-2 text-xs font-medium px-2 py-0.5 rounded-full"
-                        style={{ backgroundColor: 'rgba(148, 175, 50, 0.15)', color: '#94AF32' }}
+                    return (
+                      <div
+                        key={skill.id}
+                        className={`
+                          flex items-center justify-between p-3
+                          ${isSelected ? 'bg-violet-50/50 dark:bg-violet-900/10' : ''}
+                        `}
                       >
-                        Achieved!
-                      </span>
-                    )}
-                  </div>
+                        <div className="flex items-center gap-3">
+                          {canEdit ? (
+                            <button
+                              onClick={() => toggleGoal(skill)}
+                              disabled={isSaving}
+                              className="p-1 min-h-[44px] min-w-[44px] flex items-center justify-center"
+                            >
+                              {isSaving ? (
+                                <Loader2 className="animate-spin text-violet-500" size={20} />
+                              ) : isSelected ? (
+                                <CheckSquare size={20} className="text-violet-600 dark:text-violet-400" />
+                              ) : (
+                                <Square size={20} className="text-zinc-400 dark:text-zinc-500" />
+                              )}
+                            </button>
+                          ) : (
+                            <div className="p-1">
+                              {isSelected ? (
+                                <CheckSquare size={20} className="text-violet-600 dark:text-violet-400" />
+                              ) : (
+                                <Square size={20} className="text-zinc-300 dark:text-zinc-600" />
+                              )}
+                            </div>
+                          )}
+                          <span className={`
+                            ${isSelected
+                              ? 'font-medium text-zinc-900 dark:text-white'
+                              : 'text-zinc-600 dark:text-zinc-400'
+                            }
+                          `}>
+                            {skill.name}
+                          </span>
+                        </div>
 
-                  {/* Action Plan */}
-                  {goal.action_plan && (
-                    <p className="text-sm text-zinc-600 dark:text-zinc-400 mt-2">
-                      {goal.action_plan}
-                    </p>
-                  )}
-
-                  {/* Training Links */}
-                  {trainingUrls.length > 0 && (
-                    <div className="flex flex-wrap gap-2 mt-2">
-                      {trainingUrls.map((url, i) => (
-                        <a
-                          key={i}
-                          href={url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 text-xs text-violet-600 dark:text-violet-400 hover:underline"
-                        >
-                          <ExternalLink size={12} />
-                          Training {trainingUrls.length > 1 ? i + 1 : ''}
-                        </a>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Agreement Status */}
-                  <div className="flex items-center gap-4 mt-3 text-xs">
-                    <span className={goal.employee_agreed_at ? 'text-green-600 dark:text-green-400' : 'text-zinc-400'}>
-                      {goal.employee_agreed_at ? '✓ Employee agreed' : '○ Pending employee'}
-                    </span>
-                    <span className={goal.manager_agreed_at ? 'text-green-600 dark:text-green-400' : 'text-zinc-400'}>
-                      {goal.manager_agreed_at ? '✓ Manager agreed' : '○ Pending manager'}
-                    </span>
-                  </div>
+                        {trainingUrls.length > 0 && (
+                          <a
+                            href={trainingUrls[0]}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-700 text-violet-600 dark:text-violet-400 min-h-[44px] min-w-[44px] flex items-center justify-center"
+                            title="Open training"
+                          >
+                            <GraduationCap size={18} />
+                          </a>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
-              </div>
+              )}
             </div>
           );
         })}
-
-        {goals.length === 0 && (
-          <div className="text-center py-8 text-zinc-500 dark:text-zinc-400">
-            <Target size={40} className="mx-auto mb-2 opacity-50" />
-            <p>No development goals set for this quarter</p>
-          </div>
-        )}
       </div>
 
-      {/* Add Goal Button */}
-      {goals.length < 5 && !addingGoal && (isManager || targetUserId === user?.id) && (
-        <button
-          type="button"
-          onClick={() => setAddingGoal(true)}
-          className="w-full flex items-center justify-center gap-2 p-4 rounded-xl border-2 border-dashed border-zinc-300 dark:border-zinc-600 text-zinc-600 dark:text-zinc-400 hover:border-violet-400 hover:text-violet-600 dark:hover:text-violet-400 transition-colors"
-        >
-          <Plus size={20} />
-          Add Development Goal
-        </button>
-      )}
-
-      {/* Add Goal Form */}
-      {addingGoal && (
-        <div className="bg-white dark:bg-zinc-800 rounded-xl border border-zinc-200 dark:border-zinc-700 p-4 space-y-4">
-          <div className="flex items-center justify-between">
-            <h4 className="font-semibold text-zinc-900 dark:text-white">Add Development Goal</h4>
-            <button
-              onClick={() => {
-                setAddingGoal(false);
-                setSelectedSkill(null);
-              }}
-              className="p-1 rounded hover:bg-zinc-100 dark:hover:bg-zinc-700"
-            >
-              <X size={20} className="text-zinc-500" />
-            </button>
-          </div>
-
-          {/* Skill Selection */}
-          <div>
-            <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">
-              Select Skill to Focus On
-            </label>
-            {selectedSkill ? (
-              <div className="flex items-center justify-between p-3 bg-violet-50 dark:bg-violet-900/20 rounded-lg border border-violet-200 dark:border-violet-700">
-                <div>
-                  <p className="font-medium text-zinc-900 dark:text-white">{selectedSkill.name}</p>
-                  <p className="text-xs text-zinc-500 dark:text-zinc-400">{selectedSkill.category}</p>
-                </div>
-                <button
-                  onClick={() => setSelectedSkill(null)}
-                  className="text-violet-600 dark:text-violet-400 text-sm"
-                >
-                  Change
-                </button>
-              </div>
-            ) : (
-              <div className="max-h-60 overflow-y-auto border border-zinc-200 dark:border-zinc-700 rounded-lg divide-y divide-zinc-100 dark:divide-zinc-700">
-                {Object.entries(availableSkills).map(([category, data]) => (
-                  <div key={category}>
-                    <div className="px-3 py-2 bg-zinc-50 dark:bg-zinc-750 text-xs font-semibold text-zinc-600 dark:text-zinc-400 uppercase tracking-wider">
-                      {data.info?.label || category}
-                    </div>
-                    {data.skills.map(skill => (
-                      <button
-                        key={skill.id}
-                        onClick={() => setSelectedSkill(skill)}
-                        className="w-full text-left px-3 py-2 hover:bg-zinc-50 dark:hover:bg-zinc-700/50 flex items-center justify-between group"
-                      >
-                        <span className="text-zinc-900 dark:text-white">{skill.name}</span>
-                        <ChevronRight size={16} className="text-zinc-400 opacity-0 group-hover:opacity-100" />
-                      </button>
-                    ))}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Target Level */}
-          <div>
-            <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">
-              Target Level
-            </label>
-            <div className="flex gap-2">
-              {['training', 'proficient', 'expert'].map(level => {
-                const levelInfo = getRatingLevel(level);
-                const isSelected = targetLevel === level;
-                return (
-                  <button
-                    key={level}
-                    type="button"
-                    onClick={() => setTargetLevel(level)}
-                    className={`
-                      flex-1 py-2 px-3 rounded-lg border-2 text-sm font-medium transition-all
-                      ${isSelected
-                        ? `${levelInfo.bgClass} ${levelInfo.textClass}`
-                        : 'bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400'
-                      }
-                    `}
-                    style={isSelected ? { borderColor: levelInfo.color } : {}}
-                  >
-                    {levelInfo.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Action Plan */}
-          <div>
-            <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">
-              Action Plan (optional)
-            </label>
-            <textarea
-              value={actionPlan}
-              onChange={(e) => setActionPlan(e.target.value)}
-              placeholder="Describe steps to achieve this goal..."
-              className="w-full h-20 p-3 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white placeholder-zinc-400 resize-none"
-              style={{ fontSize: '16px' }}
-            />
-          </div>
-
-          {/* Save Button */}
-          <div className="flex justify-end gap-3">
-            <button
-              type="button"
-              onClick={() => {
-                setAddingGoal(false);
-                setSelectedSkill(null);
-                setActionPlan('');
-              }}
-              className="px-4 py-2 rounded-lg text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-700"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={handleAddGoal}
-              disabled={!selectedSkill || savingGoal}
-              className={`
-                flex items-center gap-2 px-4 py-2 rounded-lg font-medium
-                ${selectedSkill
-                  ? 'bg-violet-500 hover:bg-violet-600 text-white'
-                  : 'bg-zinc-200 dark:bg-zinc-700 text-zinc-400 cursor-not-allowed'
-                }
-              `}
-            >
-              {savingGoal ? (
-                <>
-                  <Loader2 className="animate-spin" size={16} />
-                  Saving...
-                </>
-              ) : (
-                <>
-                  <Plus size={16} />
-                  Add Goal
-                </>
-              )}
-            </button>
+      {/* Selected Goals Summary */}
+      {goals.length > 0 && (
+        <div className="mt-4 p-4 bg-violet-50 dark:bg-violet-900/20 rounded-xl border border-violet-200 dark:border-violet-700">
+          <p className="text-sm font-medium text-violet-700 dark:text-violet-400 mb-2">
+            Selected Development Goals ({goals.length})
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {goals.map((goal) => (
+              <span
+                key={goal.id}
+                className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-white dark:bg-zinc-800 text-sm text-zinc-700 dark:text-zinc-300 border border-violet-200 dark:border-violet-700"
+              >
+                <CheckSquare size={14} className="text-violet-500" />
+                {goal.skill?.name}
+              </span>
+            ))}
           </div>
         </div>
       )}

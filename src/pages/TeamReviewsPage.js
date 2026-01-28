@@ -9,7 +9,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useAppState } from '../contexts/AppStateContext';
 import { careerDevelopmentService } from '../services/careerDevelopmentService';
 import { enhancedStyles } from '../styles/styleSystem';
-import SkillComparisonView from '../components/CareerDevelopment/SkillComparisonView';
+import SkillReviewPanel from '../components/CareerDevelopment/SkillReviewPanel';
 import DevelopmentGoalsSection from '../components/CareerDevelopment/DevelopmentGoalsSection';
 import TechnicianAvatar from '../components/TechnicianAvatar';
 import {
@@ -22,7 +22,6 @@ import {
   ChevronRight,
   Send,
   FileCheck,
-  Star,
   ArrowLeft,
   CalendarCheck
 } from 'lucide-react';
@@ -159,7 +158,7 @@ const TeamReviewsPage = () => {
   const handleFinalizeReview = async () => {
     if (!selectedSession) return;
 
-    const confirmed = confirm(
+    const confirmed = window.confirm(
       'Finalize this review? This will update the employee\'s official skill ratings. This action cannot be undone.'
     );
     if (!confirmed) return;
@@ -334,11 +333,12 @@ const TeamReviewsPage = () => {
           {/* Tab Content */}
           <div className="rounded-2xl border p-6" style={sectionStyles.card}>
             {activeTab === 'comparison' && cycle && (
-              <SkillComparisonView
+              <SkillReviewPanel
                 cycle={cycle}
                 employeeId={selectedEmployee.id}
                 managerId={user.id}
-                onReviewChange={loadData}
+                mode="manager"
+                onSubmitComplete={loadData}
                 readOnly={isCompleted}
               />
             )}
@@ -349,6 +349,7 @@ const TeamReviewsPage = () => {
                 employeeId={selectedEmployee.id}
                 isManager={true}
                 onGoalsChange={loadData}
+                readOnly={isCompleted}
               />
             )}
           </div>

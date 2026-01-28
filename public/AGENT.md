@@ -1054,6 +1054,15 @@ Service tickets can be exported to QuickBooks Online as invoices for billing.
 | `qbo_auth_tokens` | QuickBooks OAuth tokens |
 | `qbo_customer_mapping` | Contact to QBO customer ID mapping |
 | `project_home_assistant` | **ENCRYPTED** - Home Assistant credentials per project |
+| `global_skills` | Master skill definitions |
+| `skill_categories` | Skill category groupings |
+| `employee_skills` | Technician skill certifications |
+| `manager_relationships` | Org structure (who reports to whom) |
+| `review_cycles` | Quarterly review periods |
+| `skill_self_evaluations` | Employee self-ratings |
+| `skill_manager_reviews` | Manager ratings for employees |
+| `development_goals` | 5 focus skills per employee per quarter |
+| `review_sessions` | Overall review meeting tracking |
 
 ### Secure Data Tables (Encrypted)
 
@@ -1111,6 +1120,10 @@ See [Secure Data Encryption Implementation](#secure-data-encryption-implementati
 | **ZIP download service** | `src/services/zipDownloadService.js` |
 | **Project reports page** | `src/pages/ProjectReportsPage.js` |
 | **SharePoint download API** | `api/sharepoint-download.js` |
+| **Career development service** | `src/services/careerDevelopmentService.js` |
+| **Career development page** | `src/pages/CareerDevelopmentPage.js` |
+| **Team reviews page** | `src/pages/TeamReviewsPage.js` |
+| **Review cycles manager** | `src/components/Admin/ReviewCyclesManager.js` |
 
 #### 8.11 Retell AI Phone System (Sarah)
 
@@ -3717,6 +3730,202 @@ The application needs a proper user capabilities/roles system to control access 
 ---
 
 # PART 6: CHANGELOG
+
+## 2026-01-28
+
+### Career Development & Quarterly Skills Review System (Major Feature)
+
+Added a comprehensive career development feature enabling self-evaluations, manager reviews, development goals, and quarterly review cycles.
+
+**Feature Overview:**
+- **Self-Evaluation** - Employees rate themselves on all skills in the system
+- **Manager Reviews** - Quarterly skill assessments by direct managers
+- **Comparison View** - Side-by-side self vs manager ratings with discrepancy highlighting
+- **Development Goals** - 5 focus skills per quarter agreed between employee and manager
+- **Review Cycles** - Admin-managed quarterly periods with due dates
+- **Training Links** - Direct access to training resources per skill
+- **Audit Trail** - Full history of all rating changes
+
+**Database Tables Created:**
+| Table | Purpose |
+|-------|---------|
+| `manager_relationships` | Org structure (who reports to whom) |
+| `review_cycles` | Quarterly review periods |
+| `skill_self_evaluations` | Employee self-ratings per skill |
+| `skill_manager_reviews` | Manager ratings per employee skill |
+| `development_goals` | 5 focus skills per employee per quarter |
+| `review_sessions` | Overall review meeting tracking |
+| `skill_review_history` | Audit trail of all changes |
+
+**UI Pages Created:**
+| Route | Component | Purpose |
+|-------|-----------|---------|
+| `/career` | `CareerDevelopmentPage.js` | Employee self-evaluation & goals |
+| `/team-reviews` | `TeamReviewsPage.js` | Manager review dashboard |
+| Admin → Review Cycles | `ReviewCyclesManager.js` | Cycle CRUD & status management |
+
+**Components Created:**
+| File | Purpose |
+|------|---------|
+| `src/components/CareerDevelopment/SkillRatingPicker.js` | Reusable rating picker (none/training/proficient/expert) |
+| `src/components/CareerDevelopment/SelfEvaluationForm.js` | Employee self-evaluation form |
+| `src/components/CareerDevelopment/DevelopmentGoalsSection.js` | Manage 5 development goals |
+| `src/components/CareerDevelopment/SkillComparisonView.js` | Side-by-side self vs manager |
+| `src/components/Admin/ReviewCyclesManager.js` | Admin cycle management |
+
+**Service Layer:**
+| File | Purpose |
+|------|---------|
+| `src/services/careerDevelopmentService.js` | Full CRUD for reviews, goals, cycles |
+
+**Files Modified:**
+| File | Changes |
+|------|---------|
+| `src/App.js` | Added routes for `/career` and `/team-reviews` |
+| `src/components/AppHeader.js` | Added page titles |
+| `src/components/SettingsPage.js` | Added Career Development link |
+| `src/pages/AdminPage.js` | Added Review Cycles tab |
+
+**User Flow - Employee:**
+1. Navigate to Settings → Career Development
+2. View current review cycle and due dates
+3. Rate yourself on all skills by category
+4. Add notes for context
+5. Submit self-evaluation
+6. View development goals set by manager
+
+**User Flow - Manager:**
+1. Navigate to Team Reviews
+2. See list of direct reports with status badges
+3. Select employee → view comparison
+4. Add manager ratings and notes
+5. Set/confirm 5 development goals
+6. Submit review → updates official `employee_skills`
+
+**Design Decisions:**
+- Employees can self-rate ALL skills (allows highlighting skills not yet assigned)
+- Rating levels include 'none' for unrated skills
+- 5 max development goals per quarter (enforced by DB constraint)
+- Manager finalization copies ratings to `employee_skills` table
+- Full audit trail via `skill_review_history` table
+
+**AI Note:** Career development pages accessible via `/career` (employees) and `/team-reviews` (managers). Review cycles managed in Admin panel. Skills are grouped by category (skill_categories table) with training URLs available per skill.
+
+---
+
+### Parts AI Lookup Manager Page
+
+Added a new dedicated page for managing AI-powered parts documentation lookup at `/parts/ai-lookup`.
+
+**What:**
+- New `PartsAILookupPage` component for selecting and running batch AI lookups
+- Table view of all parts needing AI enrichment (null, pending, or error status)
+- Multi-select checkboxes for batch processing
+- Real-time progress tracking with polling
+- Credit estimation and budget warning (100 credits/part, 4000/month)
+- Automatic prewire item filtering (wires, cables, brackets, etc.)
+
+**Why:**
+- Users needed a dedicated interface to manage which parts get AI documentation lookup
+- The existing AI badge on parts list was confusing - it showed for parts needing review, not parts with successful lookups
+- Batch selection allows better control over credit usage
+
+**UI Changes:**
+- AI badge on parts list now only shows for `completed` status (purple badge)
+- Separate blue "Review" badge for parts needing human review of AI results
+- New "AI Lookup" button in Parts Catalog action bar
+- New route at `/parts/ai-lookup`
+
+**Files Created:**
+| File | Purpose |
+|------|---------|
+| `src/components/PartsAILookupPage.js` | New AI lookup manager page |
+
+**Files Modified:**
+| File | Changes |
+|------|---------|
+| `src/App.js` | Added lazy import and route for `/parts/ai-lookup` |
+| `src/components/PartsListPage.js` | Added AI Lookup button, fixed AI badge logic |
+| `src/components/AppHeader.js` | Added page title for AI Lookup page |
+
+**AI Note:** The AI badge (purple, Bot icon) now indicates a part has COMPLETED AI documentation lookup. Parts with `needs_review` status show a blue "Review" badge instead. Users can access `/parts/ai-lookup` to batch-select parts for Manus AI research.
+
+---
+
+### Voice AI Latency Optimization
+
+Optimized Gemini Live API configuration for faster voice response times. User reported laggy/slow responses - applied multiple optimizations to reduce total latency by ~500-1000ms per interaction.
+
+**Problem Solved:**
+- Voice AI felt slow and unresponsive
+- Long delay between user stopping speech and AI responding
+- Audio capture had unnecessary buffering latency
+
+**Solution:**
+Applied four latency optimizations:
+
+| Setting | Before | After |
+|---------|--------|-------|
+| Audio buffer | 4096 samples (~85ms) | 2048 samples (~42ms) |
+| Silence detection | 1000-1500ms | 500-750ms |
+| Prefix padding | 300ms | 200ms |
+| Thinking mode | Enabled | Disabled (`thinkingBudget: 0`) |
+
+**Files Modified:**
+| File | Changes |
+|------|---------|
+| `src/contexts/AIBrainContext.js` | Reduced buffer size, silence duration, prefix padding; disabled thinking mode |
+| `docs/VOICE-AI-REFERENCE.md` | Added "Speed Optimizations" section documenting changes |
+
+**AI Note:** Voice copilot is now optimized for speed over deliberation. May occasionally cut off user slightly early or provide quicker (less deliberate) responses. This is intentional for field technician UX where speed matters more than perfect turn-taking.
+
+---
+
+## 2026-01-22
+
+### Configurable Default Service Hourly Rate (Bug BR-2026-01-12-0001)
+
+Added company-configurable default hourly rate for service tickets, replacing the hardcoded $150/hr value.
+
+**Problem Solved:**
+- Service ticket hourly rate was hardcoded to $150/hr throughout the codebase
+- No way for companies to set their own default service rate
+- Rate showed as $150/hr regardless of company preference
+
+**Solution:**
+Added `default_service_hourly_rate` to company settings, allowing admins to configure their default hourly rate. This rate is used when:
+1. Creating new service tickets (NewTicketForm, AI Brain)
+2. Displaying time tracking costs (ServiceTimeTracker)
+3. Individual tickets can still override with a per-ticket rate
+
+**Database Changes:**
+```sql
+ALTER TABLE company_settings ADD COLUMN default_service_hourly_rate NUMERIC DEFAULT 150;
+```
+
+**Files Created:**
+| File | Purpose |
+|------|---------|
+| `database/migrations/20260122_add_default_service_hourly_rate.sql` | Add default hourly rate column |
+
+**Files Modified:**
+| File | Changes |
+|------|---------|
+| `src/services/companySettingsService.js` | Added `default_service_hourly_rate` to create/update methods |
+| `src/components/procurement/CompanySettingsManager.js` | Added "Service Settings" section with hourly rate input |
+| `src/components/Service/ServiceTimeTracker.js` | Fetch company default rate when ticket has no rate |
+| `src/components/Service/NewTicketForm.js` | Set company default rate on new ticket creation |
+| `src/contexts/AIBrainContext.js` | Set company default rate when AI creates tickets |
+
+**Rate Priority (highest to lowest):**
+1. Ticket-level `hourly_rate` (per-ticket override)
+2. Company-level `default_service_hourly_rate` (from company settings)
+3. Fallback value of 150 (if company settings unavailable)
+
+**Admin UI Location:**
+Admin → Company Settings → Service Settings → Default Hourly Rate
+
+---
 
 ## 2026-01-16
 
@@ -7580,6 +7789,114 @@ GEMINI_API_KEY=your-gemini-api-key
 3. **Document Preview** - Show PDF previews in UI before downloading
 4. **Manual Override** - Allow users to promote/demote document classifications
 5. **Confidence Scoring** - Weight confidence by document class found
+
+---
+
+## 2026-01-26
+
+### Manus AI Integration for Parts Enrichment
+
+Replaced Gemini-based URL generation with Manus AI, a browser-based research agent that actually navigates websites and returns **verified, working URLs** for product documentation.
+
+#### Problem Solved
+
+The previous Gemini-based enrichment system had a critical flaw: **URL hallucination**. Both Gemini and Perplexity would construct plausible-looking URLs that returned 404 errors when accessed. For example:
+- AI-generated: `https://panamax.com/product/m4315-pro/` → **404 Not Found**
+- Actual URL: `https://panamax.com/product/bluebolt-controllable-power-conditioner-8-outlets/`
+
+Manus AI solves this by actually browsing the web like a human researcher, clicking through pages and extracting real URLs from live websites.
+
+#### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                    Part Detail Page UI                               │
+│                  "Search for Data" Button                            │
+└─────────────────────────────────────────────────────────────────────┘
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                  /api/enrich-single-part-manus.js                    │
+│              Manus-Based Document Finder (Vercel Function)           │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│  ┌──────────────────────────────────────────────────────────────┐   │
+│  │  Step 1: Create Manus Task                                    │   │
+│  │  • POST to https://api.manus.ai/v1/tasks                     │   │
+│  │  • taskMode: 'agent', agentProfile: 'quality'                │   │
+│  │  • Prompt: Find product page, manuals, datasheets, specs     │   │
+│  └──────────────────────────────────────────────────────────────┘   │
+│                                │                                     │
+│                                ▼                                     │
+│  ┌──────────────────────────────────────────────────────────────┐   │
+│  │  Step 2: Poll for Completion                                  │   │
+│  │  • GET /tasks/{taskId} every 10 seconds                      │   │
+│  │  • Max wait: 5 minutes                                       │   │
+│  │  • Manus browses web, extracts real URLs                     │   │
+│  └──────────────────────────────────────────────────────────────┘   │
+│                                │                                     │
+│                                ▼                                     │
+│  ┌──────────────────────────────────────────────────────────────┐   │
+│  │  Step 3: Parse Results                                        │   │
+│  │  • Extract JSON from Manus response                          │   │
+│  │  • Map to Unicorn document fields                            │   │
+│  │  • All URLs are verified (actually exist)                    │   │
+│  └──────────────────────────────────────────────────────────────┘   │
+│                                │                                     │
+│                                ▼                                     │
+│  ┌──────────────────────────────────────────────────────────────┐   │
+│  │  Save to Database via save_parts_enrichment() RPC             │   │
+│  └──────────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+#### Key Differences from Gemini Approach
+
+| Aspect | Gemini (Old) | Manus (New) |
+|--------|--------------|-------------|
+| URL Source | AI-constructed (hallucinated) | Actually browsed & verified |
+| Reliability | ~30-50% working URLs | ~95%+ working URLs |
+| Speed | ~10-30 seconds | ~1-3 minutes |
+| Cost | ~$0.01/part | ~$1.50/part (~150 credits) |
+| API Style | Synchronous | Async (poll for completion) |
+
+#### Files Created/Modified
+
+| File | Change |
+|------|--------|
+| `api/enrich-single-part-manus.js` | **NEW** - Manus-based enrichment endpoint |
+| `src/components/GlobalPartDocumentationEditor.js` | Updated to call Manus endpoint |
+| `src/components/PartDetailPage.js` | Updated to call Manus endpoint |
+| `.env.local` | Added MANUS_API_KEY |
+| `.env.example` | Documented MANUS_API_KEY |
+
+#### Environment Variables Required
+
+```
+MANUS_API_KEY=your-manus-api-key
+```
+
+Add to Vercel: Settings → Environment Variables → Add `MANUS_API_KEY`
+
+#### Usage
+
+Same as before - the UI is unchanged:
+1. Navigate to Part Detail page (`/parts/:partId`)
+2. Click "Search for Data" button
+3. Wait for research to complete (1-3 minutes due to actual web browsing)
+4. Review discovered documents - URLs are now verified and working
+
+#### Manus API Reference
+
+- **Base URL:** `https://api.manus.ai/v1`
+- **Auth Header:** `API_KEY: {your-key}`
+- **Create Task:** `POST /tasks` with `{ prompt, taskMode: 'agent', agentProfile: 'quality' }`
+- **Check Status:** `GET /tasks/{taskId}`
+- **Task States:** `pending`, `running`, `completed`, `done`, `failed`, `error`
+
+#### Fallback
+
+The original Gemini endpoint (`/api/enrich-single-part.js`) is preserved and can be switched back if needed by reverting the fetch URLs in the UI components.
 
 ---
 

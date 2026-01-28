@@ -1305,25 +1305,35 @@ export async function getAllSkillsGrouped() {
   if (!supabase) return {};
 
   try {
-    const { data, error } = await supabase
+    // First get all skills - category is a TEXT field, not a FK
+    const { data: skills, error: skillsError } = await supabase
       .from('global_skills')
-      .select(`
-        id, name, category, description, training_urls, sort_order,
-        class:skill_classes (id, name, label),
-        category_info:skill_categories (id, name, label, color)
-      `)
+      .select('id, name, category, description, training_urls, sort_order, class_id')
       .eq('is_active', true)
       .order('category')
       .order('sort_order');
 
-    if (error) throw error;
+    if (skillsError) throw skillsError;
 
-    // Group by category
-    const grouped = (data || []).reduce((acc, skill) => {
-      const category = skill.category || 'Other';
+    // Get skill categories for color/label info
+    const { data: categories } = await supabase
+      .from('skill_categories')
+      .select('id, name, label, color, sort_order')
+      .eq('is_active', true)
+      .order('sort_order');
+
+    // Create a map of category name to category info
+    const categoryMap = (categories || []).reduce((acc, cat) => {
+      acc[cat.name] = cat;
+      return acc;
+    }, {});
+
+    // Group skills by category
+    const grouped = (skills || []).reduce((acc, skill) => {
+      const category = skill.category || 'other';
       if (!acc[category]) {
         acc[category] = {
-          info: skill.category_info,
+          info: categoryMap[category] || { name: category, label: category, color: '#6B7280' },
           skills: []
         };
       }

@@ -1,10 +1,16 @@
 /**
  * SkillRatingPicker.js
  * Reusable component for selecting skill proficiency level
+ *
+ * Rating Levels:
+ * - None: Not yet rated/evaluated
+ * - Training: Currently learning, needs more practice
+ * - Proficient: Can perform independently
+ * - Expert: Master level, can teach others
  */
 
 import React from 'react';
-import { CircleDashed, GraduationCap, CheckCircle, Star } from 'lucide-react';
+import { Circle, BookOpen, CheckCircle, Star } from 'lucide-react';
 
 // Rating level definitions with colors that follow Unicorn brand guidelines
 export const RATING_LEVELS = [
@@ -12,7 +18,8 @@ export const RATING_LEVELS = [
     id: 'none',
     label: 'Not Rated',
     shortLabel: 'None',
-    icon: CircleDashed,
+    description: 'Not yet evaluated',
+    icon: Circle,
     color: '#71717A', // zinc-500
     bgClass: 'bg-zinc-100 dark:bg-zinc-800',
     textClass: 'text-zinc-600 dark:text-zinc-400',
@@ -22,7 +29,8 @@ export const RATING_LEVELS = [
     id: 'training',
     label: 'Training',
     shortLabel: 'Training',
-    icon: GraduationCap,
+    description: 'Currently learning this skill',
+    icon: BookOpen,
     color: '#F59E0B', // amber-500
     bgClass: 'bg-amber-100 dark:bg-amber-900/30',
     textClass: 'text-amber-700 dark:text-amber-400',
@@ -32,6 +40,7 @@ export const RATING_LEVELS = [
     id: 'proficient',
     label: 'Proficient',
     shortLabel: 'Proficient',
+    description: 'Can perform this skill independently',
     icon: CheckCircle,
     color: '#3B82F6', // blue-500
     bgClass: 'bg-blue-100 dark:bg-blue-900/30',
@@ -42,6 +51,7 @@ export const RATING_LEVELS = [
     id: 'expert',
     label: 'Expert',
     shortLabel: 'Expert',
+    description: 'Master level, can teach others',
     icon: Star,
     color: '#8B5CF6', // violet-500 (primary brand color)
     bgClass: 'bg-violet-100 dark:bg-violet-900/30',
@@ -92,6 +102,7 @@ const SkillRatingPicker = ({
             type="button"
             onClick={() => !disabled && onChange(level.id)}
             disabled={disabled}
+            title={`${level.label}: ${level.description}`}
             className={`
               flex items-center gap-1.5 rounded-lg border-2 transition-all
               touch-manipulation
@@ -104,7 +115,11 @@ const SkillRatingPicker = ({
             `}
             style={isSelected ? { borderColor: level.color } : {}}
           >
-            <Icon size={iconSizes[size]} style={isSelected ? { color: level.color } : {}} />
+            <Icon
+              size={iconSizes[size]}
+              className={isSelected ? '' : 'text-zinc-400 dark:text-zinc-500'}
+              style={isSelected ? { color: level.color } : undefined}
+            />
             {showLabels && <span>{level.shortLabel}</span>}
           </button>
         );
@@ -120,6 +135,7 @@ export const SkillRatingBadge = ({
   rating,
   size = 'md',
   showIcon = true,
+  showTooltip = true,
   className = ''
 }) => {
   const level = getRatingLevel(rating);
@@ -139,6 +155,7 @@ export const SkillRatingBadge = ({
 
   return (
     <span
+      title={showTooltip ? `${level.label}: ${level.description}` : undefined}
       className={`
         inline-flex items-center rounded-full font-medium
         ${level.bgClass} ${level.textClass}
@@ -149,6 +166,27 @@ export const SkillRatingBadge = ({
       {showIcon && <Icon size={iconSizes[size]} style={{ color: level.color }} />}
       {level.shortLabel}
     </span>
+  );
+};
+
+/**
+ * SkillRatingIcon - Just the icon with tooltip
+ */
+export const SkillRatingIcon = ({
+  rating,
+  size = 16,
+  className = ''
+}) => {
+  const level = getRatingLevel(rating);
+  const Icon = level.icon;
+
+  return (
+    <Icon
+      size={size}
+      title={`${level.label}: ${level.description}`}
+      style={{ color: level.color }}
+      className={className}
+    />
   );
 };
 
@@ -171,7 +209,7 @@ export const SkillRatingComparison = ({
       </div>
 
       {hasDiscrepancy && (
-        <span className="text-amber-500 text-xs font-medium">≠</span>
+        <span className="text-amber-500 text-xs font-medium" title="Ratings differ">≠</span>
       )}
 
       <div className="flex flex-col items-center">

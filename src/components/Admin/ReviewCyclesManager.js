@@ -74,7 +74,7 @@ const ReviewCyclesManager = () => {
     loadCycles();
   }, [loadCycles]);
 
-  // Auto-fill dates when quarter/year changes
+  // Auto-fill dates when quarter/year changes (strictly quarterly)
   useEffect(() => {
     if (showCreateModal && !editingCycle) {
       const year = formData.year;
@@ -85,11 +85,12 @@ const ReviewCyclesManager = () => {
       const startDate = new Date(year, startMonth, 1);
       const endDate = new Date(year, startMonth + 3, 0); // Last day of quarter
 
-      // Self-eval due: 2 weeks into quarter
-      const selfEvalDue = new Date(year, startMonth, 14);
+      // Self-eval due: 2 weeks BEFORE end of quarter
+      const selfEvalDue = new Date(endDate);
+      selfEvalDue.setDate(selfEvalDue.getDate() - 14);
 
-      // Manager review due: 4 weeks into quarter
-      const managerReviewDue = new Date(year, startMonth + 1, 0);
+      // Manager review due: Last day of quarter (end date)
+      const managerReviewDue = new Date(endDate);
 
       setFormData(prev => ({
         ...prev,
@@ -128,7 +129,7 @@ const ReviewCyclesManager = () => {
 
   // Handle delete
   const handleDelete = async (cycleId) => {
-    if (!confirm('Delete this review cycle? This cannot be undone.')) return;
+    if (!window.confirm('Delete this review cycle? This cannot be undone.')) return;
 
     try {
       await careerDevelopmentService.deleteCycle(cycleId);

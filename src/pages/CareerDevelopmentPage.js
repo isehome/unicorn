@@ -9,7 +9,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useAppState } from '../contexts/AppStateContext';
 import { careerDevelopmentService } from '../services/careerDevelopmentService';
 import { enhancedStyles } from '../styles/styleSystem';
-import SelfEvaluationForm from '../components/CareerDevelopment/SelfEvaluationForm';
+import SkillReviewPanel from '../components/CareerDevelopment/SkillReviewPanel';
 import DevelopmentGoalsSection from '../components/CareerDevelopment/DevelopmentGoalsSection';
 import { SkillRatingBadge } from '../components/CareerDevelopment/SkillRatingPicker';
 import {
@@ -17,13 +17,11 @@ import {
   ClipboardCheck,
   History,
   Calendar,
-  User,
   AlertCircle,
   Loader2,
   ChevronRight,
-  ExternalLink,
+  ChevronLeft,
   Clock,
-  CheckCircle,
   ArrowRight
 } from 'lucide-react';
 
@@ -40,6 +38,8 @@ const CareerDevelopmentPage = () => {
   const sectionStyles = enhancedStyles.sections[mode];
 
   const [activeTab, setActiveTab] = useState('self-eval');
+  const [allCycles, setAllCycles] = useState([]);
+  const [currentCycleIndex, setCurrentCycleIndex] = useState(0);
   const [cycle, setCycle] = useState(null);
   const [session, setSession] = useState(null);
   const [manager, setManager] = useState(null);
@@ -55,18 +55,28 @@ const CareerDevelopmentPage = () => {
       setLoading(true);
       setError(null);
 
-      // Load current cycle, session, and manager
-      const [cycleData, managerData] = await Promise.all([
-        careerDevelopmentService.getCurrentCycle(),
+      // Load all cycles (for navigation) and manager
+      const [cyclesData, managerData] = await Promise.all([
+        careerDevelopmentService.getAllCycles(),
         careerDevelopmentService.getMyManager(user.id)
       ]);
 
-      setCycle(cycleData);
+      // Filter to only completed, manager_review, and self_eval cycles (sorted by date desc)
+      const relevantCycles = (cyclesData || []).filter(c =>
+        ['self_eval', 'manager_review', 'completed'].includes(c.status)
+      );
+
+      setAllCycles(relevantCycles);
       setManager(managerData);
 
-      // Load session if cycle exists
-      if (cycleData) {
-        const sessionData = await careerDevelopmentService.getSession(cycleData.id, user.id);
+      // Set the current (most recent) cycle
+      if (relevantCycles.length > 0) {
+        const currentCycle = relevantCycles[0];
+        setCycle(currentCycle);
+        setCurrentCycleIndex(0);
+
+        // Load session for this cycle
+        const sessionData = await careerDevelopmentService.getSession(currentCycle.id, user.id);
         setSession(sessionData);
       }
 
@@ -77,6 +87,24 @@ const CareerDevelopmentPage = () => {
       setLoading(false);
     }
   }, [user?.id]);
+
+  // Navigate to a different cycle
+  const navigateCycle = useCallback(async (direction) => {
+    const newIndex = currentCycleIndex + direction;
+    if (newIndex < 0 || newIndex >= allCycles.length) return;
+
+    setCurrentCycleIndex(newIndex);
+    const newCycle = allCycles[newIndex];
+    setCycle(newCycle);
+
+    // Load session for this cycle
+    try {
+      const sessionData = await careerDevelopmentService.getSession(newCycle.id, user?.id);
+      setSession(sessionData);
+    } catch (err) {
+      console.error('[CareerDevelopmentPage] Session load error:', err);
+    }
+  }, [currentCycleIndex, allCycles, user?.id]);
 
   useEffect(() => {
     loadData();
@@ -203,42 +231,82 @@ const CareerDevelopmentPage = () => {
             )}
           </div>
 
-          {/* Current Cycle Info */}
+          {/* Current Cycle Info with Navigation */}
           {cycle ? (
             <div className="mt-4 p-4 bg-violet-50 dark:bg-violet-900/20 rounded-xl">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
+              {/* Cycle Navigation */}
+              <div className="flex items-center justify-between mb-3">
+                <button
+                  onClick={() => navigateCycle(1)}
+                  disabled={currentCycleIndex >= allCycles.length - 1}
+                  className={`
+                    p-2 rounded-lg transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center
+                    ${currentCycleIndex >= allCycles.length - 1
+                      ? 'text-zinc-300 dark:text-zinc-600 cursor-not-allowed'
+                      : 'text-violet-600 dark:text-violet-400 hover:bg-violet-100 dark:hover:bg-violet-800/30'
+                    }
+                  `}
+                  title="Previous quarter"
+                >
+                  <ChevronLeft size={24} />
+                </button>
+
+                <div className="flex items-center gap-3 flex-1 justify-center">
                   <Calendar className="text-violet-600 dark:text-violet-400" size={20} />
-                  <div>
+                  <div className="text-center">
                     <p className="font-semibold text-zinc-900 dark:text-white">{cycle.name} Review</p>
                     <p className="text-xs text-zinc-600 dark:text-zinc-400">
                       {formatDate(cycle.start_date)} - {formatDate(cycle.end_date)}
                     </p>
                   </div>
                 </div>
+
+                <button
+                  onClick={() => navigateCycle(-1)}
+                  disabled={currentCycleIndex <= 0}
+                  className={`
+                    p-2 rounded-lg transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center
+                    ${currentCycleIndex <= 0
+                      ? 'text-zinc-300 dark:text-zinc-600 cursor-not-allowed'
+                      : 'text-violet-600 dark:text-violet-400 hover:bg-violet-100 dark:hover:bg-violet-800/30'
+                    }
+                  `}
+                  title="Next quarter"
+                >
+                  <ChevronRight size={24} />
+                </button>
+              </div>
+
+              {/* Status Badge */}
+              <div className="flex items-center justify-center mb-3">
                 <div
                   className="px-3 py-1 rounded-full text-xs font-medium"
                   style={{ backgroundColor: `${getStatusColor(session?.status || 'pending')}20`, color: getStatusColor(session?.status || 'pending') }}
                 >
                   {getStatusLabel(session?.status || 'pending')}
                 </div>
+                {currentCycleIndex > 0 && (
+                  <span className="ml-2 text-xs text-zinc-500 dark:text-zinc-400">(Past Review)</span>
+                )}
               </div>
 
-              {/* Due Dates */}
-              <div className="flex gap-6 mt-3 text-sm">
-                <div className="flex items-center gap-2">
-                  <Clock size={14} className="text-amber-500" />
-                  <span className="text-zinc-600 dark:text-zinc-400">
-                    Self-eval due: <strong className="text-zinc-900 dark:text-white">{formatDate(cycle.self_eval_due_date)}</strong>
-                  </span>
+              {/* Due Dates - only show for current/active cycle */}
+              {currentCycleIndex === 0 && cycle.status !== 'completed' && (
+                <div className="flex flex-wrap justify-center gap-4 text-sm">
+                  <div className="flex items-center gap-2">
+                    <Clock size={14} className="text-amber-500" />
+                    <span className="text-zinc-600 dark:text-zinc-400">
+                      Self-eval due: <strong className="text-zinc-900 dark:text-white">{formatDate(cycle.self_eval_due_date)}</strong>
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Clock size={14} className="text-blue-500" />
+                    <span className="text-zinc-600 dark:text-zinc-400">
+                      Review due: <strong className="text-zinc-900 dark:text-white">{formatDate(cycle.manager_review_due_date)}</strong>
+                    </span>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Clock size={14} className="text-blue-500" />
-                  <span className="text-zinc-600 dark:text-zinc-400">
-                    Review due: <strong className="text-zinc-900 dark:text-white">{formatDate(cycle.manager_review_due_date)}</strong>
-                  </span>
-                </div>
-              </div>
+              )}
             </div>
           ) : (
             <div className="mt-4 p-4 bg-zinc-100 dark:bg-zinc-800 rounded-xl flex items-center gap-3">
@@ -287,10 +355,11 @@ const CareerDevelopmentPage = () => {
           {/* Self-Evaluation Tab */}
           {activeTab === 'self-eval' && (
             cycle ? (
-              <SelfEvaluationForm
+              <SkillReviewPanel
                 cycle={cycle}
+                mode="self"
                 onSubmitComplete={loadData}
-                readOnly={cycle.status === 'completed'}
+                readOnly={cycle.status === 'completed' || currentCycleIndex > 0}
               />
             ) : (
               <div className="text-center py-12 text-zinc-500 dark:text-zinc-400">
@@ -306,6 +375,7 @@ const CareerDevelopmentPage = () => {
               <DevelopmentGoalsSection
                 cycle={cycle}
                 onGoalsChange={loadData}
+                readOnly={cycle.status === 'completed' || currentCycleIndex > 0}
               />
             ) : (
               <div className="text-center py-12 text-zinc-500 dark:text-zinc-400">
