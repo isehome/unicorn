@@ -28,6 +28,16 @@ import { partsService } from '../services/partsService';
 import { queryKeys } from '../lib/queryClient';
 import { sharePointStorageService } from '../services/sharePointStorageService';
 
+// Helper to ensure SharePoint URLs open in browser view mode (not download)
+const getViewableUrl = (url) => {
+  if (!url) return url;
+  // If it's a SharePoint URL without query params, add ?web=1 to force browser viewing
+  if (url.includes('sharepoint.com') && !url.includes('?')) {
+    return `${url}?web=1`;
+  }
+  return url;
+};
+
 const PartDetailPage = () => {
   const { partId } = useParams();
   const navigate = useNavigate();
@@ -597,7 +607,7 @@ const PartDetailPage = () => {
             {/* SharePoint compiled docs (purple dot) */}
             {formState.install_manual_sharepoint_url && (
               <a
-                href={formState.install_manual_sharepoint_url}
+                href={getViewableUrl(formState.install_manual_sharepoint_url)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-2 mt-2 px-3 py-2 rounded-lg bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800 hover:bg-violet-100 dark:hover:bg-violet-900/30 transition-colors group"
@@ -663,7 +673,7 @@ const PartDetailPage = () => {
             {/* SharePoint compiled docs (purple dot) */}
             {formState.user_guide_sharepoint_url && (
               <a
-                href={formState.user_guide_sharepoint_url}
+                href={getViewableUrl(formState.user_guide_sharepoint_url)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-2 mt-2 px-3 py-2 rounded-lg bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800 hover:bg-violet-100 dark:hover:bg-violet-900/30 transition-colors group"
@@ -680,7 +690,7 @@ const PartDetailPage = () => {
             {(formState.technical_manual_sharepoint_urls || []).map((url, index) => (
               <a
                 key={`sp-${index}`}
-                href={url}
+                href={getViewableUrl(url)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-2 mt-2 px-3 py-2 rounded-lg bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800 hover:bg-violet-100 dark:hover:bg-violet-900/30 transition-colors group"
@@ -821,7 +831,7 @@ const PartDetailPage = () => {
                     Submittal PDF uploaded
                   </span>
                   <a
-                    href={formState.submittal_sharepoint_url}
+                    href={getViewableUrl(formState.submittal_sharepoint_url)}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="p-1 text-amber-600 hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-300"

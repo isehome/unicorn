@@ -133,23 +133,22 @@ module.exports = async (req, res) => {
     const buffer = Buffer.from(fileBase64, 'base64')
     const item = await uploadBufferToItem(token, driveId, finalParentId, filename, buffer, contentType)
 
-    // Create an embed link (permanent, works in img tags without auth)
+    // Create a view link (opens in browser instead of downloading)
     try {
-      const embedLink = await graph(token, `/drives/${driveId}/items/${item.id}/createLink`, {
+      const viewLink = await graph(token, `/drives/${driveId}/items/${item.id}/createLink`, {
         method: 'POST',
-        body: JSON.stringify({ 
-          type: 'embed',
+        body: JSON.stringify({
+          type: 'view',
           scope: 'organization'
         })
       })
-      
-      // The embed link has a webUrl that can be used in img src
-      // Format: https://{tenant}.sharepoint.com/:i:/g/{path}
-      const embedUrl = embedLink.link && embedLink.link.webUrl ? embedLink.link.webUrl : item.webUrl
-      
-      // Return complete metadata for proper thumbnail generation
-      res.status(200).json({ 
-        url: embedUrl,
+
+      // The view link opens files in browser (PDF viewer, Word Online, etc.)
+      const viewUrl = viewLink.link && viewLink.link.webUrl ? viewLink.link.webUrl : item.webUrl
+
+      // Return complete metadata
+      res.status(200).json({
+        url: viewUrl,
         driveId: driveId,
         itemId: item.id,
         name: item.name,
@@ -157,10 +156,19 @@ module.exports = async (req, res) => {
         size: item.size
       })
     } catch (linkError) {
-      // Fallback to webUrl if embed link creation fails
-      console.error('Failed to create embed link:', linkError.message)
-      res.status(200).json({ 
-        url: item.webUrl,
+      // Fallback: construct a direct view URL if link creation fails
+      console.error('Failed to create view link:', linkError.message)
+
+      // Try to construct a viewable URL from webUrl
+      // SharePoint webUrl format: https://tenant.sharepoint.com/sites/Site/Shared Documents/path/file.pdf
+      // We can append ?web=1 to force browser viewing
+      let viewableUrl = item.webUrl
+      if (viewableUrl && !viewableUrl.includes('?')) {
+        viewableUrl = `${viewableUrl}?web=1`
+      }
+
+      res.status(200).json({
+        url: viewableUrl,
         driveId: driveId,
         itemId: item.id,
         name: item.name,
