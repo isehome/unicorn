@@ -12,9 +12,6 @@ import {
   Boxes,
   Plus,
   Search,
-  Package,
-  Layers,
-  Building,
   AlertCircle,
   Wrench,
   ClipboardList,
@@ -490,42 +487,40 @@ const PartsListPage = () => {
     const inventoryModified = editedInventory[part.id] !== undefined;
 
     // INVENTORY MODE: Compact list view with editable quantity fields
+    // Uses brand success color (#94AF32) instead of Tailwind green
     if (inventoryMode) {
       return (
         <div
           key={part.id}
-          className={`p-3 rounded-lg border transition-all flex items-center gap-4 ${
-            inventoryModified ? 'ring-2 ring-green-500 bg-green-50 dark:bg-green-900/20' : ''
-          }`}
-          style={styles.card}
+          className={`p-3 rounded-lg border transition-all flex items-center gap-4`}
+          style={{
+            ...styles.card,
+            ...(inventoryModified ? {
+              boxShadow: '0 0 0 2px #94AF32',
+              backgroundColor: 'rgba(148, 175, 50, 0.1)'
+            } : {})
+          }}
         >
           {/* Part Info - Compact */}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold uppercase tracking-wide text-violet-500">
+              <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#8B5CF6' }}>
                 {part.part_number}
               </span>
               {part.required_for_prewire && (
-                <span className="shrink-0 rounded bg-orange-100 px-1.5 py-0.5 text-[10px] font-medium text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">
-                  Prewire
-                </span>
+                <span className="w-2 h-2 rounded-full bg-amber-500" title="Prewire Required" />
               )}
             </div>
             <h3 className="text-sm font-medium truncate" style={{ color: styles.textPrimary }}>
               {part.name || part.model || 'Untitled Part'}
             </h3>
-            {part.manufacturer && (
-              <p className="text-xs truncate" style={{ color: styles.textSecondary }}>
-                {part.manufacturer} {part.model && `• ${part.model}`}
-              </p>
-            )}
           </div>
 
           {/* Quantity Input with +/- buttons */}
           <div className="flex items-center gap-1">
             <button
               onClick={() => handleInventoryChange(part.id, Math.max(0, currentInventory - 1))}
-              className="w-10 h-10 flex items-center justify-center rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-zinc-800 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 text-xl font-bold transition-colors"
+              className="w-10 h-10 flex items-center justify-center rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 text-xl font-bold transition-colors"
               title="Decrease quantity"
             >
               −
@@ -535,15 +530,23 @@ const PartsListPage = () => {
               min="0"
               value={currentInventory}
               onChange={(e) => handleInventoryChange(part.id, e.target.value)}
-              className={`w-16 px-2 py-2 text-sm text-center border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 ${
+              style={{
+                fontSize: '16px',
+                ...(inventoryModified ? {
+                  borderColor: '#94AF32',
+                  backgroundColor: 'rgba(148, 175, 50, 0.15)',
+                  color: '#94AF32'
+                } : {})
+              }}
+              className={`w-16 px-2 py-2 text-sm text-center border rounded-lg focus:outline-none focus:ring-2 ${
                 inventoryModified
-                  ? 'border-green-500 bg-green-50 dark:bg-green-900/30 font-semibold text-green-700 dark:text-green-300'
-                  : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white'
+                  ? 'font-semibold'
+                  : 'border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white'
               }`}
             />
             <button
               onClick={() => handleInventoryChange(part.id, currentInventory + 1)}
-              className="w-10 h-10 flex items-center justify-center rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-zinc-800 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 text-xl font-bold transition-colors"
+              className="w-10 h-10 flex items-center justify-center rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 text-xl font-bold transition-colors"
               title="Increase quantity"
             >
               +
@@ -557,7 +560,7 @@ const PartsListPage = () => {
                     return newState;
                   });
                 }}
-                className="ml-1 p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                className="ml-1 p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
                 title="Reset to original"
               >
                 <X className="w-4 h-4" />
@@ -567,7 +570,7 @@ const PartsListPage = () => {
 
           {/* Original value indicator */}
           {inventoryModified && (
-            <span className="text-xs text-gray-400 dark:text-gray-500">
+            <span className="text-xs text-zinc-400 dark:text-zinc-500">
               was: {totalOnHand}
             </span>
           )}
@@ -576,109 +579,76 @@ const PartsListPage = () => {
     }
 
     if (editMode) {
-      // Edit mode: show as non-clickable card with checkbox
+      // Edit mode: compact card with checkboxes for bulk editing
       return (
         <div
           key={part.id}
-          className={`p-4 rounded-xl border transition-all space-y-3 ${
+          className={`p-4 rounded-xl border transition-all ${
             isModified ? 'ring-2 ring-violet-500 shadow-lg' : ''
           }`}
           style={styles.card}
         >
-          <div className="flex items-start justify-between gap-4">
-            <div className="flex-1">
-              <div className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide"
-                style={{ color: styles.highlight }}
-              >
-                <Boxes className="w-4 h-4" />
-                {part.part_number}
-                {currentPrewire && (
-                  <span className="shrink-0 rounded bg-orange-100 px-2 py-0.5 text-xs font-medium text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">
-                    Prewire
+          <div className="flex items-center justify-between gap-4">
+            {/* Left: Part identity */}
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#8B5CF6' }}>
+                  {part.part_number}
+                </span>
+                {isModified && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-violet-500/20 text-violet-600 dark:text-violet-400 font-medium">
+                    Modified
                   </span>
                 )}
               </div>
-              <h3 className="text-lg font-semibold mt-1"
-                style={{ color: styles.textPrimary }}
-              >
+              <h3 className="text-base font-medium truncate" style={{ color: styles.textPrimary }}>
                 {part.name || part.model || 'Untitled Part'}
               </h3>
-              {part.description && (
-                <p className="text-sm mt-1" style={{ color: styles.textSecondary }}>
-                  {part.description}
-                </p>
-              )}
             </div>
-            <div className="flex items-center gap-4">
-              <div
-                className="flex flex-col items-end text-sm px-3 py-2 rounded-lg"
-                style={styles.muted}
-              >
-                <span className="font-semibold" style={{ color: styles.textPrimary }}>
+
+            {/* Right: Edit controls */}
+            <div className="flex items-center gap-4 shrink-0">
+              {/* Quantity */}
+              <div className="text-right">
+                <span className="text-lg font-semibold" style={{ color: styles.textPrimary }}>
                   {quantity}
                 </span>
-                <span className="text-xs" style={{ color: styles.textSecondary }}>
-                  Available
-                </span>
+                <span className="text-[10px] uppercase tracking-wide block text-zinc-500">avail</span>
               </div>
-              <div className="flex flex-col gap-3">
-                <label className="flex items-center gap-2 cursor-pointer group">
+
+              {/* Toggle checkboxes */}
+              <div className="flex gap-4 pl-4 border-l border-zinc-200 dark:border-zinc-700">
+                <label className="flex flex-col items-center gap-1 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={currentVisibility}
                     onChange={() => handleWireDropVisibilityChange(part.id, currentVisibility)}
-                    className="h-5 w-5 rounded border-gray-300 text-violet-600 focus:ring-violet-500 cursor-pointer"
+                    className="h-5 w-5 rounded border-zinc-300 text-violet-600 focus:ring-violet-500 cursor-pointer"
                   />
-                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300 group-hover:text-violet-600 dark:group-hover:text-violet-400">
-                    Show in<br/>Wire Drop
-                  </span>
+                  <span className="text-[10px] text-zinc-500 dark:text-zinc-400">Wire Drop</span>
                 </label>
-                <label className="flex items-center gap-2 cursor-pointer group">
+                <label className="flex flex-col items-center gap-1 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={currentPrewire}
                     onChange={() => handlePrewireToggle(part.id, currentPrewire)}
-                    className="h-5 w-5 rounded border-gray-300 text-orange-600 focus:ring-orange-500 cursor-pointer"
+                    className="h-5 w-5 rounded border-zinc-300 text-amber-600 focus:ring-amber-500 cursor-pointer"
                   />
-                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300 group-hover:text-orange-600 dark:group-hover:text-orange-400">
-                    <Wrench className="w-3 h-3 inline mr-1" />
-                    Prewire<br/>Required
-                  </span>
+                  <span className="text-[10px] text-zinc-500 dark:text-zinc-400">Prewire</span>
                 </label>
               </div>
             </div>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-3 text-xs">
-            {part.manufacturer && (
-              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-violet-500/10 text-violet-500">
-                <Building className="w-3 h-3" />
-                {part.manufacturer}
-              </span>
-            )}
-            {part.model && (
-              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-blue-500/10 text-blue-500">
-                <Package className="w-3 h-3" />
-                {part.model}
-              </span>
-            )}
-            {part.category && (
-              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-amber-500/10 text-amber-500">
-                <Layers className="w-3 h-3" />
-                {part.category}
-              </span>
-            )}
-            {isModified && (
-              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-violet-500/20 text-violet-600 dark:text-violet-400 font-semibold">
-                Modified
-              </span>
-            )}
           </div>
         </div>
       );
     }
 
-    // Normal mode: clickable card
+    // Normal mode: clickable card - CLEANED UP VERSION
+    // Status indicators use small dots instead of text badges
+    // Removed: duplicate badges, bottom metadata chips, redundant action buttons
+    const hasAIDocs = part.ai_enrichment_status === 'completed';
+    const needsAIReview = part.ai_enrichment_status === 'needs_review';
+
     return (
       <button
         key={part.id}
@@ -686,129 +656,88 @@ const PartsListPage = () => {
         className="w-full text-left"
       >
         <div
-          className="p-4 rounded-xl border transition-shadow hover:shadow-md space-y-3"
+          className="p-4 rounded-xl border transition-shadow hover:shadow-md"
           style={styles.card}
         >
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <div className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide"
-                style={{ color: styles.highlight }}
-              >
-                <Boxes className="w-4 h-4" />
-                {part.part_number}
+          <div className="flex items-center justify-between gap-4">
+            {/* Left: Part info with status dots */}
+            <div className="flex items-center gap-3 min-w-0 flex-1">
+              {/* Status indicator dots - compact, no text */}
+              <div className="flex flex-col gap-1 shrink-0">
                 {part.required_for_prewire && (
-                  <span className="shrink-0 rounded bg-orange-100 px-2 py-0.5 text-xs font-medium text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">
-                    Prewire
-                  </span>
+                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500" title="Prewire Required" />
                 )}
                 {part.needs_review && (
-                  <span className="shrink-0 rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
-                    New
-                  </span>
+                  <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse" title="New - Needs Review" />
                 )}
-                {part.ai_enrichment_status === 'completed' && (
-                  <span className="shrink-0 flex items-center gap-1 rounded bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-700 dark:bg-violet-900/30 dark:text-violet-400">
-                    <Bot className="h-3 w-3" />
-                    AI
-                  </span>
+                {hasAIDocs && (
+                  <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#8B5CF6' }} title="AI Documentation Available" />
                 )}
-                {part.ai_enrichment_status === 'needs_review' && (
-                  <span className="shrink-0 flex items-center gap-1 rounded bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
-                    <Bot className="h-3 w-3" />
-                    Review
-                  </span>
+                {needsAIReview && (
+                  <span className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse" title="AI Results Need Review" />
                 )}
               </div>
-              <h3 className="text-lg font-semibold mt-1"
-                style={{ color: styles.textPrimary }}
-              >
-                {part.name || part.model || 'Untitled Part'}
-              </h3>
-              {part.description && (
-                <p className="text-sm mt-1" style={{ color: styles.textSecondary }}>
-                  {part.description}
-                </p>
-              )}
+
+              {/* Part identity */}
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#8B5CF6' }}>
+                    {part.part_number}
+                  </span>
+                  {part.manufacturer && (
+                    <span className="text-xs text-zinc-500 dark:text-zinc-400 truncate">
+                      {part.manufacturer}
+                    </span>
+                  )}
+                </div>
+                <h3 className="text-base font-medium truncate" style={{ color: styles.textPrimary }}>
+                  {part.name || part.model || 'Untitled Part'}
+                </h3>
+              </div>
             </div>
-            <div className="flex items-start gap-2">
+
+            {/* Right: Actions + Quantity */}
+            <div className="flex items-center gap-2 shrink-0">
+              {/* Conditional action buttons - only show when actionable */}
               {part.needs_review && (
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
                     handleMarkPartReviewed(part.id);
                   }}
-                  className="flex items-center gap-1 rounded bg-amber-100 px-2 py-1 text-xs font-medium text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:hover:bg-amber-900/50"
+                  className="p-1.5 rounded-lg hover:bg-amber-100 dark:hover:bg-amber-900/30 text-amber-600 dark:text-amber-400 transition-colors"
                   title="Mark as reviewed"
                 >
-                  <CheckCircle className="h-3 w-3" />
+                  <CheckCircle className="h-4 w-4" />
                 </button>
               )}
-              {part.ai_enrichment_status === 'needs_review' && (
+              {needsAIReview && (
                 <button
                   onClick={(e) => handleOpenAIReview(part, e)}
-                  className="flex items-center gap-1 rounded bg-blue-100 px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:hover:bg-blue-900/50"
+                  className="p-1.5 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 text-blue-600 dark:text-blue-400 transition-colors"
                   title="Review AI enrichment"
                 >
-                  <Bot className="h-3 w-3" />
-                  AI
+                  <Bot className="h-4 w-4" />
                 </button>
               )}
               <button
                 onClick={(e) => handleOpenDocsEditor(part, e)}
-                className="flex items-center gap-1 rounded bg-violet-100 px-2 py-1 text-xs font-medium text-violet-700 hover:bg-violet-200 dark:bg-violet-900/30 dark:text-violet-400 dark:hover:bg-violet-900/50"
+                className="p-1.5 rounded-lg hover:bg-violet-100 dark:hover:bg-violet-900/30 text-zinc-400 hover:text-violet-600 dark:hover:text-violet-400 transition-colors"
                 title="Edit documentation"
               >
-                <FileText className="h-3 w-3" />
-                Docs
+                <FileText className="h-4 w-4" />
               </button>
-              <div
-                className="flex flex-col items-end text-sm px-3 py-2 rounded-lg"
-                style={styles.muted}
-              >
-                <span className="font-semibold" style={{ color: styles.textPrimary }}>
+
+              {/* Quantity - compact */}
+              <div className="text-right pl-2 border-l border-zinc-200 dark:border-zinc-700">
+                <span className="text-lg font-semibold" style={{ color: styles.textPrimary }}>
                   {quantity}
                 </span>
-                <span className="text-xs" style={{ color: styles.textSecondary }}>
-                  Available
+                <span className="text-[10px] uppercase tracking-wide block text-zinc-500 dark:text-zinc-400">
+                  avail
                 </span>
-                {reserved > 0 && (
-                  <span className="text-[11px]" style={{ color: styles.textSecondary }}>
-                    {`${totalOnHand} on hand • ${reserved} reserved`}
-                  </span>
-                )}
               </div>
             </div>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-3 text-xs">
-            {part.manufacturer && (
-              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-violet-500/10 text-violet-500">
-                <Building className="w-3 h-3" />
-                {part.manufacturer}
-              </span>
-            )}
-            {part.model && (
-              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-blue-500/10 text-blue-500">
-                <Package className="w-3 h-3" />
-                {part.model}
-              </span>
-            )}
-            {part.category && (
-              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-amber-500/10 text-amber-500">
-                <Layers className="w-3 h-3" />
-                {part.category}
-              </span>
-            )}
-            {part.is_wire_drop_visible === false && (
-              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-gray-500/10 text-gray-600 dark:text-gray-300">
-                Hidden from Wire Drop
-              </span>
-            )}
-            {part.is_inventory_item === false && (
-              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-zinc-500/10 text-zinc-600 dark:text-zinc-300">
-                Inventory Off
-              </span>
-            )}
           </div>
         </div>
       </button>
