@@ -238,7 +238,7 @@ For EACH of the following document types, create a .md file with useful informat
 Return a JSON object with:
 {
   "manufacturer_website": "https://...",
-  "product_page_url": "https://...",
+  "product_page_url": "https://... (CRITICAL: the DIRECT URL to this specific product's page on the manufacturer website)",
   "documents": [
     {"type": "user_manual", "title": "...", "url": "https://...pdf", "found": true},
     {"type": "install_guide", "title": "...", "url": "https://...pdf", "found": true},
@@ -262,8 +262,9 @@ Return a JSON object with:
   "notes": "Summary of what was found and created"
 }
 
-**IMPORTANT:**
-- Only include document URLs you verified exist
-- ALWAYS create the markdown files with researched information
-- If you can't find official PDFs, the markdown files become the primary documentation`;
+**CRITICAL REQUIREMENTS:**
+1. **product_page_url is REQUIRED** - This must be the DIRECT link to this specific product on the manufacturer's website (e.g., https://www.apple.com/shop/product/MN893LL/A). A technician should be able to click this link and go straight to the product page. Do NOT use search result pages or category pages.
+2. Only include document URLs you verified exist and work
+3. ALWAYS create the markdown files with researched information
+4. If you can't find official PDFs, the markdown files become the primary documentation`;
 }

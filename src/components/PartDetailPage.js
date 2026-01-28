@@ -592,6 +592,25 @@ const PartDetailPage = () => {
             </span>
           </div>
 
+          {/* Product Page Link - Direct link to manufacturer */}
+          {formState.product_page_url && (
+            <div>
+              <label className={styles.label}>Manufacturer Product Page</label>
+              <a
+                href={formState.product_page_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 mt-1 px-3 py-2.5 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors group"
+              >
+                <span className="w-2.5 h-2.5 rounded-full bg-blue-500 shrink-0" />
+                <span className="flex-1 text-sm font-medium text-blue-700 dark:text-blue-300 truncate">
+                  View on {formState.manufacturer || 'Manufacturer'} Website →
+                </span>
+                <ExternalLink className="h-4 w-4 text-blue-400 group-hover:text-blue-600 dark:group-hover:text-blue-300 shrink-0" />
+              </a>
+            </div>
+          )}
+
           <label className={styles.label}>
             Schematic URL
             <input
