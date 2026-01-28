@@ -131,8 +131,16 @@ module.exports = async function handler(req, res) {
         }
       }
 
-      // Save results
-      const { error: saveError } = await getSupabase()
+      // Log what we're about to save
+      console.log('[Manus Webhook] Saving enrichment data with URLs:');
+      console.log('  - parts_folder_sharepoint_url:', enrichmentData.parts_folder_sharepoint_url);
+      console.log('  - install_manual_urls:', enrichmentData.install_manual_urls);
+      console.log('  - install_manual_sharepoint_url:', enrichmentData.install_manual_sharepoint_url);
+      console.log('  - user_guide_urls:', enrichmentData.user_guide_urls);
+      console.log('  - technical_manual_urls:', enrichmentData.technical_manual_urls);
+
+      // Save results via RPC
+      const { data: saveResult, error: saveError } = await getSupabase()
         .rpc('save_parts_enrichment', {
           p_part_id: partId,
           p_enrichment_data: enrichmentData,
@@ -142,6 +150,8 @@ module.exports = async function handler(req, res) {
 
       if (saveError) {
         console.error('[Manus Webhook] Failed to save enrichment:', saveError);
+      } else {
+        console.log('[Manus Webhook] RPC save result:', JSON.stringify(saveResult));
       }
 
       // Update task status
@@ -154,10 +164,13 @@ module.exports = async function handler(req, res) {
         })
         .eq('manus_task_id', task_id);
 
-      // Update part status
+      // Update part status with completion timestamp
       await getSupabase()
         .from('global_parts')
-        .update({ ai_enrichment_status: 'completed' })
+        .update({
+          ai_enrichment_status: 'completed',
+          ai_last_enriched_at: new Date().toISOString()
+        })
         .eq('id', partId);
 
       console.log(`[Manus Webhook] ✓ Task ${task_id} processed successfully`);
@@ -440,22 +453,64 @@ async function processDocumentsTwoStage(part, enrichmentData) {
     const pdfUploads = uploadedToSharePoint.filter(f => f.contentType === 'application/pdf');
     const markdownUploads = uploadedToSharePoint.filter(f => f.contentType === 'text/markdown' || f.filename.endsWith('.md'));
 
+    // Build arrays of URLs by document type for the RPC
+    const installManualUrls = [];
+    const userGuideUrls = [];
+    const technicalManualUrls = [];
+
+    // Categorize uploaded files by name/type
+    for (const file of uploadedToSharePoint) {
+      const name = (file.filename || '').toLowerCase();
+      if (name.includes('install') || name.includes('setup') || name.includes('quick-start') || name.includes('quick-reference')) {
+        installManualUrls.push(file.sharePointUrl);
+      } else if (name.includes('guide') || name.includes('user')) {
+        userGuideUrls.push(file.sharePointUrl);
+      } else if (name.includes('spec') || name.includes('datasheet') || name.includes('technical')) {
+        technicalManualUrls.push(file.sharePointUrl);
+      } else {
+        // Default: treat as technical manual
+        technicalManualUrls.push(file.sharePointUrl);
+      }
+    }
+
+    // Also preserve original source URLs in the appropriate arrays
+    for (const orig of originalSourceUrls) {
+      const name = (orig.filename || '').toLowerCase();
+      if (name.includes('install') || name.includes('setup') || name.includes('quick')) {
+        // Already have SharePoint version, skip original
+      } else if (name.includes('guide') || name.includes('user')) {
+        // Already have SharePoint version, skip original
+      }
+      // Original URLs tracked in search_summary for audit
+    }
+
     return {
       // SharePoint folder URL for direct access
       parts_folder_sharepoint_url: partsFolderUrl,
-      // First PDF becomes install manual
-      install_manual_sharepoint_url: pdfUploads[0]?.sharePointUrl || markdownUploads[0]?.sharePointUrl || null,
-      // All markdown files as technical manuals
-      technical_manual_sharepoint_urls: markdownUploads.map(f => f.sharePointUrl),
-      // All SharePoint URLs
-      sharepoint_urls: uploadedToSharePoint.map(f => f.sharePointUrl),
-      // Original source URLs (for reference/audit)
-      original_source_urls: originalSourceUrls,
-      // Local storage paths (for debugging)
-      local_storage_paths: downloadedFiles.map(f => f.storagePath),
-      // Summary
-      documents_downloaded: downloadedFiles.length,
-      documents_uploaded_to_sharepoint: uploadedToSharePoint.length
+
+      // Install manual URLs (array for RPC)
+      install_manual_urls: installManualUrls,
+      // First install manual as primary SharePoint URL
+      install_manual_sharepoint_url: installManualUrls[0] || pdfUploads[0]?.sharePointUrl || null,
+
+      // User guide URLs (array for RPC)
+      user_guide_urls: userGuideUrls,
+      // First user guide as primary SharePoint URL
+      user_guide_sharepoint_url: userGuideUrls[0] || null,
+
+      // Technical manual URLs (array for RPC)
+      technical_manual_urls: technicalManualUrls,
+      // Technical manuals SharePoint URLs array
+      technical_manual_sharepoint_urls: technicalManualUrls,
+
+      // Search metadata (includes original source URLs for audit)
+      search_summary: {
+        documents_downloaded: downloadedFiles.length,
+        documents_uploaded_to_sharepoint: uploadedToSharePoint.length,
+        original_source_urls: originalSourceUrls,
+        local_storage_paths: downloadedFiles.map(f => f.storagePath),
+        processed_at: new Date().toISOString()
+      }
     };
 
   } catch (error) {
