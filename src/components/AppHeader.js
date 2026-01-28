@@ -70,6 +70,9 @@ const AppHeader = () => {
     if (p.startsWith('/service/reports')) return 'Service Reports';
     if (p.startsWith('/service/ai-test')) return 'Voice AI Test';
     if (p.startsWith('/service')) return 'Service';
+    // Career Development routes
+    if (p === '/career') return 'Career Development';
+    if (p === '/team-reviews') return 'Team Reviews';
     return 'Field Operations';
   }, [location.pathname]);
 

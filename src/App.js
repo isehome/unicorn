@@ -81,6 +81,10 @@ const ServiceAITest = lazy(() => import('./pages/ServiceAITest'));
 // Admin
 const AdminPage = lazy(() => import('./pages/AdminPage'));
 
+// Career Development
+const CareerDevelopmentPage = lazy(() => import('./pages/CareerDevelopmentPage'));
+const TeamReviewsPage = lazy(() => import('./pages/TeamReviewsPage'));
+
 
 const AppRoutes = () => {
   const location = useLocation();
@@ -508,6 +512,23 @@ const AppRoutes = () => {
                 element={
                   <ProtectedRoute>
                     <AdminPage />
+                  </ProtectedRoute>
+                }
+              />
+              {/* Career Development Routes */}
+              <Route
+                path="/career"
+                element={
+                  <ProtectedRoute>
+                    <CareerDevelopmentPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/team-reviews"
+                element={
+                  <ProtectedRoute>
+                    <TeamReviewsPage />
                   </ProtectedRoute>
                 }
               />

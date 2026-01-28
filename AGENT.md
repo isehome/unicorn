@@ -1054,6 +1054,15 @@ Service tickets can be exported to QuickBooks Online as invoices for billing.
 | `qbo_auth_tokens` | QuickBooks OAuth tokens |
 | `qbo_customer_mapping` | Contact to QBO customer ID mapping |
 | `project_home_assistant` | **ENCRYPTED** - Home Assistant credentials per project |
+| `global_skills` | Master skill definitions |
+| `skill_categories` | Skill category groupings |
+| `employee_skills` | Technician skill certifications |
+| `manager_relationships` | Org structure (who reports to whom) |
+| `review_cycles` | Quarterly review periods |
+| `skill_self_evaluations` | Employee self-ratings |
+| `skill_manager_reviews` | Manager ratings for employees |
+| `development_goals` | 5 focus skills per employee per quarter |
+| `review_sessions` | Overall review meeting tracking |
 
 ### Secure Data Tables (Encrypted)
 
@@ -1111,6 +1120,10 @@ See [Secure Data Encryption Implementation](#secure-data-encryption-implementati
 | **ZIP download service** | `src/services/zipDownloadService.js` |
 | **Project reports page** | `src/pages/ProjectReportsPage.js` |
 | **SharePoint download API** | `api/sharepoint-download.js` |
+| **Career development service** | `src/services/careerDevelopmentService.js` |
+| **Career development page** | `src/pages/CareerDevelopmentPage.js` |
+| **Team reviews page** | `src/pages/TeamReviewsPage.js` |
+| **Review cycles manager** | `src/components/Admin/ReviewCyclesManager.js` |
 
 #### 8.11 Retell AI Phone System (Sarah)
 
@@ -3719,6 +3732,86 @@ The application needs a proper user capabilities/roles system to control access 
 # PART 6: CHANGELOG
 
 ## 2026-01-28
+
+### Career Development & Quarterly Skills Review System (Major Feature)
+
+Added a comprehensive career development feature enabling self-evaluations, manager reviews, development goals, and quarterly review cycles.
+
+**Feature Overview:**
+- **Self-Evaluation** - Employees rate themselves on all skills in the system
+- **Manager Reviews** - Quarterly skill assessments by direct managers
+- **Comparison View** - Side-by-side self vs manager ratings with discrepancy highlighting
+- **Development Goals** - 5 focus skills per quarter agreed between employee and manager
+- **Review Cycles** - Admin-managed quarterly periods with due dates
+- **Training Links** - Direct access to training resources per skill
+- **Audit Trail** - Full history of all rating changes
+
+**Database Tables Created:**
+| Table | Purpose |
+|-------|---------|
+| `manager_relationships` | Org structure (who reports to whom) |
+| `review_cycles` | Quarterly review periods |
+| `skill_self_evaluations` | Employee self-ratings per skill |
+| `skill_manager_reviews` | Manager ratings per employee skill |
+| `development_goals` | 5 focus skills per employee per quarter |
+| `review_sessions` | Overall review meeting tracking |
+| `skill_review_history` | Audit trail of all changes |
+
+**UI Pages Created:**
+| Route | Component | Purpose |
+|-------|-----------|---------|
+| `/career` | `CareerDevelopmentPage.js` | Employee self-evaluation & goals |
+| `/team-reviews` | `TeamReviewsPage.js` | Manager review dashboard |
+| Admin → Review Cycles | `ReviewCyclesManager.js` | Cycle CRUD & status management |
+
+**Components Created:**
+| File | Purpose |
+|------|---------|
+| `src/components/CareerDevelopment/SkillRatingPicker.js` | Reusable rating picker (none/training/proficient/expert) |
+| `src/components/CareerDevelopment/SelfEvaluationForm.js` | Employee self-evaluation form |
+| `src/components/CareerDevelopment/DevelopmentGoalsSection.js` | Manage 5 development goals |
+| `src/components/CareerDevelopment/SkillComparisonView.js` | Side-by-side self vs manager |
+| `src/components/Admin/ReviewCyclesManager.js` | Admin cycle management |
+
+**Service Layer:**
+| File | Purpose |
+|------|---------|
+| `src/services/careerDevelopmentService.js` | Full CRUD for reviews, goals, cycles |
+
+**Files Modified:**
+| File | Changes |
+|------|---------|
+| `src/App.js` | Added routes for `/career` and `/team-reviews` |
+| `src/components/AppHeader.js` | Added page titles |
+| `src/components/SettingsPage.js` | Added Career Development link |
+| `src/pages/AdminPage.js` | Added Review Cycles tab |
+
+**User Flow - Employee:**
+1. Navigate to Settings → Career Development
+2. View current review cycle and due dates
+3. Rate yourself on all skills by category
+4. Add notes for context
+5. Submit self-evaluation
+6. View development goals set by manager
+
+**User Flow - Manager:**
+1. Navigate to Team Reviews
+2. See list of direct reports with status badges
+3. Select employee → view comparison
+4. Add manager ratings and notes
+5. Set/confirm 5 development goals
+6. Submit review → updates official `employee_skills`
+
+**Design Decisions:**
+- Employees can self-rate ALL skills (allows highlighting skills not yet assigned)
+- Rating levels include 'none' for unrated skills
+- 5 max development goals per quarter (enforced by DB constraint)
+- Manager finalization copies ratings to `employee_skills` table
+- Full audit trail via `skill_review_history` table
+
+**AI Note:** Career development pages accessible via `/career` (employees) and `/team-reviews` (managers). Review cycles managed in Admin panel. Skills are grouped by category (skill_categories table) with training URLs available per skill.
+
+---
 
 ### Parts AI Lookup Manager Page
 

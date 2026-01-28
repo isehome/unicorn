@@ -18,7 +18,7 @@ import {
   GraduationCap, Star, Sparkles, Shield, UserCog, Crown, Briefcase,
   Wrench, Mail, UserPlus, UserX, ArrowLeft, ToggleLeft, ToggleRight,
   Link2, Link2Off, BookOpen, Bot, Zap, ExternalLink, Upload, FileSpreadsheet,
-  ArrowRight, RefreshCw, AlertTriangle, Bug, Building2
+  ArrowRight, RefreshCw, AlertTriangle, Bug, Building2, Calendar
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useTheme } from '../contexts/ThemeContext';
@@ -32,6 +32,7 @@ import AITrainingTab from '../components/Admin/AITrainingTab';
 import BugTodosTab from '../components/Admin/BugTodosTab';
 import SkillsManager from '../components/Admin/SkillsManager';
 import CompanySettingsManager from '../components/procurement/CompanySettingsManager';
+import ReviewCyclesManager from '../components/Admin/ReviewCyclesManager';
 
 // Role definitions with hierarchy
 const USER_ROLES = [
@@ -2534,6 +2535,17 @@ const AdminPage = () => {
           <Building2 size={16} />
           Company
         </button>
+        <button
+          onClick={() => setActiveTab('review-cycles')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            activeTab === 'review-cycles'
+              ? 'bg-violet-500 text-white'
+              : 'bg-gray-100 dark:bg-zinc-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-zinc-600'
+          }`}
+        >
+          <Calendar size={16} />
+          Review Cycles
+        </button>
       </div>
 
       {/* Tab Content */}
@@ -2557,6 +2569,11 @@ const AdminPage = () => {
             </div>
           </div>
           <CompanySettingsManager />
+        </div>
+      )}
+      {activeTab === 'review-cycles' && (
+        <div className="mt-6 p-6 rounded-xl border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800">
+          <ReviewCyclesManager />
         </div>
       )}
 

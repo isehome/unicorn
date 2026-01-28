@@ -45,9 +45,10 @@
 | Network | 3 | UniFi integration |
 | Security | 4 | Credentials, audit logs |
 | Knowledge/AI | 5 | Documents, embeddings, training |
-| Skills | 2 | Technician certifications |
+| Skills | 4 | Technician certifications & categories |
+| Career Dev | 7 | Reviews, goals, manager relationships |
 | Settings | 2 | Company/app configuration |
-| **Total** | **~76 tables + views** | |
+| **Total** | **~85 tables + views** | |
 
 ---
 
@@ -1008,10 +1009,42 @@ Master skill definitions for technician capabilities.
 |--------|------|-------------|
 | `id` | uuid | Primary key |
 | `name` | text | Skill name |
-| `category` | text | network/av/shades/control/wiring/installation/maintenance/general |
+| `category_id` | uuid | FK to skill_categories |
+| `class_id` | uuid | FK to skill_classes |
 | `description` | text | Skill description |
+| `training_urls` | jsonb | Array of training resource URLs |
 | `is_active` | boolean | Currently in use |
 | `sort_order` | integer | Display order |
+| `created_at` | timestamptz | Creation time |
+
+---
+
+### skill_categories
+Skill category groupings (network, AV, control, etc.).
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | uuid | Primary key |
+| `name` | text | Category name (key) |
+| `label` | text | Display label |
+| `color` | text | Hex color for UI |
+| `sort_order` | integer | Display order |
+| `is_active` | boolean | Currently in use |
+| `created_at` | timestamptz | Creation time |
+
+---
+
+### skill_classes
+3-level skill classification (primary, secondary, nice-to-have).
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | uuid | Primary key |
+| `name` | text | Class name (key) |
+| `label` | text | Display label |
+| `color` | text | Hex color for UI |
+| `sort_order` | integer | Display order |
+| `is_active` | boolean | Currently in use |
 | `created_at` | timestamptz | Creation time |
 
 ---
@@ -1024,12 +1057,167 @@ Technician skill certifications and proficiency.
 | `id` | uuid | Primary key |
 | `employee_id` | uuid | FK to profiles |
 | `skill_id` | uuid | FK to global_skills |
-| `proficiency_level` | text | training/proficient/expert |
+| `proficiency_level` | text | none/training/proficient/expert |
 | `certified_at` | date | Certification date |
 | `certified_by` | uuid | Who certified |
 | `certified_by_name` | text | Certifier name |
 | `notes` | text | Additional notes |
+| `last_reviewed_at` | timestamptz | Last review timestamp |
+| `last_reviewed_by` | uuid | Last reviewer |
+| `last_reviewed_by_name` | text | Reviewer name |
+| `review_cycle_id` | uuid | FK to review_cycles |
 | `created_at` | timestamptz | Record creation |
+
+---
+
+## Career Development Tables
+
+### manager_relationships
+Organization structure - who reports to whom.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | uuid | Primary key |
+| `employee_id` | uuid | FK to profiles |
+| `manager_id` | uuid | FK to profiles |
+| `is_primary` | boolean | Primary manager flag |
+| `effective_date` | date | When relationship started |
+| `end_date` | date | When relationship ended (null if active) |
+| `created_at` | timestamptz | Creation time |
+| `created_by` | uuid | Who created |
+
+**Constraint:** `employee_id != manager_id` (no self-management)
+
+---
+
+### review_cycles
+Quarterly review periods.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | uuid | Primary key |
+| `name` | text | Cycle name (e.g., "Q1 2026") |
+| `year` | integer | Year |
+| `quarter` | integer | Quarter (1-4) |
+| `start_date` | date | Cycle start |
+| `end_date` | date | Cycle end |
+| `self_eval_due_date` | date | Self-evaluation deadline |
+| `manager_review_due_date` | date | Manager review deadline |
+| `status` | text | upcoming/self_eval/manager_review/completed/archived |
+| `created_at` | timestamptz | Creation time |
+| `created_by` | uuid | Creator |
+
+**Constraint:** Unique on `(year, quarter)`
+
+---
+
+### skill_self_evaluations
+Employee self-ratings for skills.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | uuid | Primary key |
+| `review_cycle_id` | uuid | FK to review_cycles |
+| `employee_id` | uuid | FK to profiles |
+| `skill_id` | uuid | FK to global_skills |
+| `self_rating` | text | none/training/proficient/expert |
+| `self_notes` | text | Employee notes |
+| `submitted_at` | timestamptz | When submitted |
+| `created_at` | timestamptz | Creation time |
+| `updated_at` | timestamptz | Last update |
+
+**Constraint:** Unique on `(review_cycle_id, employee_id, skill_id)`
+
+---
+
+### skill_manager_reviews
+Manager ratings for employee skills.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | uuid | Primary key |
+| `review_cycle_id` | uuid | FK to review_cycles |
+| `employee_id` | uuid | FK to profiles |
+| `manager_id` | uuid | FK to profiles |
+| `skill_id` | uuid | FK to global_skills |
+| `manager_rating` | text | none/training/proficient/expert |
+| `manager_notes` | text | Manager notes |
+| `submitted_at` | timestamptz | When submitted |
+| `created_at` | timestamptz | Creation time |
+| `updated_at` | timestamptz | Last update |
+
+**Constraint:** Unique on `(review_cycle_id, employee_id, skill_id)`
+
+---
+
+### development_goals
+5 focus skills per employee per quarter.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | uuid | Primary key |
+| `review_cycle_id` | uuid | FK to review_cycles |
+| `employee_id` | uuid | FK to profiles |
+| `skill_id` | uuid | FK to global_skills |
+| `priority` | integer | Priority 1-5 |
+| `target_level` | text | training/proficient/expert |
+| `action_plan` | text | Development action plan |
+| `employee_agreed_at` | timestamptz | Employee agreement |
+| `manager_agreed_at` | timestamptz | Manager agreement |
+| `manager_id` | uuid | FK to profiles |
+| `progress_notes` | text | Progress updates |
+| `achieved_at` | timestamptz | Goal achievement |
+| `created_at` | timestamptz | Creation time |
+| `updated_at` | timestamptz | Last update |
+
+**Constraints:**
+- Unique on `(review_cycle_id, employee_id, priority)` - one skill per priority slot
+- Unique on `(review_cycle_id, employee_id, skill_id)` - one goal per skill per cycle
+- `priority BETWEEN 1 AND 5` - max 5 goals
+
+---
+
+### review_sessions
+Overall review meeting tracking.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | uuid | Primary key |
+| `review_cycle_id` | uuid | FK to review_cycles |
+| `employee_id` | uuid | FK to profiles |
+| `manager_id` | uuid | FK to profiles |
+| `status` | text | pending/self_eval_complete/manager_review_complete/meeting_scheduled/completed |
+| `self_eval_submitted_at` | timestamptz | Self-eval submission |
+| `manager_review_submitted_at` | timestamptz | Manager review submission |
+| `meeting_date` | date | Review meeting date |
+| `meeting_notes` | text | Meeting notes |
+| `overall_rating` | text | exceeds/meets/developing/needs_improvement |
+| `employee_signature_at` | timestamptz | Employee sign-off |
+| `manager_signature_at` | timestamptz | Manager sign-off |
+| `created_at` | timestamptz | Creation time |
+| `updated_at` | timestamptz | Last update |
+
+**Constraint:** Unique on `(review_cycle_id, employee_id)`
+
+---
+
+### skill_review_history
+Audit trail of all skill rating changes.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | uuid | Primary key |
+| `source_type` | text | self_evaluation/manager_review/official_update |
+| `source_id` | uuid | ID of source record |
+| `skill_id` | uuid | FK to global_skills |
+| `employee_id` | uuid | FK to profiles |
+| `old_rating` | text | Previous rating |
+| `new_rating` | text | New rating |
+| `changed_by` | uuid | FK to profiles |
+| `changed_by_name` | text | Changer name |
+| `change_notes` | text | Notes about change |
+| `review_cycle_id` | uuid | FK to review_cycles |
+| `created_at` | timestamptz | Change timestamp |
 
 ---
 
@@ -1124,9 +1312,30 @@ issue_stakeholder_tags (notifications)
 - `resolved` - Issue resolved
 
 ### Skill Proficiency Levels
+- `none` - Not rated
 - `training` - Currently learning
 - `proficient` - Can work independently
 - `expert` - Can train others
+
+### Review Cycle Status
+- `upcoming` - Not yet started
+- `self_eval` - Self-evaluation period active
+- `manager_review` - Manager review period active
+- `completed` - All reviews finalized
+- `archived` - Historical cycle
+
+### Review Session Status
+- `pending` - Not started
+- `self_eval_complete` - Employee submitted self-evaluation
+- `manager_review_complete` - Manager submitted review
+- `meeting_scheduled` - Review meeting scheduled
+- `completed` - Review finalized
+
+### Overall Performance Rating
+- `exceeds` - Exceeds expectations
+- `meets` - Meets expectations
+- `developing` - Developing/growing
+- `needs_improvement` - Needs improvement
 
 ---
 
