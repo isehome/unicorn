@@ -475,6 +475,18 @@ const VALID_LIVE_MODELS = [
 ];
 ```
 
+### Speed Optimizations (January 2026)
+The following optimizations were applied to reduce voice response latency:
+
+| Setting | Before | After | Impact |
+|---------|--------|-------|--------|
+| Audio buffer size | 4096 samples (~85ms) | 2048 samples (~42ms) | Faster mic capture |
+| Silence detection | 1000-1500ms | 500-750ms | Faster turn-taking |
+| Prefix padding | 300ms | 200ms | Faster speech detection |
+| Thinking mode | Enabled (default) | `thinkingBudget: 0` | Instant responses |
+
+**Total estimated latency reduction: ~500-1000ms per interaction**
+
 ---
 
 ## Common Issues & Fixes

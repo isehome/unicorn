@@ -997,7 +997,8 @@ ${buildContextString(state)}`;
         addDebugLog(`Device sample rate: ${deviceSampleRate}Hz, downsampling to ${GEMINI_INPUT_SAMPLE_RATE}Hz`);
 
         // Use ScriptProcessor (deprecated but more iOS compatible than AudioWorklet)
-        const processor = audioContext.current.createScriptProcessor(4096, 1, 1);
+        // Buffer size 2048 = ~42ms latency at 48kHz (reduced from 4096 = ~85ms for faster response)
+        const processor = audioContext.current.createScriptProcessor(2048, 1, 1);
         processorNode.current = processor;
 
         let chunkCount = 0;
@@ -1203,6 +1204,11 @@ ${buildContextString(state)}`;
                                 voiceConfig: {
                                     prebuiltVoiceConfig: { voiceName: voiceSettings.voice }
                                 }
+                            },
+                            // SPEED OPTIMIZATION: Disable thinking mode for instant responses
+                            // Thinking adds latency while model "deliberates" - we prioritize speed
+                            thinkingConfig: {
+                                thinkingBudget: 0  // 0 = disabled, removes thinking latency
                             }
                         },
                         // NOTE: Transcription configs are OMITTED for gemini-2.5-flash-native-audio
@@ -1229,10 +1235,10 @@ ${buildContextString(state)}`;
                                 // User setting: 1=Quick, 2=Patient
                                 endOfSpeechSensitivity: voiceSettings.vadEndSensitivity === 1 ? 'END_SENSITIVITY_HIGH' : 'END_SENSITIVITY_LOW',
                                 // Padding before speech starts (catch beginning of utterance)
-                                prefixPaddingMs: 300,
+                                prefixPaddingMs: 200,  // Reduced from 300ms for faster detection
                                 // How long to wait after silence before ending turn
-                                // Base 1000ms + 500ms if patient mode = 1000-1500ms
-                                silenceDurationMs: 1000 + (voiceSettings.vadEndSensitivity === 2 ? 500 : 0)
+                                // SPEED OPTIMIZED: 500ms base + 250ms if patient mode = 500-750ms (was 1000-1500ms)
+                                silenceDurationMs: 500 + (voiceSettings.vadEndSensitivity === 2 ? 250 : 0)
                             }
                         }
                     }
