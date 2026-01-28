@@ -3718,6 +3718,76 @@ The application needs a proper user capabilities/roles system to control access 
 
 # PART 6: CHANGELOG
 
+## 2026-01-28
+
+### Parts AI Lookup Manager Page
+
+Added a new dedicated page for managing AI-powered parts documentation lookup at `/parts/ai-lookup`.
+
+**What:**
+- New `PartsAILookupPage` component for selecting and running batch AI lookups
+- Table view of all parts needing AI enrichment (null, pending, or error status)
+- Multi-select checkboxes for batch processing
+- Real-time progress tracking with polling
+- Credit estimation and budget warning (100 credits/part, 4000/month)
+- Automatic prewire item filtering (wires, cables, brackets, etc.)
+
+**Why:**
+- Users needed a dedicated interface to manage which parts get AI documentation lookup
+- The existing AI badge on parts list was confusing - it showed for parts needing review, not parts with successful lookups
+- Batch selection allows better control over credit usage
+
+**UI Changes:**
+- AI badge on parts list now only shows for `completed` status (purple badge)
+- Separate blue "Review" badge for parts needing human review of AI results
+- New "AI Lookup" button in Parts Catalog action bar
+- New route at `/parts/ai-lookup`
+
+**Files Created:**
+| File | Purpose |
+|------|---------|
+| `src/components/PartsAILookupPage.js` | New AI lookup manager page |
+
+**Files Modified:**
+| File | Changes |
+|------|---------|
+| `src/App.js` | Added lazy import and route for `/parts/ai-lookup` |
+| `src/components/PartsListPage.js` | Added AI Lookup button, fixed AI badge logic |
+| `src/components/AppHeader.js` | Added page title for AI Lookup page |
+
+**AI Note:** The AI badge (purple, Bot icon) now indicates a part has COMPLETED AI documentation lookup. Parts with `needs_review` status show a blue "Review" badge instead. Users can access `/parts/ai-lookup` to batch-select parts for Manus AI research.
+
+---
+
+### Voice AI Latency Optimization
+
+Optimized Gemini Live API configuration for faster voice response times. User reported laggy/slow responses - applied multiple optimizations to reduce total latency by ~500-1000ms per interaction.
+
+**Problem Solved:**
+- Voice AI felt slow and unresponsive
+- Long delay between user stopping speech and AI responding
+- Audio capture had unnecessary buffering latency
+
+**Solution:**
+Applied four latency optimizations:
+
+| Setting | Before | After |
+|---------|--------|-------|
+| Audio buffer | 4096 samples (~85ms) | 2048 samples (~42ms) |
+| Silence detection | 1000-1500ms | 500-750ms |
+| Prefix padding | 300ms | 200ms |
+| Thinking mode | Enabled | Disabled (`thinkingBudget: 0`) |
+
+**Files Modified:**
+| File | Changes |
+|------|---------|
+| `src/contexts/AIBrainContext.js` | Reduced buffer size, silence duration, prefix padding; disabled thinking mode |
+| `docs/VOICE-AI-REFERENCE.md` | Added "Speed Optimizations" section documenting changes |
+
+**AI Note:** Voice copilot is now optimized for speed over deliberation. May occasionally cut off user slightly early or provide quicker (less deliberate) responses. This is intentional for field technician UX where speed matters more than perfect turn-taking.
+
+---
+
 ## 2026-01-22
 
 ### Configurable Default Service Hourly Rate (Bug BR-2026-01-12-0001)

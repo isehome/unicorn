@@ -43,6 +43,7 @@ const AppHeader = () => {
     if (p.includes('/todos/')) return 'Todo Details';
     if (p.startsWith('/todos')) return 'To-dos';
     if (p.startsWith('/people')) return 'People';
+    if (p === '/parts/ai-lookup') return 'AI Parts Lookup';
     if (p.startsWith('/parts/')) return 'Part Details';
     if (p === '/parts') return 'Parts Catalog';
     if (p === '/lucid-test') return 'Lucid API Diagnostic';

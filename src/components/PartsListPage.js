@@ -706,10 +706,16 @@ const PartsListPage = () => {
                     New
                   </span>
                 )}
+                {part.ai_enrichment_status === 'completed' && (
+                  <span className="shrink-0 flex items-center gap-1 rounded bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-700 dark:bg-violet-900/30 dark:text-violet-400">
+                    <Bot className="h-3 w-3" />
+                    AI
+                  </span>
+                )}
                 {part.ai_enrichment_status === 'needs_review' && (
                   <span className="shrink-0 flex items-center gap-1 rounded bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
                     <Bot className="h-3 w-3" />
-                    AI
+                    Review
                   </span>
                 )}
               </div>
@@ -861,6 +867,14 @@ const PartsListPage = () => {
             </>
           ) : (
             <>
+              <Button
+                variant="secondary"
+                icon={Bot}
+                onClick={() => navigate('/parts/ai-lookup')}
+                className="bg-gradient-to-r from-violet-100 to-indigo-100 hover:from-violet-200 hover:to-indigo-200 dark:from-violet-900/30 dark:to-indigo-900/30 dark:hover:from-violet-900/50 dark:hover:to-indigo-900/50 text-violet-700 dark:text-violet-300"
+              >
+                AI Lookup
+              </Button>
               <Button
                 variant="secondary"
                 icon={ClipboardList}

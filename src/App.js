@@ -51,6 +51,7 @@ const LucidDiagnostic = lazy(() => import('./components/LucidDiagnostic'));
 const UnifiTestPage = lazy(() => import('./components/UnifiTestPage'));
 const PartsListPage = lazy(() => import('./components/PartsListPage'));
 const PartDetailPage = lazy(() => import('./components/PartDetailPage'));
+const PartsAILookupPage = lazy(() => import('./components/PartsAILookupPage'));
 const GlobalPartsManager = lazy(() => import('./components/GlobalPartsManager'));
 const InventoryPage = lazy(() => import('./pages/InventoryPage'));
 const PartsReceivingPage = lazy(() => import('./components/PartsReceivingPage'));
@@ -205,6 +206,14 @@ const AppRoutes = () => {
                 element={
                   <ProtectedRoute>
                     <PartDetailPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/parts/ai-lookup"
+                element={
+                  <ProtectedRoute>
+                    <PartsAILookupPage />
                   </ProtectedRoute>
                 }
               />
