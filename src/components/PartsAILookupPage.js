@@ -108,6 +108,11 @@ const PartsAILookupPage = () => {
     });
   }, [allParts]);
 
+  // Filter parts that are currently processing (awaiting Manus results)
+  const partsProcessing = useMemo(() => {
+    return allParts.filter(part => part.ai_enrichment_status === 'processing');
+  }, [allParts]);
+
   // Filter by search
   const filteredParts = useMemo(() => {
     if (!search) return partsNeedingLookup;
@@ -473,6 +478,53 @@ const PartsAILookupPage = () => {
             <p className="text-sm text-red-600 dark:text-red-400">
               Selected: {stats.estimatedCredits} credits | Remaining budget: {stats.remainingBudget} credits
             </p>
+          </div>
+        </div>
+      )}
+
+      {/* Processing Section - Parts Awaiting Manus Results */}
+      {partsProcessing.length > 0 && (
+        <div className="rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-900/10 overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-3 bg-amber-100/50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800">
+            <div className="flex items-center gap-2">
+              <Loader2 className="h-5 w-5 text-amber-600 dark:text-amber-400 animate-spin" />
+              <h2 className="font-semibold text-amber-800 dark:text-amber-200">
+                Awaiting Manus Results ({partsProcessing.length})
+              </h2>
+            </div>
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={RotateCcw}
+              onClick={handleResyncTasks}
+              disabled={isResyncing}
+              className="bg-amber-200 hover:bg-amber-300 dark:bg-amber-800 dark:hover:bg-amber-700 text-amber-800 dark:text-amber-200 border-amber-300 dark:border-amber-700"
+            >
+              {isResyncing ? 'Pulling Results...' : 'Pull Results from Manus'}
+            </Button>
+          </div>
+          <div className="p-4">
+            <p className="text-sm text-amber-700 dark:text-amber-300 mb-3">
+              These parts have been submitted for AI research. Click "Pull Results from Manus" to check if they're complete.
+            </p>
+            <div className="divide-y divide-amber-200 dark:divide-amber-800">
+              {partsProcessing.map((part) => (
+                <div key={part.id} className="py-2 flex items-center gap-4">
+                  <Loader2 className="h-4 w-4 text-amber-500 animate-spin shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-amber-800 dark:text-amber-200 truncate">
+                      {part.part_number}
+                    </p>
+                    <p className="text-xs text-amber-600 dark:text-amber-400 truncate">
+                      {part.manufacturer} - {part.name || 'Untitled'}
+                    </p>
+                  </div>
+                  <span className="text-xs text-amber-600 dark:text-amber-400 bg-amber-200/50 dark:bg-amber-800/50 px-2 py-1 rounded-full">
+                    Processing
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}
