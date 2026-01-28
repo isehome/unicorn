@@ -19,6 +19,7 @@ import {
   AlertTriangle,
   Clock,
   Zap,
+  RotateCcw,
 } from 'lucide-react';
 import { queryKeys } from '../lib/queryClient';
 
@@ -42,6 +43,8 @@ const PartsAILookupPage = () => {
   const [errorParts, setErrorParts] = useState(new Map()); // partId -> error message
   const [usedCredits, setUsedCredits] = useState(0);
   const [isPolling, setIsPolling] = useState(false);
+  const [isResyncing, setIsResyncing] = useState(false);
+  const [resyncResult, setResyncResult] = useState(null);
   const queryClient = useQueryClient();
   const { theme, mode } = useTheme();
 
@@ -179,6 +182,35 @@ const PartsAILookupPage = () => {
       ? 'https://unicorn-one.vercel.app'
       : '';
   };
+
+  // Resync pending Manus tasks (recover missed webhook results)
+  const handleResyncTasks = useCallback(async () => {
+    setIsResyncing(true);
+    setResyncResult(null);
+    try {
+      const response = await fetch(`${getApiBase()}/api/manus-resync-tasks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}) // Check all pending/running/processing tasks
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const result = await response.json();
+      setResyncResult(result);
+      console.log('[Resync] Result:', result);
+
+      // Refresh parts list to show updated data
+      queryClient.invalidateQueries({ queryKey: queryKeys.parts });
+    } catch (err) {
+      console.error('[Resync] Error:', err);
+      setResyncResult({ error: err.message });
+    } finally {
+      setIsResyncing(false);
+    }
+  }, [queryClient]);
 
   // Run AI lookup for selected parts
   const runSelectedMutation = useMutation({
@@ -327,15 +359,65 @@ const PartsAILookupPage = () => {
             Select parts to run Manus AI research for documentation and specifications.
           </p>
         </div>
-        <Button
-          variant="secondary"
-          icon={RefreshCw}
-          onClick={() => refetch()}
-          disabled={isLoading}
-        >
-          Refresh
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="secondary"
+            icon={RotateCcw}
+            onClick={handleResyncTasks}
+            disabled={isResyncing}
+            title="Resync pending Manus tasks - recovers results if webhooks failed"
+          >
+            {isResyncing ? 'Resyncing...' : 'Resync Tasks'}
+          </Button>
+          <Button
+            variant="secondary"
+            icon={RefreshCw}
+            onClick={() => refetch()}
+            disabled={isLoading}
+          >
+            Refresh
+          </Button>
+        </div>
       </div>
+
+      {/* Resync Result Banner */}
+      {resyncResult && (
+        <div className={`flex items-center gap-3 rounded-lg border px-4 py-3 ${
+          resyncResult.error
+            ? 'border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/20'
+            : 'border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-900/20'
+        }`}>
+          {resyncResult.error ? (
+            <>
+              <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
+              <div>
+                <p className="font-medium text-red-800 dark:text-red-200">Resync failed</p>
+                <p className="text-sm text-red-600 dark:text-red-400">{resyncResult.error}</p>
+              </div>
+            </>
+          ) : (
+            <>
+              <CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400" />
+              <div>
+                <p className="font-medium text-green-800 dark:text-green-200">
+                  Resync complete: {resyncResult.tasks_completed || 0} tasks processed
+                </p>
+                <p className="text-sm text-green-600 dark:text-green-400">
+                  Checked: {resyncResult.tasks_checked || 0} |
+                  Still running: {resyncResult.tasks_still_running || 0} |
+                  Failed: {resyncResult.tasks_failed || 0}
+                </p>
+              </div>
+            </>
+          )}
+          <button
+            onClick={() => setResyncResult(null)}
+            className="ml-auto text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
+          >
+            ×
+          </button>
+        </div>
+      )}
 
       {/* Stats Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
