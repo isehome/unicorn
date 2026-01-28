@@ -84,6 +84,13 @@ const PartDetailPage = () => {
         schematic_url: part.schematic_url || '',
         install_manual_urls: Array.isArray(part.install_manual_urls) ? part.install_manual_urls : [],
         technical_manual_urls: Array.isArray(part.technical_manual_urls) ? part.technical_manual_urls : [],
+        // Manufacturer product page URL (from Manus)
+        product_page_url: part.product_page_url || '',
+        // SharePoint URLs for AI-compiled docs
+        install_manual_sharepoint_url: part.install_manual_sharepoint_url || '',
+        user_guide_sharepoint_url: part.user_guide_sharepoint_url || '',
+        technical_manual_sharepoint_urls: Array.isArray(part.technical_manual_sharepoint_urls) ? part.technical_manual_sharepoint_urls : [],
+        parts_folder_sharepoint_url: part.parts_folder_sharepoint_url || '',
         // Submittal document fields
         submittal_pdf_url: part.submittal_pdf_url || '',
         submittal_sharepoint_url: part.submittal_sharepoint_url || '',
@@ -128,6 +135,13 @@ const PartDetailPage = () => {
         schematic_url: updated.schematic_url || '',
         install_manual_urls: Array.isArray(updated.install_manual_urls) ? updated.install_manual_urls : [],
         technical_manual_urls: Array.isArray(updated.technical_manual_urls) ? updated.technical_manual_urls : [],
+        // Manufacturer product page URL (from Manus)
+        product_page_url: updated.product_page_url || '',
+        // SharePoint URLs for AI-compiled docs
+        install_manual_sharepoint_url: updated.install_manual_sharepoint_url || '',
+        user_guide_sharepoint_url: updated.user_guide_sharepoint_url || '',
+        technical_manual_sharepoint_urls: Array.isArray(updated.technical_manual_sharepoint_urls) ? updated.technical_manual_sharepoint_urls : [],
+        parts_folder_sharepoint_url: updated.parts_folder_sharepoint_url || '',
         // Submittal document fields
         submittal_pdf_url: updated.submittal_pdf_url || '',
         submittal_sharepoint_url: updated.submittal_sharepoint_url || '',
@@ -580,33 +594,35 @@ const PartDetailPage = () => {
             Links to schematic, installation, and technical manuals.
           </p>
 
-          {/* Legend for source indicators */}
+          {/* Legend for source indicators - Brand Colors */}
           <div className="flex items-center gap-4 text-xs text-gray-500 dark:text-gray-400 pb-2 border-b border-gray-200 dark:border-gray-700">
             <span className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+              <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#94AF32' }} />
               Manufacturer Source
             </span>
             <span className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-violet-500" />
+              <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#8B5CF6' }} />
               AI Compiled (SharePoint)
             </span>
           </div>
 
-          {/* Product Page Link - Direct link to manufacturer */}
+          {/* Product Page Link - Direct link to manufacturer (brand green #94AF32) */}
           {formState.product_page_url && (
             <div>
-              <label className={styles.label}>Manufacturer Product Page</label>
+              <label className={styles.label + ' flex items-center gap-2'}>
+                <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#94AF32' }} />
+                Manufacturer Product Page
+              </label>
               <a
                 href={formState.product_page_url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center gap-2 mt-1 px-3 py-2.5 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors group"
+                className="flex items-center gap-2 mt-1 px-3 py-2.5 rounded-lg bg-gray-50 dark:bg-zinc-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-zinc-700 transition-colors group"
               >
-                <span className="w-2.5 h-2.5 rounded-full bg-blue-500 shrink-0" />
-                <span className="flex-1 text-sm font-medium text-blue-700 dark:text-blue-300 truncate">
+                <span className="flex-1 text-sm font-medium text-gray-700 dark:text-gray-300 truncate">
                   View on {formState.manufacturer || 'Manufacturer'} Website →
                 </span>
-                <ExternalLink className="h-4 w-4 text-blue-400 group-hover:text-blue-600 dark:group-hover:text-blue-300 shrink-0" />
+                <ExternalLink className="h-4 w-4 text-gray-400 group-hover:text-gray-600 dark:group-hover:text-gray-300 shrink-0" />
               </a>
             </div>
           )}
@@ -626,23 +642,23 @@ const PartDetailPage = () => {
           <div>
             <label className={styles.label}>Installation Manuals</label>
 
-            {/* SharePoint compiled docs (purple dot) */}
+            {/* SharePoint compiled docs (purple dot - brand violet #8B5CF6) */}
             {formState.install_manual_sharepoint_url && (
               <a
                 href={getViewableUrl(formState.install_manual_sharepoint_url)}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center gap-2 mt-2 px-3 py-2 rounded-lg bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800 hover:bg-violet-100 dark:hover:bg-violet-900/30 transition-colors group"
+                className="flex items-center gap-2 mt-2 px-3 py-2 rounded-lg bg-gray-50 dark:bg-zinc-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-zinc-700 transition-colors group"
               >
-                <span className="w-2.5 h-2.5 rounded-full bg-violet-500 shrink-0" />
-                <span className="flex-1 text-sm text-violet-700 dark:text-violet-300 truncate">
+                <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: '#8B5CF6' }} />
+                <span className="flex-1 text-sm text-gray-700 dark:text-gray-300 truncate">
                   {formState.install_manual_sharepoint_url.split('/').pop() || 'Installation Guide (SharePoint)'}
                 </span>
-                <ExternalLink className="h-3.5 w-3.5 text-violet-400 group-hover:text-violet-600 dark:group-hover:text-violet-300" />
+                <ExternalLink className="h-3.5 w-3.5 text-gray-400 group-hover:text-gray-600 dark:group-hover:text-gray-300" />
               </a>
             )}
 
-            {/* Original source URLs (green dot) - clickable links */}
+            {/* Original source URLs (green dot - brand green #94AF32) - clickable links */}
             <div className="space-y-2 mt-2">
               {(formState.install_manual_urls || []).filter(url => url).map((url, index) => (
                 <div key={index} className="flex items-center gap-2">
@@ -650,13 +666,13 @@ const PartDetailPage = () => {
                     href={url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex items-center gap-2 flex-1 px-3 py-2 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 dark:hover:bg-emerald-900/30 transition-colors group"
+                    className="flex items-center gap-2 flex-1 px-3 py-2 rounded-lg bg-gray-50 dark:bg-zinc-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-zinc-700 transition-colors group"
                   >
-                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" />
-                    <span className="flex-1 text-sm text-emerald-700 dark:text-emerald-300 truncate">
+                    <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: '#94AF32' }} />
+                    <span className="flex-1 text-sm text-gray-700 dark:text-gray-300 truncate">
                       {url.split('/').pop() || url}
                     </span>
-                    <ExternalLink className="h-3.5 w-3.5 text-emerald-400 group-hover:text-emerald-600 dark:group-hover:text-emerald-300 shrink-0" />
+                    <ExternalLink className="h-3.5 w-3.5 text-gray-400 group-hover:text-gray-600 dark:group-hover:text-gray-300 shrink-0" />
                   </a>
                   <button
                     type="button"
@@ -685,40 +701,40 @@ const PartDetailPage = () => {
           <div>
             <label className={styles.label}>Technical / User Manuals</label>
 
-            {/* SharePoint compiled docs (purple dot) */}
+            {/* SharePoint compiled docs (purple dot - brand violet #8B5CF6) */}
             {formState.user_guide_sharepoint_url && (
               <a
                 href={getViewableUrl(formState.user_guide_sharepoint_url)}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center gap-2 mt-2 px-3 py-2 rounded-lg bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800 hover:bg-violet-100 dark:hover:bg-violet-900/30 transition-colors group"
+                className="flex items-center gap-2 mt-2 px-3 py-2 rounded-lg bg-gray-50 dark:bg-zinc-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-zinc-700 transition-colors group"
               >
-                <span className="w-2.5 h-2.5 rounded-full bg-violet-500 shrink-0" />
-                <span className="flex-1 text-sm text-violet-700 dark:text-violet-300 truncate">
+                <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: '#8B5CF6' }} />
+                <span className="flex-1 text-sm text-gray-700 dark:text-gray-300 truncate">
                   {formState.user_guide_sharepoint_url.split('/').pop() || 'User Guide (SharePoint)'}
                 </span>
-                <ExternalLink className="h-3.5 w-3.5 text-violet-400 group-hover:text-violet-600 dark:group-hover:text-violet-300" />
+                <ExternalLink className="h-3.5 w-3.5 text-gray-400 group-hover:text-gray-600 dark:group-hover:text-gray-300" />
               </a>
             )}
 
-            {/* Additional SharePoint technical manuals */}
+            {/* Additional SharePoint technical manuals (purple dot - brand violet #8B5CF6) */}
             {(formState.technical_manual_sharepoint_urls || []).map((url, index) => (
               <a
                 key={`sp-${index}`}
                 href={getViewableUrl(url)}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center gap-2 mt-2 px-3 py-2 rounded-lg bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800 hover:bg-violet-100 dark:hover:bg-violet-900/30 transition-colors group"
+                className="flex items-center gap-2 mt-2 px-3 py-2 rounded-lg bg-gray-50 dark:bg-zinc-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-zinc-700 transition-colors group"
               >
-                <span className="w-2.5 h-2.5 rounded-full bg-violet-500 shrink-0" />
-                <span className="flex-1 text-sm text-violet-700 dark:text-violet-300 truncate">
+                <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: '#8B5CF6' }} />
+                <span className="flex-1 text-sm text-gray-700 dark:text-gray-300 truncate">
                   {url.split('/').pop() || `Technical Doc ${index + 1}`}
                 </span>
-                <ExternalLink className="h-3.5 w-3.5 text-violet-400 group-hover:text-violet-600 dark:group-hover:text-violet-300" />
+                <ExternalLink className="h-3.5 w-3.5 text-gray-400 group-hover:text-gray-600 dark:group-hover:text-gray-300" />
               </a>
             ))}
 
-            {/* Original source URLs (green dot) - clickable links */}
+            {/* Original source URLs (green dot - brand green #94AF32) - clickable links */}
             <div className="space-y-2 mt-2">
               {(formState.technical_manual_urls || []).filter(url => url).map((url, index) => (
                 <div key={index} className="flex items-center gap-2">
@@ -726,13 +742,13 @@ const PartDetailPage = () => {
                     href={url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex items-center gap-2 flex-1 px-3 py-2 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 dark:hover:bg-emerald-900/30 transition-colors group"
+                    className="flex items-center gap-2 flex-1 px-3 py-2 rounded-lg bg-gray-50 dark:bg-zinc-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-zinc-700 transition-colors group"
                   >
-                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" />
-                    <span className="flex-1 text-sm text-emerald-700 dark:text-emerald-300 truncate">
+                    <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: '#94AF32' }} />
+                    <span className="flex-1 text-sm text-gray-700 dark:text-gray-300 truncate">
                       {url.split('/').pop() || url}
                     </span>
-                    <ExternalLink className="h-3.5 w-3.5 text-emerald-400 group-hover:text-emerald-600 dark:group-hover:text-emerald-300 shrink-0" />
+                    <ExternalLink className="h-3.5 w-3.5 text-gray-400 group-hover:text-gray-600 dark:group-hover:text-gray-300 shrink-0" />
                   </a>
                   <button
                     type="button"
@@ -757,24 +773,24 @@ const PartDetailPage = () => {
             </Button>
           </div>
 
-          {/* SharePoint Parts Folder Link */}
+          {/* SharePoint Parts Folder Link (brand violet #8B5CF6) */}
           {formState.parts_folder_sharepoint_url && (
             <div className="border-t border-gray-200 dark:border-gray-700 pt-4 mt-4">
               <label className={styles.label + ' flex items-center gap-2'}>
-                <span className="w-2.5 h-2.5 rounded-full bg-violet-500" />
+                <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#8B5CF6' }} />
                 All Documentation (SharePoint)
               </label>
               <a
                 href={formState.parts_folder_sharepoint_url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center gap-2 mt-2 px-3 py-2 rounded-lg bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800 hover:bg-violet-100 dark:hover:bg-violet-900/30 transition-colors group"
+                className="flex items-center gap-2 mt-2 px-3 py-2 rounded-lg bg-gray-50 dark:bg-zinc-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-zinc-700 transition-colors group"
               >
-                <FileCheck className="h-4 w-4 text-violet-500" />
-                <span className="flex-1 text-sm text-violet-700 dark:text-violet-300">
+                <FileCheck className="h-4 w-4" style={{ color: '#8B5CF6' }} />
+                <span className="flex-1 text-sm text-gray-700 dark:text-gray-300">
                   Open Parts Folder in SharePoint
                 </span>
-                <ExternalLink className="h-3.5 w-3.5 text-violet-400 group-hover:text-violet-600 dark:group-hover:text-violet-300" />
+                <ExternalLink className="h-3.5 w-3.5 text-gray-400 group-hover:text-gray-600 dark:group-hover:text-gray-300" />
               </a>
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                 Contains all AI-compiled documentation for this part
