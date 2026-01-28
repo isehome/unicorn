@@ -11,13 +11,13 @@
 # 3. Paste: /path/to/unicorn/scripts/start-unicorn-session.sh
 # 4. Optionally add "Open App" action for Claude
 
-STARTER_PROMPT="Read START-SESSION.md from my unicorn folder, then help me with: "
+STARTER_PROMPT="Read QUICKSTART.md from my unicorn folder, then help me with: "
 
 # Copy to clipboard (macOS)
 echo "$STARTER_PROMPT" | pbcopy
 
 # Notify user
-osascript -e 'display notification "Unicorn session prompt copied to clipboard!" with title "🦄 Unicorn"'
+osascript -e 'display notification "Unicorn session prompt copied to clipboard!" with title "Unicorn"'
 
 echo "Starter prompt copied to clipboard!"
 echo ""
