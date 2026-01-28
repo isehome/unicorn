@@ -17,6 +17,10 @@ import {
   Sparkles,
   CheckCircle,
   XCircle,
+  ChevronDown,
+  ChevronUp,
+  Flag,
+  ExternalLink,
 } from 'lucide-react';
 import Button from './ui/Button';
 import { useTheme } from '../contexts/ThemeContext';
@@ -38,6 +42,8 @@ const PartDetailPage = () => {
   const [aiSearching, setAiSearching] = useState(false);
   const [aiSearchResult, setAiSearchResult] = useState(null);
   const [aiSearchError, setAiSearchError] = useState(null);
+  const [aiSectionExpanded, setAiSectionExpanded] = useState(false);
+  const [flaggingWrong, setFlaggingWrong] = useState(false);
 
   const {
     data: part,
@@ -313,6 +319,44 @@ const PartDetailPage = () => {
     }
   };
 
+  // Flag AI content as wrong
+  const handleFlagAsWrong = async () => {
+    if (!part?.id) return;
+
+    const reason = window.prompt('What information is incorrect? (optional)');
+    if (reason === null) return; // User cancelled
+
+    setFlaggingWrong(true);
+    try {
+      const apiBase = process.env.REACT_APP_LUCID_PROXY_URL || '';
+      await fetch(`${apiBase}/api/parts/${part.id}/flag`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          reason: reason || 'Information marked as incorrect by user',
+          flaggedAt: new Date().toISOString()
+        }),
+      });
+
+      // Update local state to show flagged status
+      setFormState((prev) => ({
+        ...prev,
+        ai_enrichment_status: 'flagged',
+        ai_enrichment_notes: reason || 'Flagged as incorrect'
+      }));
+
+      // Invalidate queries to refresh
+      queryClient.invalidateQueries({ queryKey: queryKeys.part(part.id) });
+
+      alert('Content has been flagged for review. Thank you for your feedback!');
+    } catch (err) {
+      console.error('[Flag Wrong] Error:', err);
+      alert('Failed to flag content. Please try again.');
+    } finally {
+      setFlaggingWrong(false);
+    }
+  };
+
   const handleSubmit = (event) => {
     event.preventDefault();
     if (!formState.part_number.trim()) {
@@ -517,119 +561,23 @@ const PartDetailPage = () => {
           </div>
         </div>
 
-        {/* AI-Powered Data Search Section */}
-        <div className={styles.card + ' p-6 space-y-4'}>
-          <div className="flex items-center justify-between">
-            <div>
-              <p className={styles.sectionTitle + ' flex items-center gap-2'}>
-                <Sparkles className="h-4 w-4" />
-                AI-Powered Data Search
-              </p>
-              <p className={styles.textSecondary}>
-                Search for specifications, documentation links, and rack layout data automatically.
-              </p>
-            </div>
-          </div>
-
-          {/* Show existing processing status from part data */}
-          {part?.ai_enrichment_status === 'processing' && !aiSearchResult && (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-900/20">
-              <div className="flex items-center gap-2 text-amber-700 dark:text-amber-300 font-medium mb-2">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Research In Progress
-              </div>
-              <p className="text-sm text-amber-600 dark:text-amber-400">
-                Manus AI is currently researching documentation for this part. Results will be saved automatically.
-              </p>
-            </div>
-          )}
-
-          {part?.ai_enrichment_status === 'completed' && !aiSearchResult && (
-            <div className="rounded-lg border border-green-200 bg-green-50 p-3 dark:border-green-800 dark:bg-green-900/20">
-              <div className="flex items-center gap-2 text-green-700 dark:text-green-300 text-sm">
-                <CheckCircle className="h-4 w-4" />
-                AI research completed previously
-              </div>
-            </div>
-          )}
-
-          <div className="flex flex-col gap-3">
-            <Button
-              type="button"
-              onClick={handleAiSearch}
-              disabled={aiSearching}
-              className="bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white"
-            >
-              {aiSearching ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                  Searching the web...
-                </>
-              ) : (
-                <>
-                  <Sparkles className="h-4 w-4 mr-2" />
-                  Search for Data
-                </>
-              )}
-            </Button>
-
-            {/* Search Result - Async/Pending */}
-            {aiSearchResult && aiSearchResult.async && (
-              <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-900/20">
-                <div className="flex items-center gap-2 text-amber-700 dark:text-amber-300 font-medium mb-2">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Research In Progress
-                </div>
-                <p className="text-sm text-amber-600 dark:text-amber-400">
-                  {aiSearchResult.message || 'Manus AI is researching documentation. This typically takes 5-10 minutes.'}
-                </p>
-                <p className="text-xs text-amber-500 dark:text-amber-500 mt-2">
-                  Task ID: {aiSearchResult.taskId}
-                </p>
-                <p className="text-xs text-amber-500 dark:text-amber-500 mt-1">
-                  Results will be saved automatically when research completes. You can leave this page.
-                </p>
-              </div>
-            )}
-
-            {/* Search Result - Completed */}
-            {aiSearchResult && !aiSearchResult.async && (
-              <div className="rounded-lg border border-green-200 bg-green-50 p-4 dark:border-green-800 dark:bg-green-900/20">
-                <div className="flex items-center gap-2 text-green-700 dark:text-green-300 font-medium mb-2">
-                  <CheckCircle className="h-4 w-4" />
-                  Data Found - Confidence: {Math.round((aiSearchResult.confidence || 0) * 100)}%
-                </div>
-                <p className="text-sm text-green-600 dark:text-green-400">
-                  {aiSearchResult.notes || 'Enrichment data has been applied to the form. Review and save to keep changes.'}
-                </p>
-                {aiSearchResult.data?.sources?.length > 0 && (
-                  <div className="mt-2 text-xs text-green-600 dark:text-green-400">
-                    Sources: {aiSearchResult.data.sources.join(', ')}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Search Error */}
-            {aiSearchError && (
-              <div className="rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-800 dark:bg-red-900/20">
-                <div className="flex items-center gap-2 text-red-700 dark:text-red-300 font-medium">
-                  <XCircle className="h-4 w-4" />
-                  Search Failed
-                </div>
-                <p className="text-sm text-red-600 dark:text-red-400 mt-1">
-                  {aiSearchError}
-                </p>
-              </div>
-            )}
-          </div>
-        </div>
-
         <div className={styles.card + ' p-6 space-y-4'}>
           <p className={styles.sectionTitle}>Documentation</p>
           <p className={styles.textSecondary}>
             Links to schematic, installation, and technical manuals.
           </p>
+
+          {/* Legend for source indicators */}
+          <div className="flex items-center gap-4 text-xs text-gray-500 dark:text-gray-400 pb-2 border-b border-gray-200 dark:border-gray-700">
+            <span className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+              Manufacturer Source
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-violet-500" />
+              AI Compiled (SharePoint)
+            </span>
+          </div>
 
           <label className={styles.label}>
             Schematic URL
@@ -642,21 +590,53 @@ const PartDetailPage = () => {
             />
           </label>
 
+          {/* Installation Manuals - Quick Access Links */}
           <div>
-            <label className={styles.label}>Installation Manual URLs</label>
-            <div className="space-y-2 mt-1">
+            <label className={styles.label}>Installation Manuals</label>
+
+            {/* SharePoint compiled docs (purple dot) */}
+            {formState.install_manual_sharepoint_url && (
+              <a
+                href={formState.install_manual_sharepoint_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 mt-2 px-3 py-2 rounded-lg bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800 hover:bg-violet-100 dark:hover:bg-violet-900/30 transition-colors group"
+              >
+                <span className="w-2.5 h-2.5 rounded-full bg-violet-500 shrink-0" />
+                <span className="flex-1 text-sm text-violet-700 dark:text-violet-300 truncate">
+                  {formState.install_manual_sharepoint_url.split('/').pop() || 'Installation Guide (SharePoint)'}
+                </span>
+                <ExternalLink className="h-3.5 w-3.5 text-violet-400 group-hover:text-violet-600 dark:group-hover:text-violet-300" />
+              </a>
+            )}
+
+            {/* Original source URLs (green dot) */}
+            <div className="space-y-2 mt-2">
               {(formState.install_manual_urls || []).map((url, index) => (
                 <div key={index} className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" />
                   <input
                     type="url"
                     value={url}
                     onChange={(event) => handleUrlArrayChange('install_manual_urls', index, event.target.value)}
-                    className={styles.input}
-                    placeholder="https://"
+                    className={styles.input + ' flex-1'}
+                    placeholder="https://manufacturer.com/manual.pdf"
                   />
+                  {url && (
+                    <a
+                      href={url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="p-1.5 text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded"
+                      title="Open link"
+                    >
+                      <ExternalLink className="h-4 w-4" />
+                    </a>
+                  )}
                   <Button
                     type="button"
                     variant="ghost"
+                    size="sm"
                     onClick={() => handleRemoveUrl('install_manual_urls', index)}
                   >
                     Remove
@@ -670,26 +650,76 @@ const PartDetailPage = () => {
               icon={Plus}
               onClick={() => handleAddUrl('install_manual_urls')}
               className="mt-2"
+              size="sm"
             >
-              Add Install Manual
+              Add Manufacturer Link
             </Button>
           </div>
 
+          {/* Technical / User Manuals */}
           <div>
-            <label className={styles.label}>Technical Manual URLs</label>
-            <div className="space-y-2 mt-1">
+            <label className={styles.label}>Technical / User Manuals</label>
+
+            {/* SharePoint compiled docs (purple dot) */}
+            {formState.user_guide_sharepoint_url && (
+              <a
+                href={formState.user_guide_sharepoint_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 mt-2 px-3 py-2 rounded-lg bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800 hover:bg-violet-100 dark:hover:bg-violet-900/30 transition-colors group"
+              >
+                <span className="w-2.5 h-2.5 rounded-full bg-violet-500 shrink-0" />
+                <span className="flex-1 text-sm text-violet-700 dark:text-violet-300 truncate">
+                  {formState.user_guide_sharepoint_url.split('/').pop() || 'User Guide (SharePoint)'}
+                </span>
+                <ExternalLink className="h-3.5 w-3.5 text-violet-400 group-hover:text-violet-600 dark:group-hover:text-violet-300" />
+              </a>
+            )}
+
+            {/* Additional SharePoint technical manuals */}
+            {(formState.technical_manual_sharepoint_urls || []).map((url, index) => (
+              <a
+                key={`sp-${index}`}
+                href={url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 mt-2 px-3 py-2 rounded-lg bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800 hover:bg-violet-100 dark:hover:bg-violet-900/30 transition-colors group"
+              >
+                <span className="w-2.5 h-2.5 rounded-full bg-violet-500 shrink-0" />
+                <span className="flex-1 text-sm text-violet-700 dark:text-violet-300 truncate">
+                  {url.split('/').pop() || `Technical Doc ${index + 1}`}
+                </span>
+                <ExternalLink className="h-3.5 w-3.5 text-violet-400 group-hover:text-violet-600 dark:group-hover:text-violet-300" />
+              </a>
+            ))}
+
+            {/* Original source URLs (green dot) */}
+            <div className="space-y-2 mt-2">
               {(formState.technical_manual_urls || []).map((url, index) => (
                 <div key={index} className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" />
                   <input
                     type="url"
                     value={url}
                     onChange={(event) => handleUrlArrayChange('technical_manual_urls', index, event.target.value)}
-                    className={styles.input}
-                    placeholder="https://"
+                    className={styles.input + ' flex-1'}
+                    placeholder="https://manufacturer.com/specs.pdf"
                   />
+                  {url && (
+                    <a
+                      href={url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="p-1.5 text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded"
+                      title="Open link"
+                    >
+                      <ExternalLink className="h-4 w-4" />
+                    </a>
+                  )}
                   <Button
                     type="button"
                     variant="ghost"
+                    size="sm"
                     onClick={() => handleRemoveUrl('technical_manual_urls', index)}
                   >
                     Remove
@@ -703,10 +733,36 @@ const PartDetailPage = () => {
               icon={Plus}
               onClick={() => handleAddUrl('technical_manual_urls')}
               className="mt-2"
+              size="sm"
             >
-              Add Technical Manual
+              Add Manufacturer Link
             </Button>
           </div>
+
+          {/* SharePoint Parts Folder Link */}
+          {formState.parts_folder_sharepoint_url && (
+            <div className="border-t border-gray-200 dark:border-gray-700 pt-4 mt-4">
+              <label className={styles.label + ' flex items-center gap-2'}>
+                <span className="w-2.5 h-2.5 rounded-full bg-violet-500" />
+                All Documentation (SharePoint)
+              </label>
+              <a
+                href={formState.parts_folder_sharepoint_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 mt-2 px-3 py-2 rounded-lg bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800 hover:bg-violet-100 dark:hover:bg-violet-900/30 transition-colors group"
+              >
+                <FileCheck className="h-4 w-4 text-violet-500" />
+                <span className="flex-1 text-sm text-violet-700 dark:text-violet-300">
+                  Open Parts Folder in SharePoint
+                </span>
+                <ExternalLink className="h-3.5 w-3.5 text-violet-400 group-hover:text-violet-600 dark:group-hover:text-violet-300" />
+              </a>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                Contains all AI-compiled documentation for this part
+              </p>
+            </div>
+          )}
 
           {/* Submittal Document Section */}
           <div className="border-t border-gray-200 dark:border-gray-700 pt-4 mt-4">
@@ -1100,6 +1156,183 @@ const PartDetailPage = () => {
               </div>
             )}
           </div>
+        </div>
+
+        {/* AI-Powered Data Search Section - Collapsible at bottom */}
+        <div className={styles.card + ' overflow-hidden'}>
+          <button
+            type="button"
+            onClick={() => setAiSectionExpanded(!aiSectionExpanded)}
+            className="w-full p-4 flex items-center justify-between text-left hover:bg-gray-50 dark:hover:bg-zinc-800/50 transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              <Sparkles className="h-5 w-5 text-violet-500" />
+              <div>
+                <p className="text-sm font-medium text-gray-900 dark:text-white">
+                  AI-Powered Data Search
+                </p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  {part?.ai_enrichment_status === 'completed'
+                    ? `Last researched: ${part?.ai_last_enriched_at ? new Date(part.ai_last_enriched_at).toLocaleDateString() : 'Unknown'}`
+                    : part?.ai_enrichment_status === 'processing'
+                    ? 'Research in progress...'
+                    : part?.ai_enrichment_status === 'flagged'
+                    ? 'Flagged for review'
+                    : 'Search for specifications and documentation'}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              {part?.ai_enrichment_status === 'completed' && (
+                <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                  Completed
+                </span>
+              )}
+              {part?.ai_enrichment_status === 'processing' && (
+                <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 flex items-center gap-1">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  Processing
+                </span>
+              )}
+              {part?.ai_enrichment_status === 'flagged' && (
+                <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
+                  Flagged
+                </span>
+              )}
+              {aiSectionExpanded ? (
+                <ChevronUp className="h-5 w-5 text-gray-400" />
+              ) : (
+                <ChevronDown className="h-5 w-5 text-gray-400" />
+              )}
+            </div>
+          </button>
+
+          {aiSectionExpanded && (
+            <div className="p-6 pt-2 border-t border-gray-200 dark:border-gray-700 space-y-4">
+              {/* Status Messages */}
+              {part?.ai_enrichment_status === 'processing' && !aiSearchResult && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-900/20">
+                  <div className="flex items-center gap-2 text-amber-700 dark:text-amber-300 font-medium mb-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Research In Progress
+                  </div>
+                  <p className="text-sm text-amber-600 dark:text-amber-400">
+                    Manus AI is currently researching documentation for this part. Results will be saved automatically.
+                  </p>
+                </div>
+              )}
+
+              {part?.ai_enrichment_status === 'completed' && !aiSearchResult && (
+                <div className="rounded-lg border border-green-200 bg-green-50 p-3 dark:border-green-800 dark:bg-green-900/20">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-green-700 dark:text-green-300 text-sm">
+                      <CheckCircle className="h-4 w-4" />
+                      AI research completed
+                      {part?.ai_last_enriched_at && (
+                        <span className="text-green-600 dark:text-green-400">
+                          • {new Date(part.ai_last_enriched_at).toLocaleDateString()}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div className="flex flex-wrap items-center gap-3">
+                <Button
+                  type="button"
+                  onClick={handleAiSearch}
+                  disabled={aiSearching || part?.ai_enrichment_status === 'processing'}
+                  className="bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white"
+                >
+                  {aiSearching ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      Searching the web...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-4 w-4 mr-2" />
+                      {part?.ai_enrichment_status === 'completed' ? 'Re-run Search' : 'Search for Data'}
+                    </>
+                  )}
+                </Button>
+
+                {/* Flag as Wrong Button */}
+                {part?.ai_enrichment_status === 'completed' && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={handleFlagAsWrong}
+                    disabled={flaggingWrong}
+                    className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:text-red-300 dark:hover:bg-red-900/20"
+                  >
+                    {flaggingWrong ? (
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    ) : (
+                      <Flag className="h-4 w-4 mr-2" />
+                    )}
+                    Flag as Wrong
+                  </Button>
+                )}
+              </div>
+
+              {/* Search Result - Async/Pending */}
+              {aiSearchResult && aiSearchResult.async && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-900/20">
+                  <div className="flex items-center gap-2 text-amber-700 dark:text-amber-300 font-medium mb-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Research In Progress
+                  </div>
+                  <p className="text-sm text-amber-600 dark:text-amber-400">
+                    {aiSearchResult.message || 'Manus AI is researching documentation. This typically takes 5-10 minutes.'}
+                  </p>
+                  <p className="text-xs text-amber-500 mt-2">
+                    Task ID: {aiSearchResult.taskId}
+                  </p>
+                  <p className="text-xs text-amber-500 mt-1">
+                    Results will be saved automatically when research completes. You can leave this page.
+                  </p>
+                </div>
+              )}
+
+              {/* Search Result - Completed */}
+              {aiSearchResult && !aiSearchResult.async && (
+                <div className="rounded-lg border border-green-200 bg-green-50 p-4 dark:border-green-800 dark:bg-green-900/20">
+                  <div className="flex items-center gap-2 text-green-700 dark:text-green-300 font-medium mb-2">
+                    <CheckCircle className="h-4 w-4" />
+                    Data Found - Confidence: {Math.round((aiSearchResult.confidence || 0) * 100)}%
+                  </div>
+                  <p className="text-sm text-green-600 dark:text-green-400">
+                    {aiSearchResult.notes || 'Enrichment data has been applied to the form. Review and save to keep changes.'}
+                  </p>
+                  {aiSearchResult.data?.sources?.length > 0 && (
+                    <div className="mt-2 text-xs text-green-600 dark:text-green-400">
+                      Sources: {aiSearchResult.data.sources.join(', ')}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Search Error */}
+              {aiSearchError && (
+                <div className="rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-800 dark:bg-red-900/20">
+                  <div className="flex items-center gap-2 text-red-700 dark:text-red-300 font-medium">
+                    <XCircle className="h-4 w-4" />
+                    Search Failed
+                  </div>
+                  <p className="text-sm text-red-600 dark:text-red-400 mt-1">
+                    {aiSearchError}
+                  </p>
+                </div>
+              )}
+
+              <p className="text-xs text-gray-500 dark:text-gray-400 pt-2 border-t border-gray-200 dark:border-gray-700">
+                AI search uses Manus to find product specifications, documentation, and installation guides from manufacturer websites. Results are stored in SharePoint for Azure AI Search indexing.
+              </p>
+            </div>
+          )}
         </div>
 
         {formError && (
