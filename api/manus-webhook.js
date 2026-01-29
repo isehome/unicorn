@@ -133,11 +133,14 @@ module.exports = async function handler(req, res) {
 
       // Log what we're about to save
       console.log('[Manus Webhook] Saving enrichment data with URLs:');
-      console.log('  - parts_folder_sharepoint_url:', enrichmentData.parts_folder_sharepoint_url);
-      console.log('  - install_manual_urls:', enrichmentData.install_manual_urls);
+      console.log('  - manufacturer_website:', enrichmentData.manufacturer_website);
+      console.log('  - product_page_url:', enrichmentData.product_page_url);
+      console.log('  - original_manufacturer_urls:', enrichmentData.original_manufacturer_urls?.length || 0);
+      console.log('  - install_manual_urls (manufacturer):', enrichmentData.install_manual_urls);
       console.log('  - install_manual_sharepoint_url:', enrichmentData.install_manual_sharepoint_url);
-      console.log('  - user_guide_urls:', enrichmentData.user_guide_urls);
-      console.log('  - technical_manual_urls:', enrichmentData.technical_manual_urls);
+      console.log('  - technical_manual_urls (manufacturer):', enrichmentData.technical_manual_urls);
+      console.log('  - technical_manual_sharepoint_urls:', enrichmentData.technical_manual_sharepoint_urls);
+      console.log('  - parts_folder_sharepoint_url:', enrichmentData.parts_folder_sharepoint_url);
 
       // Save results via RPC
       const { data: saveResult, error: saveError } = await getSupabase()
@@ -273,13 +276,74 @@ function parseManusResponse(manusResult) {
   const documents = data.documents || [];
   const specifications = data.specifications || {};
 
+  // Extract ORIGINAL manufacturer source URLs (these are the green dot URLs)
+  // These should NOT be overwritten by SharePoint URLs
+  const originalManufacturerUrls = [];
+  const originalInstallManualUrls = [];
+  const originalTechnicalManualUrls = [];
+
+  // Extract URLs by type from found documents in JSON
+  for (const doc of documents) {
+    if (!doc.url || doc.found === false) continue;
+
+    // Skip non-manufacturer URLs (our own SharePoint, etc.)
+    const url = doc.url;
+    if (url.includes('sharepoint.com') || url.includes('1drv.ms')) continue;
+
+    const type = (doc.type || '').toLowerCase();
+    const title = (doc.title || '').toLowerCase();
+
+    // Capture ALL manufacturer URLs as original sources
+    originalManufacturerUrls.push({
+      url: url,
+      type: doc.type || 'document',
+      title: doc.title || '',
+      found: doc.found !== false
+    });
+
+    // Also categorize by type for the specific arrays
+    if (type.includes('user_manual') || type.includes('setup') || title.includes('setup') || title.includes('user guide')) {
+      originalInstallManualUrls.push(url);
+    } else if (type.includes('tech_specs') || type.includes('datasheet') || type.includes('spec')) {
+      originalTechnicalManualUrls.push(url);
+    }
+  }
+
+  // Also extract PDF URLs from attachments (these are usually manufacturer PDFs we downloaded)
+  for (const file of createdFiles) {
+    if (!file.url) continue;
+    const name = (file.name || '').toLowerCase();
+    const url = file.url;
+
+    // Skip SharePoint URLs
+    if (url.includes('sharepoint.com') || url.includes('1drv.ms')) continue;
+
+    // Only process PDFs from manufacturer sites
+    if (name.endsWith('.pdf') && (url.includes('apple.com') || url.includes('manuals.info'))) {
+      originalManufacturerUrls.push({
+        url: url,
+        type: 'pdf',
+        title: file.name,
+        found: true
+      });
+
+      if (name.includes('setup') || name.includes('guide') || name.includes('install')) {
+        originalInstallManualUrls.push(url);
+      } else {
+        originalTechnicalManualUrls.push(url);
+      }
+    }
+  }
+
   const enrichmentData = {
     manufacturer_website: data.manufacturer_website || null,
     product_page_url: data.product_page_url || null,
     documents: documents,
     created_files: createdFiles,
-    install_manual_urls: [],
-    technical_manual_urls: [],
+    // ORIGINAL manufacturer source URLs (green dot) - separate from SharePoint
+    original_manufacturer_urls: originalManufacturerUrls,
+    install_manual_urls: originalInstallManualUrls,  // Start with manufacturer URLs
+    technical_manual_urls: originalTechnicalManualUrls, // Start with manufacturer URLs
     // Specifications
     width_inches: specifications.width_inches || null,
     depth_inches: specifications.depth_inches || null,
@@ -292,35 +356,9 @@ function parseManusResponse(manusResult) {
     confidence: 0.95
   };
 
-  // Extract URLs by type from found documents in JSON
-  for (const doc of documents) {
-    if (!doc.url || doc.found === false) continue;
-    const type = (doc.type || '').toLowerCase();
-    if (type.includes('manual') || type.includes('guide')) {
-      enrichmentData.install_manual_urls.push(doc.url);
-    }
-    if (type.includes('datasheet') || type.includes('spec')) {
-      enrichmentData.technical_manual_urls.push(doc.url);
-    }
-  }
-
-  // Also extract URLs from attachments by file type
-  for (const file of createdFiles) {
-    if (!file.url) continue;
-    const name = (file.name || '').toLowerCase();
-    if (name.endsWith('.pdf')) {
-      if (name.includes('manual') || name.includes('guide') || name.includes('install')) {
-        enrichmentData.install_manual_urls.push(file.url);
-      } else if (name.includes('spec') || name.includes('datasheet')) {
-        enrichmentData.technical_manual_urls.push(file.url);
-      } else {
-        // Default PDFs to technical manuals
-        enrichmentData.technical_manual_urls.push(file.url);
-      }
-    }
-  }
-
   console.log('[Manus Webhook] Found', documents.length, 'documents,', createdFiles.length, 'attachments');
+  console.log('[Manus Webhook] Original manufacturer URLs:', originalManufacturerUrls.length);
+  console.log('[Manus Webhook] product_page_url:', enrichmentData.product_page_url);
 
   return enrichmentData;
 }
@@ -453,61 +491,48 @@ async function processDocumentsTwoStage(part, enrichmentData) {
     const pdfUploads = uploadedToSharePoint.filter(f => f.contentType === 'application/pdf');
     const markdownUploads = uploadedToSharePoint.filter(f => f.contentType === 'text/markdown' || f.filename.endsWith('.md'));
 
-    // Build arrays of URLs by document type for the RPC
-    const installManualUrls = [];
-    const userGuideUrls = [];
-    const technicalManualUrls = [];
+    // Build arrays of SharePoint URLs by document type
+    // IMPORTANT: These are ONLY SharePoint URLs - original manufacturer URLs are preserved separately
+    const installManualSharepointUrls = [];
+    const userGuideSharepointUrls = [];
+    const technicalManualSharepointUrls = [];
 
-    // Categorize uploaded files by name/type
+    // Categorize uploaded files by name/type (SharePoint copies only)
     for (const file of uploadedToSharePoint) {
       const name = (file.filename || '').toLowerCase();
       if (name.includes('install') || name.includes('setup') || name.includes('quick-start') || name.includes('quick-reference')) {
-        installManualUrls.push(file.sharePointUrl);
+        installManualSharepointUrls.push(file.sharePointUrl);
       } else if (name.includes('guide') || name.includes('user')) {
-        userGuideUrls.push(file.sharePointUrl);
+        userGuideSharepointUrls.push(file.sharePointUrl);
       } else if (name.includes('spec') || name.includes('datasheet') || name.includes('technical')) {
-        technicalManualUrls.push(file.sharePointUrl);
+        technicalManualSharepointUrls.push(file.sharePointUrl);
       } else {
         // Default: treat as technical manual
-        technicalManualUrls.push(file.sharePointUrl);
+        technicalManualSharepointUrls.push(file.sharePointUrl);
       }
     }
 
-    // Also preserve original source URLs in the appropriate arrays
-    for (const orig of originalSourceUrls) {
-      const name = (orig.filename || '').toLowerCase();
-      if (name.includes('install') || name.includes('setup') || name.includes('quick')) {
-        // Already have SharePoint version, skip original
-      } else if (name.includes('guide') || name.includes('user')) {
-        // Already have SharePoint version, skip original
-      }
-      // Original URLs tracked in search_summary for audit
-    }
-
+    // Return ONLY SharePoint-related fields
+    // DO NOT return install_manual_urls or technical_manual_urls here
+    // Those fields preserve the original manufacturer URLs from parseManusResponse()
     return {
       // SharePoint folder URL for direct access
       parts_folder_sharepoint_url: partsFolderUrl,
 
-      // Install manual URLs (array for RPC)
-      install_manual_urls: installManualUrls,
-      // First install manual as primary SharePoint URL
-      install_manual_sharepoint_url: installManualUrls[0] || pdfUploads[0]?.sharePointUrl || null,
-
-      // User guide URLs (array for RPC)
-      user_guide_urls: userGuideUrls,
-      // First user guide as primary SharePoint URL
-      user_guide_sharepoint_url: userGuideUrls[0] || null,
-
-      // Technical manual URLs (array for RPC)
-      technical_manual_urls: technicalManualUrls,
-      // Technical manuals SharePoint URLs array
-      technical_manual_sharepoint_urls: technicalManualUrls,
+      // SharePoint URLs ONLY - stored in separate *_sharepoint_url fields
+      // This preserves the original manufacturer URLs in install_manual_urls and technical_manual_urls
+      install_manual_sharepoint_url: installManualSharepointUrls[0] || pdfUploads[0]?.sharePointUrl || null,
+      user_guide_sharepoint_url: userGuideSharepointUrls[0] || null,
+      technical_manual_sharepoint_urls: technicalManualSharepointUrls,
 
       // Search metadata (includes original source URLs for audit)
       search_summary: {
         documents_downloaded: downloadedFiles.length,
         documents_uploaded_to_sharepoint: uploadedToSharePoint.length,
         original_source_urls: originalSourceUrls,
+        sharepoint_install_manuals: installManualSharepointUrls,
+        sharepoint_user_guides: userGuideSharepointUrls,
+        sharepoint_technical_manuals: technicalManualSharepointUrls,
         local_storage_paths: downloadedFiles.map(f => f.storagePath),
         processed_at: new Date().toISOString()
       }
