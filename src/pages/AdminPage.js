@@ -33,6 +33,8 @@ import BugTodosTab from '../components/Admin/BugTodosTab';
 import SkillsManager from '../components/Admin/SkillsManager';
 import CompanySettingsManager from '../components/procurement/CompanySettingsManager';
 import ReviewCyclesManager from '../components/Admin/ReviewCyclesManager';
+import OrgStructureManager from '../components/Admin/OrgStructureManager';
+import PeopleManager from '../components/Admin/PeopleManager';
 
 // Role definitions with hierarchy
 const USER_ROLES = [
@@ -2437,15 +2439,15 @@ const AdminPage = () => {
       {/* Tabs */}
       <div className="flex gap-2 flex-wrap">
         <button
-          onClick={() => setActiveTab('users')}
+          onClick={() => setActiveTab('people')}
           className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-            activeTab === 'users'
+            activeTab === 'people'
               ? 'bg-violet-500 text-white'
               : 'bg-gray-100 dark:bg-zinc-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-zinc-600'
           }`}
         >
           <Users size={16} />
-          Users
+          People
         </button>
         <button
           onClick={() => setActiveTab('skills')}
@@ -2459,15 +2461,15 @@ const AdminPage = () => {
           Skills
         </button>
         <button
-          onClick={() => setActiveTab('employee-skills')}
+          onClick={() => setActiveTab('review-cycles')}
           className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-            activeTab === 'employee-skills'
+            activeTab === 'review-cycles'
               ? 'bg-violet-500 text-white'
               : 'bg-gray-100 dark:bg-zinc-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-zinc-600'
           }`}
         >
-          <UserCog size={16} />
-          Employee Skills
+          <Calendar size={16} />
+          Review Cycles
         </button>
         <button
           onClick={() => setActiveTab('features')}
@@ -2503,6 +2505,17 @@ const AdminPage = () => {
           Import
         </button>
         <button
+          onClick={() => setActiveTab('company')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            activeTab === 'company'
+              ? 'bg-violet-500 text-white'
+              : 'bg-gray-100 dark:bg-zinc-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-zinc-600'
+          }`}
+        >
+          <Building2 size={16} />
+          Company
+        </button>
+        <button
           onClick={() => setActiveTab('ai-training')}
           className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
             activeTab === 'ai-training'
@@ -2524,39 +2537,23 @@ const AdminPage = () => {
           <Bug size={16} />
           Bug Todos
         </button>
-        <button
-          onClick={() => setActiveTab('company')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-            activeTab === 'company'
-              ? 'bg-violet-500 text-white'
-              : 'bg-gray-100 dark:bg-zinc-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-zinc-600'
-          }`}
-        >
-          <Building2 size={16} />
-          Company
-        </button>
-        <button
-          onClick={() => setActiveTab('review-cycles')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-            activeTab === 'review-cycles'
-              ? 'bg-violet-500 text-white'
-              : 'bg-gray-100 dark:bg-zinc-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-zinc-600'
-          }`}
-        >
-          <Calendar size={16} />
-          Review Cycles
-        </button>
       </div>
 
       {/* Tab Content */}
-      {activeTab === 'users' && renderUsersTab()}
+      {activeTab === 'people' && (
+        <div className="mt-6 p-6 rounded-xl border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800">
+          <PeopleManager />
+        </div>
+      )}
       {activeTab === 'skills' && renderSkillsTab()}
-      {activeTab === 'employee-skills' && renderEmployeeSkillsTab()}
+      {activeTab === 'review-cycles' && (
+        <div className="mt-6 p-6 rounded-xl border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800">
+          <ReviewCyclesManager />
+        </div>
+      )}
       {activeTab === 'features' && renderFeaturesTab()}
       {activeTab === 'integrations' && renderIntegrationsTab()}
       {activeTab === 'import' && renderImportTab()}
-      {activeTab === 'ai-training' && <AITrainingTab />}
-      {activeTab === 'bug-todos' && <BugTodosTab />}
       {activeTab === 'company' && (
         <div className="mt-6 p-6 rounded-xl border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800">
           <div className="flex items-center gap-3 mb-6">
@@ -2571,11 +2568,8 @@ const AdminPage = () => {
           <CompanySettingsManager />
         </div>
       )}
-      {activeTab === 'review-cycles' && (
-        <div className="mt-6 p-6 rounded-xl border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800">
-          <ReviewCyclesManager />
-        </div>
-      )}
+      {activeTab === 'ai-training' && <AITrainingTab />}
+      {activeTab === 'bug-todos' && <BugTodosTab />}
 
       {/* Modals */}
       {renderEmployeeSkillsModal()}

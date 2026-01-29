@@ -470,34 +470,35 @@ CREATE TRIGGER trigger_dev_goals_timestamp
   FOR EACH ROW EXECUTE FUNCTION update_career_timestamp();
 
 -- ============================================================
--- PART 12: Seed Initial Skill Classes
+-- PART 12: Seed Initial Skill Classes (skip if table has different structure)
 -- ============================================================
 
--- Ensure unique constraint exists on name before inserting
+-- Only seed if skill_classes table doesn't have a category_id column (our new schema)
+-- If it has category_id, it's an existing table with different structure - skip seeding
 DO $$
 BEGIN
+  -- Check if this is our new table structure (no category_id required)
   IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint
-    WHERE conname = 'skill_classes_name_key'
-    AND conrelid = 'public.skill_classes'::regclass
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'skill_classes'
+    AND column_name = 'category_id'
+    AND is_nullable = 'NO'
   ) THEN
-    -- Add unique constraint if it doesn't exist
-    ALTER TABLE public.skill_classes ADD CONSTRAINT skill_classes_name_key UNIQUE (name);
+    -- Safe to insert - either no category_id or it's nullable
+    INSERT INTO skill_classes (name, label, description, sort_order)
+    SELECT v.name, v.label, v.description, v.sort_order
+    FROM (VALUES
+      ('technical', 'Technical Skills', 'Core technical competencies for installations and service', 1),
+      ('systems', 'Systems Knowledge', 'Platform-specific expertise', 2),
+      ('soft', 'Soft Skills', 'Communication and interpersonal abilities', 3),
+      ('safety', 'Safety & Compliance', 'Safety protocols and regulatory compliance', 4)
+    ) AS v(name, label, description, sort_order)
+    WHERE NOT EXISTS (SELECT 1 FROM skill_classes WHERE skill_classes.name = v.name);
   END IF;
 EXCEPTION WHEN OTHERS THEN
-  -- Constraint may already exist with different name, that's fine
-  NULL;
+  -- Table structure different, skip seeding
+  RAISE NOTICE 'Skipping skill_classes seed - table has different structure';
 END $$;
-
--- Insert seed data
-INSERT INTO public.skill_classes (name, label, description, sort_order)
-SELECT * FROM (VALUES
-  ('technical', 'Technical Skills', 'Core technical competencies for installations and service', 1),
-  ('systems', 'Systems Knowledge', 'Platform-specific expertise', 2),
-  ('soft', 'Soft Skills', 'Communication and interpersonal abilities', 3),
-  ('safety', 'Safety & Compliance', 'Safety protocols and regulatory compliance', 4)
-) AS v(name, label, description, sort_order)
-WHERE NOT EXISTS (SELECT 1 FROM public.skill_classes WHERE skill_classes.name = v.name);
 
 -- ============================================================
 -- DONE
