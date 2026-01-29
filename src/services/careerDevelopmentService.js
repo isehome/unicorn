@@ -359,6 +359,138 @@ export async function getOrgChart() {
   }
 }
 
+/**
+ * Get all reports (direct and indirect) under a manager using recursive hierarchy
+ * Returns employees with their hierarchy level and direct manager info
+ */
+export async function getAllReports(managerId, includeInactive = false) {
+  if (!supabase || !managerId) return [];
+
+  try {
+    // Try to use the RPC function for recursive hierarchy
+    const { data, error } = await supabase
+      .rpc('get_all_reports', {
+        p_manager_id: managerId,
+        p_include_inactive: includeInactive
+      });
+
+    if (error) {
+      // If RPC doesn't exist yet, fall back to client-side recursion
+      if (error.code === '42883' || error.message?.includes('function')) {
+        console.warn('[CareerDevelopmentService] RPC not available, using fallback');
+        return getAllReportsFallback(managerId, includeInactive);
+      }
+      console.error('[CareerDevelopmentService] getAllReports error:', error);
+      throw error;
+    }
+
+    return data || [];
+  } catch (error) {
+    console.error('[CareerDevelopmentService] getAllReports failed:', error);
+    // Try fallback
+    return getAllReportsFallback(managerId, includeInactive);
+  }
+}
+
+/**
+ * Fallback client-side recursive hierarchy (when RPC not available)
+ */
+async function getAllReportsFallback(managerId, includeInactive = false) {
+  if (!supabase || !managerId) return [];
+
+  const visited = new Set();
+  const results = [];
+
+  async function getReportsRecursive(mgrId, level = 1) {
+    if (visited.has(mgrId)) return; // Prevent cycles
+    visited.add(mgrId);
+
+    const { data, error } = await supabase
+      .from('manager_relationships')
+      .select(`
+        employee:profiles!manager_relationships_employee_id_fkey (
+          id, full_name, email, role, avatar_color, is_active
+        ),
+        manager:profiles!manager_relationships_manager_id_fkey (
+          id, full_name
+        )
+      `)
+      .eq('manager_id', mgrId)
+      .eq('is_primary', true)
+      .is('end_date', null);
+
+    if (error) {
+      console.error('[CareerDevelopmentService] getAllReportsFallback error:', error);
+      return;
+    }
+
+    for (const rel of (data || [])) {
+      if (!rel.employee) continue;
+      if (!includeInactive && !rel.employee.is_active) continue;
+
+      results.push({
+        employee_id: rel.employee.id,
+        full_name: rel.employee.full_name,
+        email: rel.employee.email,
+        role: rel.employee.role,
+        avatar_color: rel.employee.avatar_color,
+        is_active: rel.employee.is_active,
+        direct_manager_id: mgrId,
+        direct_manager_name: rel.manager?.full_name,
+        hierarchy_level: level
+      });
+
+      // Recurse to get indirect reports
+      await getReportsRecursive(rel.employee.id, level + 1);
+    }
+  }
+
+  await getReportsRecursive(managerId);
+  return results.sort((a, b) => a.hierarchy_level - b.hierarchy_level || a.full_name.localeCompare(b.full_name));
+}
+
+/**
+ * Check if user is a manager (has any direct reports)
+ */
+export async function isManager(userId) {
+  if (!supabase || !userId) return false;
+
+  try {
+    const { count, error } = await supabase
+      .from('manager_relationships')
+      .select('id', { count: 'exact', head: true })
+      .eq('manager_id', userId)
+      .eq('is_primary', true)
+      .is('end_date', null);
+
+    if (error) {
+      console.error('[CareerDevelopmentService] isManager error:', error);
+      return false;
+    }
+
+    return (count || 0) > 0;
+  } catch (error) {
+    console.error('[CareerDevelopmentService] isManager failed:', error);
+    return false;
+  }
+}
+
+/**
+ * Check if user can review an employee (is their manager or higher in hierarchy)
+ */
+export async function canReviewEmployee(reviewerId, employeeId) {
+  if (!supabase || !reviewerId || !employeeId) return false;
+
+  try {
+    // Get all reports under the reviewer
+    const allReports = await getAllReports(reviewerId);
+    return allReports.some(r => r.employee_id === employeeId);
+  } catch (error) {
+    console.error('[CareerDevelopmentService] canReviewEmployee failed:', error);
+    return false;
+  }
+}
+
 // ============================================================================
 // SELF EVALUATIONS
 // ============================================================================
@@ -1361,6 +1493,9 @@ export const careerDevelopmentService = {
   // Manager relationships
   getMyManager,
   getMyReports,
+  getAllReports,
+  isManager,
+  canReviewEmployee,
   setManager,
   getOrgChart,
 

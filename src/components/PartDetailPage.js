@@ -38,6 +38,62 @@ const getViewableUrl = (url) => {
   return url;
 };
 
+// Helper to determine if URL is a SharePoint/internal URL (purple) vs manufacturer source (green)
+const isSharePointUrl = (url) => {
+  if (!url) return false;
+  return url.includes('sharepoint.com') || url.includes('sharepoint:') || url.includes('1drv.ms');
+};
+
+// Helper to extract a human-readable filename from URL
+const getDisplayFilename = (url, docType = 'Document') => {
+  if (!url) return docType;
+
+  try {
+    // For SharePoint URLs, try to extract a meaningful name
+    if (isSharePointUrl(url)) {
+      // SharePoint URLs often have the filename encoded
+      const urlObj = new URL(url);
+      const pathParts = urlObj.pathname.split('/').filter(p => p);
+
+      // Look for filename in path
+      for (let i = pathParts.length - 1; i >= 0; i--) {
+        const part = decodeURIComponent(pathParts[i]);
+        // Skip SharePoint internal IDs (long alphanumeric strings)
+        if (part.length > 30 && /^[A-Za-z0-9_-]+$/.test(part)) continue;
+        // Skip common SharePoint path segments
+        if (['sites', 'Shared Documents', '_layouts', 'download.aspx'].includes(part)) continue;
+        // If it looks like a filename
+        if (part.includes('.')) {
+          return part;
+        }
+      }
+      return `${docType} (SharePoint)`;
+    }
+
+    // For regular URLs, extract filename from path
+    const pathname = new URL(url).pathname;
+    const filename = decodeURIComponent(pathname.split('/').pop() || '');
+
+    // If filename is empty or too long/encoded, return doc type
+    if (!filename || filename.length > 60) {
+      return `${docType} (Manufacturer)`;
+    }
+
+    return filename;
+  } catch {
+    // If URL parsing fails, try simple extraction
+    const lastSegment = url.split('/').pop()?.split('?')[0] || '';
+    if (lastSegment && lastSegment.length < 60) {
+      return decodeURIComponent(lastSegment);
+    }
+    return docType;
+  }
+};
+
+// Brand colors
+const BRAND_GREEN = '#94AF32';  // Manufacturer source
+const BRAND_PURPLE = '#8B5CF6'; // AI-compiled (SharePoint)
+
 const PartDetailPage = () => {
   const { partId } = useParams();
   const navigate = useNavigate();
@@ -597,20 +653,20 @@ const PartDetailPage = () => {
           {/* Legend for source indicators - Brand Colors */}
           <div className="flex items-center gap-4 text-xs text-gray-500 dark:text-gray-400 pb-2 border-b border-gray-200 dark:border-gray-700">
             <span className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#94AF32' }} />
+              <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: BRAND_GREEN }} />
               Manufacturer Source
             </span>
             <span className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#8B5CF6' }} />
+              <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: BRAND_PURPLE }} />
               AI Compiled (SharePoint)
             </span>
           </div>
 
-          {/* Product Page Link - Direct link to manufacturer (brand green #94AF32) */}
+          {/* Product Page Link - Direct link to manufacturer */}
           {formState.product_page_url && (
             <div>
               <label className={styles.label + ' flex items-center gap-2'}>
-                <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#94AF32' }} />
+                <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: BRAND_GREEN }} />
                 Manufacturer Product Page
               </label>
               <a
@@ -642,7 +698,7 @@ const PartDetailPage = () => {
           <div>
             <label className={styles.label}>Installation Manuals</label>
 
-            {/* SharePoint compiled docs (purple dot - brand violet #8B5CF6) */}
+            {/* SharePoint compiled docs (purple dot) */}
             {formState.install_manual_sharepoint_url && (
               <a
                 href={getViewableUrl(formState.install_manual_sharepoint_url)}
@@ -650,40 +706,46 @@ const PartDetailPage = () => {
                 rel="noopener noreferrer"
                 className="flex items-center gap-2 mt-2 px-3 py-2 rounded-lg bg-gray-50 dark:bg-zinc-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-zinc-700 transition-colors group"
               >
-                <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: '#8B5CF6' }} />
+                <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: BRAND_PURPLE }} />
                 <span className="flex-1 text-sm text-gray-700 dark:text-gray-300 truncate">
-                  {formState.install_manual_sharepoint_url.split('/').pop() || 'Installation Guide (SharePoint)'}
+                  {getDisplayFilename(formState.install_manual_sharepoint_url, 'Installation Guide')}
                 </span>
                 <ExternalLink className="h-3.5 w-3.5 text-gray-400 group-hover:text-gray-600 dark:group-hover:text-gray-300" />
               </a>
             )}
 
-            {/* Original source URLs (green dot - brand green #94AF32) - clickable links */}
+            {/* Installation manual URLs - color based on source type */}
             <div className="space-y-2 mt-2">
-              {(formState.install_manual_urls || []).filter(url => url).map((url, index) => (
-                <div key={index} className="flex items-center gap-2">
-                  <a
-                    href={url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-2 flex-1 px-3 py-2 rounded-lg bg-gray-50 dark:bg-zinc-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-zinc-700 transition-colors group"
-                  >
-                    <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: '#94AF32' }} />
-                    <span className="flex-1 text-sm text-gray-700 dark:text-gray-300 truncate">
-                      {url.split('/').pop() || url}
-                    </span>
-                    <ExternalLink className="h-3.5 w-3.5 text-gray-400 group-hover:text-gray-600 dark:group-hover:text-gray-300 shrink-0" />
-                  </a>
-                  <button
-                    type="button"
-                    onClick={() => handleRemoveUrl('install_manual_urls', index)}
-                    className="p-1.5 text-gray-400 hover:text-red-500 dark:hover:text-red-400 rounded"
-                    title="Remove"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </div>
-              ))}
+              {(formState.install_manual_urls || []).filter(url => url).map((url, index) => {
+                const isInternal = isSharePointUrl(url);
+                const dotColor = isInternal ? BRAND_PURPLE : BRAND_GREEN;
+                const displayName = getDisplayFilename(url, 'Installation Manual');
+
+                return (
+                  <div key={index} className="flex items-center gap-2">
+                    <a
+                      href={isInternal ? getViewableUrl(url) : url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-2 flex-1 px-3 py-2 rounded-lg bg-gray-50 dark:bg-zinc-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-zinc-700 transition-colors group"
+                    >
+                      <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: dotColor }} />
+                      <span className="flex-1 text-sm text-gray-700 dark:text-gray-300 truncate">
+                        {displayName}
+                      </span>
+                      <ExternalLink className="h-3.5 w-3.5 text-gray-400 group-hover:text-gray-600 dark:group-hover:text-gray-300 shrink-0" />
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveUrl('install_manual_urls', index)}
+                      className="p-1.5 text-gray-400 hover:text-red-500 dark:hover:text-red-400 rounded"
+                      title="Remove"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                );
+              })}
             </div>
             <Button
               type="button"
@@ -701,7 +763,7 @@ const PartDetailPage = () => {
           <div>
             <label className={styles.label}>Technical / User Manuals</label>
 
-            {/* SharePoint compiled docs (purple dot - brand violet #8B5CF6) */}
+            {/* SharePoint compiled docs (purple dot) */}
             {formState.user_guide_sharepoint_url && (
               <a
                 href={getViewableUrl(formState.user_guide_sharepoint_url)}
@@ -709,15 +771,15 @@ const PartDetailPage = () => {
                 rel="noopener noreferrer"
                 className="flex items-center gap-2 mt-2 px-3 py-2 rounded-lg bg-gray-50 dark:bg-zinc-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-zinc-700 transition-colors group"
               >
-                <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: '#8B5CF6' }} />
+                <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: BRAND_PURPLE }} />
                 <span className="flex-1 text-sm text-gray-700 dark:text-gray-300 truncate">
-                  {formState.user_guide_sharepoint_url.split('/').pop() || 'User Guide (SharePoint)'}
+                  {getDisplayFilename(formState.user_guide_sharepoint_url, 'User Guide')}
                 </span>
                 <ExternalLink className="h-3.5 w-3.5 text-gray-400 group-hover:text-gray-600 dark:group-hover:text-gray-300" />
               </a>
             )}
 
-            {/* Additional SharePoint technical manuals (purple dot - brand violet #8B5CF6) */}
+            {/* Additional SharePoint technical manuals (purple dot) */}
             {(formState.technical_manual_sharepoint_urls || []).map((url, index) => (
               <a
                 key={`sp-${index}`}
@@ -726,40 +788,45 @@ const PartDetailPage = () => {
                 rel="noopener noreferrer"
                 className="flex items-center gap-2 mt-2 px-3 py-2 rounded-lg bg-gray-50 dark:bg-zinc-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-zinc-700 transition-colors group"
               >
-                <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: '#8B5CF6' }} />
+                <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: BRAND_PURPLE }} />
                 <span className="flex-1 text-sm text-gray-700 dark:text-gray-300 truncate">
-                  {url.split('/').pop() || `Technical Doc ${index + 1}`}
+                  {getDisplayFilename(url, `Technical Doc ${index + 1}`)}
                 </span>
                 <ExternalLink className="h-3.5 w-3.5 text-gray-400 group-hover:text-gray-600 dark:group-hover:text-gray-300" />
               </a>
             ))}
 
-            {/* Original source URLs (green dot - brand green #94AF32) - clickable links */}
+            {/* Technical manual URLs - color based on source type */}
             <div className="space-y-2 mt-2">
-              {(formState.technical_manual_urls || []).filter(url => url).map((url, index) => (
-                <div key={index} className="flex items-center gap-2">
-                  <a
-                    href={url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-2 flex-1 px-3 py-2 rounded-lg bg-gray-50 dark:bg-zinc-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-zinc-700 transition-colors group"
-                  >
-                    <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: '#94AF32' }} />
-                    <span className="flex-1 text-sm text-gray-700 dark:text-gray-300 truncate">
-                      {url.split('/').pop() || url}
-                    </span>
-                    <ExternalLink className="h-3.5 w-3.5 text-gray-400 group-hover:text-gray-600 dark:group-hover:text-gray-300 shrink-0" />
-                  </a>
-                  <button
-                    type="button"
-                    onClick={() => handleRemoveUrl('technical_manual_urls', index)}
-                    className="p-1.5 text-gray-400 hover:text-red-500 dark:hover:text-red-400 rounded"
-                    title="Remove"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </div>
-              ))}
+              {(formState.technical_manual_urls || []).filter(url => url).map((url, index) => {
+                const isInternal = isSharePointUrl(url);
+                const dotColor = isInternal ? BRAND_PURPLE : BRAND_GREEN;
+                const displayName = getDisplayFilename(url, 'Technical Manual');
+
+                return (
+                  <div key={index} className="flex items-center gap-2">
+                    <a
+                      href={isInternal ? getViewableUrl(url) : url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-2 flex-1 px-3 py-2 rounded-lg bg-gray-50 dark:bg-zinc-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-zinc-700 transition-colors group"
+                    >
+                      <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: dotColor }} />
+                      <span className="flex-1 text-sm text-gray-700 dark:text-gray-300 truncate">
+                        {displayName}
+                      </span>
+                      <ExternalLink className="h-3.5 w-3.5 text-gray-400 group-hover:text-gray-600 dark:group-hover:text-gray-300 shrink-0" />
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveUrl('technical_manual_urls', index)}
+                      className="p-1.5 text-gray-400 hover:text-red-500 dark:hover:text-red-400 rounded"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                );
+              })}
             </div>
             <Button
               type="button"
@@ -773,11 +840,11 @@ const PartDetailPage = () => {
             </Button>
           </div>
 
-          {/* SharePoint Parts Folder Link (brand violet #8B5CF6) */}
+          {/* SharePoint Parts Folder Link */}
           {formState.parts_folder_sharepoint_url && (
             <div className="border-t border-gray-200 dark:border-gray-700 pt-4 mt-4">
               <label className={styles.label + ' flex items-center gap-2'}>
-                <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#8B5CF6' }} />
+                <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: BRAND_PURPLE }} />
                 All Documentation (SharePoint)
               </label>
               <a
@@ -786,7 +853,7 @@ const PartDetailPage = () => {
                 rel="noopener noreferrer"
                 className="flex items-center gap-2 mt-2 px-3 py-2 rounded-lg bg-gray-50 dark:bg-zinc-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-zinc-700 transition-colors group"
               >
-                <FileCheck className="h-4 w-4" style={{ color: '#8B5CF6' }} />
+                <FileCheck className="h-4 w-4" style={{ color: BRAND_PURPLE }} />
                 <span className="flex-1 text-sm text-gray-700 dark:text-gray-300">
                   Open Parts Folder in SharePoint
                 </span>
