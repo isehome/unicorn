@@ -150,7 +150,7 @@ const AdminPage = () => {
   const sectionStyles = enhancedStyles.sections[mode];
 
   // Tab state
-  const [activeTab, setActiveTab] = useState('users');
+  const [activeTab, setActiveTab] = useState('people');
 
   // Current user role
   const [currentUserRole, setCurrentUserRole] = useState(null);

@@ -1064,6 +1064,13 @@ Service tickets can be exported to QuickBooks Online as invoices for billing.
 | `development_goals` | 5 focus skills per employee per quarter |
 | `review_sessions` | Overall review meeting tracking |
 
+**Org Structure RPC Function:**
+```sql
+-- Get all reports (direct and indirect) for a manager
+SELECT * FROM get_all_reports(manager_uuid, include_inactive_boolean);
+-- Returns: employee_id, full_name, email, role, hierarchy_level, hierarchy_path
+```
+
 ### Secure Data Tables (Encrypted)
 
 The `project_secure_data` and `contact_secure_data` tables store sensitive credentials with field-level encryption.
@@ -1124,6 +1131,7 @@ See [Secure Data Encryption Implementation](#secure-data-encryption-implementati
 | **Career development page** | `src/pages/CareerDevelopmentPage.js` |
 | **Team reviews page** | `src/pages/TeamReviewsPage.js` |
 | **Review cycles manager** | `src/components/Admin/ReviewCyclesManager.js` |
+| **People manager (admin)** | `src/components/Admin/PeopleManager.js` |
 
 #### 8.11 Retell AI Phone System (Sarah)
 
@@ -3730,6 +3738,49 @@ The application needs a proper user capabilities/roles system to control access 
 ---
 
 # PART 6: CHANGELOG
+
+## 2026-01-29
+
+### Admin Panel Consolidation - People & Organization
+
+Consolidated three separate admin tabs (Users, Employee Skills, Org Structure) into a single unified "People" tab with sub-tabs for cleaner navigation.
+
+**What Changed:**
+- **Removed tabs:** Users, Employee Skills, Org Structure (3 tabs)
+- **Added tab:** People (1 tab with 3 sub-tabs)
+- Admin tabs reduced from 11 to 9
+
+**New Component:**
+| File | Purpose |
+|------|---------|
+| `src/components/Admin/PeopleManager.js` | Unified people/org management with sub-tabs |
+
+**PeopleManager Sub-tabs:**
+| Sub-tab | Features |
+|---------|----------|
+| **Directory** | User list with role assignment, manager assignment (Reports to:), activate/deactivate, search/filter |
+| **Org Chart** | Visual tree view of organizational hierarchy with expand/collapse |
+| **Team Skills** | Manager view of employee skill proficiencies with "Manage Skills" modal |
+
+**UI Changes:**
+- Skill badges removed from Directory view (skills managed in Team Skills sub-tab)
+- Manager assignment inline with save/cancel for pending changes
+- Search by name, email, or role
+- Show inactive toggle
+- Stats cards: Active Users, Top Level, Reports, Skill Assignments
+
+**Admin Tab Order (Current):**
+1. People (new unified tab)
+2. Skills
+3. Review Cycles
+4. Features
+5. Integrations
+6. Import
+7. Company
+8. AI Training
+9. Bug Todos
+
+---
 
 ## 2026-01-28
 

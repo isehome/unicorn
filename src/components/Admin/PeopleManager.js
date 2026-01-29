@@ -79,7 +79,7 @@ const canManageUser = (currentUserRole, targetUserRole) => {
 };
 
 const PeopleManager = () => {
-  const { mode } = useTheme();
+  useTheme(); // For consistent styling context
   const { user } = useAuth();
 
   // Sub-tab state
@@ -97,7 +97,7 @@ const PeopleManager = () => {
 
   // UI state
   const [searchTerm, setSearchTerm] = useState('');
-  const [viewMode, setViewMode] = useState('list'); // 'list' or 'tree' for org-chart
+  // viewMode could be used in the future for additional views
   const [expandedNodes, setExpandedNodes] = useState(new Set());
   const [pendingChanges, setPendingChanges] = useState({});
   const [showInactive, setShowInactive] = useState(false);
@@ -430,8 +430,6 @@ const PeopleManager = () => {
     const displayManagerId = hasPendingChange ? pendingManagerId : (currentManager?.id || '');
     const canEdit = canManageUser(currentUserRole, employee.role) && employee.email !== user?.email;
     const isCurrentUser = employee.email === user?.email;
-    const empSkills = getEmployeeSkills(employee.id);
-    const role = USER_ROLES.find(r => r.id === employee.role) || USER_ROLES[0];
 
     return (
       <div
@@ -468,27 +466,6 @@ const PeopleManager = () => {
               <Mail size={12} />
               {employee.email}
             </p>
-
-            {/* Skills badges */}
-            {empSkills.length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-1">
-                {empSkills.slice(0, 4).map(es => {
-                  const level = PROFICIENCY_LEVELS.find(l => l.id === es.proficiency_level);
-                  return (
-                    <span
-                      key={es.id}
-                      className="text-xs px-2 py-0.5 rounded-full"
-                      style={{ backgroundColor: `${level?.color}20`, color: level?.color }}
-                    >
-                      {es.skill?.name}
-                    </span>
-                  );
-                })}
-                {empSkills.length > 4 && (
-                  <span className="text-xs text-zinc-500">+{empSkills.length - 4} more</span>
-                )}
-              </div>
-            )}
           </div>
 
           {/* Actions column */}
@@ -575,7 +552,6 @@ const PeopleManager = () => {
   // Render Team Skills view (manager view of employee proficiencies)
   const renderTeamSkillsRow = (employee) => {
     const empSkills = getEmployeeSkills(employee.id);
-    const role = USER_ROLES.find(r => r.id === employee.role) || USER_ROLES[0];
     const manager = getManager(employee.id);
 
     return (
