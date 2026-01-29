@@ -798,7 +798,7 @@ const PartsAILookupPage = () => {
                   key={part.id}
                   className={`grid sm:grid-cols-[40px_50px_1fr_1fr_140px_40px] gap-2 sm:gap-4 p-4 items-center transition-colors cursor-pointer ${
                     isSelected ? 'bg-violet-50 dark:bg-violet-900/20' : 'hover:bg-zinc-50 dark:hover:bg-zinc-800/50'
-                  } ${isProcessing ? 'bg-blue-50/30 dark:bg-blue-900/10' : ''}`}
+                  } ${status === 'processing' ? 'bg-blue-50/30 dark:bg-blue-900/10' : ''}`}
                   onClick={() => navigate(`/parts/${part.id}`)}
                 >
                   {/* Checkbox */}
