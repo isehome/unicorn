@@ -107,7 +107,7 @@ module.exports = async function handler(req, res) {
       console.log(`[Manus Webhook] Processing completed task with ${attachments.length} attachments`);
 
       // Parse and process the results from task_detail
-      const enrichmentData = parseManusResponse({
+      const enrichmentData = await parseManusResponse({
         message,
         attachments,
         task_detail,
@@ -223,7 +223,7 @@ module.exports = async function handler(req, res) {
 /**
  * Parse Manus response into our standard format
  */
-function parseManusResponse(manusResult) {
+async function parseManusResponse(manusResult) {
   let data = {};
   let rawText = manusResult.message || '';
   let createdFiles = [];
@@ -268,6 +268,27 @@ function parseManusResponse(manusResult) {
         }
       }
     }
+
+    // IMPORTANT: Also check attachments for JSON results file
+    // Manus creates a JSON file with structured results that contains manufacturer URLs
+    for (const file of createdFiles) {
+      if (file.name && file.name.endsWith('.json') && file.url) {
+        console.log('[Manus Webhook] Found JSON results file:', file.name);
+        try {
+          const jsonResponse = await fetch(file.url);
+          if (jsonResponse.ok) {
+            const jsonData = await jsonResponse.json();
+            console.log('[Manus Webhook] Parsed JSON from attachment:', Object.keys(jsonData));
+            // Merge with existing data, preferring the JSON file data
+            data = { ...data, ...jsonData };
+            console.log('[Manus Webhook] manufacturer_website from JSON:', jsonData.manufacturer_website);
+            console.log('[Manus Webhook] product_page_url from JSON:', jsonData.product_page_url);
+          }
+        } catch (jsonError) {
+          console.error('[Manus Webhook] Error fetching JSON attachment:', jsonError.message);
+        }
+      }
+    }
   } catch (parseError) {
     console.error('[Manus Webhook] Error parsing response:', parseError);
   }
@@ -302,9 +323,17 @@ function parseManusResponse(manusResult) {
     });
 
     // Also categorize by type for the specific arrays
-    if (type.includes('user_manual') || type.includes('setup') || title.includes('setup') || title.includes('user guide')) {
+    // user_guide and user_manual are installation/usage docs (green dot links for technicians)
+    // tech_specs and product_info are technical reference docs
+    if (type.includes('user_guide') || type.includes('user_manual') || type.includes('setup') ||
+        type.includes('install') || title.includes('setup') || title.includes('user guide') ||
+        title.includes('installation') || title.includes('quick start')) {
       originalInstallManualUrls.push(url);
-    } else if (type.includes('tech_specs') || type.includes('datasheet') || type.includes('spec')) {
+    } else if (type.includes('tech_specs') || type.includes('datasheet') || type.includes('spec') ||
+               type.includes('product_info')) {
+      originalTechnicalManualUrls.push(url);
+    } else {
+      // Default: treat unknown types as technical docs
       originalTechnicalManualUrls.push(url);
     }
   }
