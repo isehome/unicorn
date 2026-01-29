@@ -7,7 +7,6 @@ import { partsService } from '../services/partsService';
 import Button from './ui/Button';
 import Modal from './ui/Modal';
 import GlobalPartDocumentationEditor from './GlobalPartDocumentationEditor';
-import GlobalPartAIReviewModal from './GlobalPartAIReviewModal';
 import {
   Boxes,
   Plus,
@@ -46,13 +45,11 @@ const PartsListPage = () => {
   const [inventoryMode, setInventoryMode] = useState(false);
   const [editedParts, setEditedParts] = useState({});
   const [editedInventory, setEditedInventory] = useState({}); // { partId: quantity }
-  const [phaseFilter, setPhaseFilter] = useState('all'); // 'all', 'prewire', 'trim', 'new', 'ai_review'
+  const [phaseFilter, setPhaseFilter] = useState('all'); // 'all', 'prewire', 'trim', 'new'
   const [markingAllReviewed, setMarkingAllReviewed] = useState(false);
-  // Documentation & AI Review state
+  // Documentation state
   const [selectedPartForDocs, setSelectedPartForDocs] = useState(null);
   const [showDocsEditor, setShowDocsEditor] = useState(false);
-  const [selectedPartForAIReview, setSelectedPartForAIReview] = useState(null);
-  const [showAIReview, setShowAIReview] = useState(false);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { theme, mode } = useTheme();
@@ -151,8 +148,6 @@ const PartsListPage = () => {
       filtered = filtered.filter(part => part.required_for_prewire !== true);
     } else if (phaseFilter === 'new') {
       filtered = filtered.filter(part => part.needs_review === true);
-    } else if (phaseFilter === 'ai_review') {
-      filtered = filtered.filter(part => part.ai_enrichment_status === 'needs_review');
     }
 
     // Apply search filter
@@ -184,11 +179,6 @@ const PartsListPage = () => {
   // Count new parts needing review
   const newPartsCount = useMemo(() => {
     return parts.filter(p => p.needs_review === true).length;
-  }, [parts]);
-
-  // Count parts needing AI review
-  const aiReviewCount = useMemo(() => {
-    return parts.filter(p => p.ai_enrichment_status === 'needs_review').length;
   }, [parts]);
 
   // ══════════════════════════════════════════════════════════════
@@ -434,36 +424,6 @@ const PartsListPage = () => {
     setSelectedPartForDocs(null);
   }, []);
 
-  // AI Review handlers
-  const handleOpenAIReview = useCallback((part, e) => {
-    if (e) {
-      e.stopPropagation();
-      e.preventDefault();
-    }
-    setSelectedPartForAIReview(part);
-    setShowAIReview(true);
-  }, []);
-
-  const handleSaveAIReview = useCallback((updatedPart) => {
-    queryClient.invalidateQueries({ queryKey: queryKeys.parts });
-    setShowAIReview(false);
-    setSelectedPartForAIReview(null);
-  }, [queryClient]);
-
-  const handleCancelAIReview = useCallback(() => {
-    setShowAIReview(false);
-    setSelectedPartForAIReview(null);
-  }, []);
-
-  // Listen for AI review completed events
-  useEffect(() => {
-    const handleAIReviewCompleted = () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.parts });
-    };
-    window.addEventListener('ai-review-completed', handleAIReviewCompleted);
-    return () => window.removeEventListener('ai-review-completed', handleAIReviewCompleted);
-  }, [queryClient]);
-
   const renderPartCard = (part) => {
     const quantity = Number(part.quantity_available ?? part.quantity_on_hand ?? 0);
     const totalOnHand = Number(part.quantity_on_hand ?? 0);
@@ -645,9 +605,7 @@ const PartsListPage = () => {
 
     // Normal mode: clickable card - CLEANED UP VERSION
     // Status indicators use small dots instead of text badges
-    // Removed: duplicate badges, bottom metadata chips, redundant action buttons
     const hasAIDocs = part.ai_enrichment_status === 'completed';
-    const needsAIReview = part.ai_enrichment_status === 'needs_review';
 
     return (
       <button
@@ -672,9 +630,6 @@ const PartsListPage = () => {
                 )}
                 {hasAIDocs && (
                   <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#8B5CF6' }} title="AI Documentation Available" />
-                )}
-                {needsAIReview && (
-                  <span className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse" title="AI Results Need Review" />
                 )}
               </div>
 
@@ -709,15 +664,6 @@ const PartsListPage = () => {
                   title="Mark as reviewed"
                 >
                   <CheckCircle className="h-4 w-4" />
-                </button>
-              )}
-              {needsAIReview && (
-                <button
-                  onClick={(e) => handleOpenAIReview(part, e)}
-                  className="p-1.5 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 text-blue-600 dark:text-blue-400 transition-colors"
-                  title="Review AI enrichment"
-                >
-                  <Bot className="h-4 w-4" />
                 </button>
               )}
               <button
@@ -886,28 +832,6 @@ const PartsListPage = () => {
           }`}
         >
           Trim Prep
-        </button>
-        <button
-          onClick={() => setPhaseFilter('ai_review')}
-          className={`shrink-0 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
-            phaseFilter === 'ai_review'
-              ? 'bg-blue-500 text-white dark:bg-blue-600'
-              : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-zinc-800 dark:text-gray-300 dark:hover:bg-gray-700'
-          }`}
-        >
-          <span className="flex items-center gap-1.5">
-            <Bot className="h-3.5 w-3.5" />
-            AI Review
-            {aiReviewCount > 0 && (
-              <span className={`ml-1 flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-xs font-bold ${
-                phaseFilter === 'ai_review'
-                  ? 'bg-white/20 text-white'
-                  : 'bg-blue-500 text-white'
-              }`}>
-                {aiReviewCount > 99 ? '99+' : aiReviewCount}
-              </span>
-            )}
-          </span>
         </button>
       </div>
 
@@ -1154,16 +1078,6 @@ const PartsListPage = () => {
         </Modal>
       )}
 
-      {/* AI Review Modal */}
-      {showAIReview && selectedPartForAIReview && (
-        <Modal isOpen={showAIReview} onClose={handleCancelAIReview} size="xl">
-          <GlobalPartAIReviewModal
-            part={selectedPartForAIReview}
-            onSave={handleSaveAIReview}
-            onCancel={handleCancelAIReview}
-          />
-        </Modal>
-      )}
     </div>
   );
 };

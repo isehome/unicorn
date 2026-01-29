@@ -224,11 +224,12 @@ const PartsAILookupPage = () => {
     });
   }, []);
 
-  // Select/deselect all visible parts that aren't completed or processing
+  // Select/deselect all visible parts that aren't currently processing
   const handleSelectAll = useCallback(() => {
     const selectableParts = filteredParts.filter(p => {
       const status = getPartStatus(p);
-      return status === 'not_submitted' || status === 'error';
+      // Allow all except currently processing parts
+      return status !== 'processing';
     });
     setSelectedParts(new Set(selectableParts.map(p => p.id)));
   }, [filteredParts, getPartStatus]);
@@ -694,7 +695,7 @@ const PartsAILookupPage = () => {
           variant="secondary"
           size="sm"
           onClick={handleSelectAll}
-          disabled={filteredParts.filter(p => getPartStatus(p) === 'not_submitted' || getPartStatus(p) === 'error').length === 0}
+          disabled={filteredParts.filter(p => getPartStatus(p) !== 'processing').length === 0}
         >
           Select All Eligible
         </Button>
@@ -789,16 +790,15 @@ const PartsAILookupPage = () => {
             {filteredParts.map((part) => {
               const isSelected = selectedParts.has(part.id);
               const status = getPartStatus(part);
-              const isProcessing = status === 'processing';
-              const isCompleted = status === 'completed';
-              const canSelect = !isProcessing && !isCompleted;
+              // Allow selecting completed parts for re-enrichment - only block parts currently processing
+              const canSelect = status !== 'processing';
 
               return (
                 <div
                   key={part.id}
                   className={`grid sm:grid-cols-[40px_50px_1fr_1fr_140px_40px] gap-2 sm:gap-4 p-4 items-center transition-colors cursor-pointer ${
                     isSelected ? 'bg-violet-50 dark:bg-violet-900/20' : 'hover:bg-zinc-50 dark:hover:bg-zinc-800/50'
-                  } ${isProcessing ? 'bg-blue-50/30 dark:bg-blue-900/10' : ''} ${isCompleted ? 'opacity-70' : ''}`}
+                  } ${isProcessing ? 'bg-blue-50/30 dark:bg-blue-900/10' : ''}`}
                   onClick={() => navigate(`/parts/${part.id}`)}
                 >
                   {/* Checkbox */}
