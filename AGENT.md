@@ -8074,3 +8074,165 @@ The Rack Layout page has **3 tabs** (not a separate "back" view):
 
 ---
 
+## 2026-01-30
+
+### Manus AI Knowledge Base Builder - Complete System Documentation
+
+Major overhaul of the Parts AI documentation system to properly capture manufacturer URLs and build a comprehensive knowledge base for field technicians.
+
+#### System Overview
+
+The Parts AI Lookup system uses **Manus AI** (a browser-based research agent) to find and capture verified manufacturer documentation URLs. The system has three key flows:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         PARTS AI LOOKUP FLOW                                 │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  1. USER INTERFACE (/parts/ai-lookup)                                        │
+│     └─> Select parts → Click "Run AI Lookup"                                │
+│                                                                              │
+│  2. BATCH ENDPOINT (/api/enrich-parts-batch-manus.js)                       │
+│     └─> Creates Manus task with comprehensive prompt                        │
+│     └─> Registers webhook for async completion                              │
+│                                                                              │
+│  3. MANUS AI RESEARCH (external)                                            │
+│     └─> Browses manufacturer website                                        │
+│     └─> Finds product page, support page, PDF downloads                     │
+│     └─> Creates JSON results file + markdown backup files                   │
+│     └─> Calls webhook when complete                                         │
+│                                                                              │
+│  4. WEBHOOK HANDLER (/api/manus-webhook.js)                                 │
+│     └─> Parses JSON attachment for manufacturer URLs                        │
+│     └─> Downloads PDFs to Supabase storage                                  │
+│     └─> Uploads to SharePoint                                               │
+│     └─> Saves both manufacturer (green) and SharePoint (purple) URLs        │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+#### The Manus Prompt (Critical for Quality Results)
+
+The prompt in `/api/enrich-parts-batch-manus.js` is structured in **3 phases** to guide Manus through comprehensive research:
+
+**PHASE 1: Manufacturer Source Discovery**
+- Navigate to manufacturer's official website
+- Find the OFFICIAL product page URL (critical - this becomes `product_page_url`)
+- Locate support/downloads pages
+- Find actual PDF download URLs (not just that they exist)
+- Check FCC database and verified third-party sources if needed
+
+**PHASE 2: Create Backup Documentation Files**
+- `{part_number}-installation-guide.md` - with source URL at top
+- `{part_number}-specifications.md` - with source URL at top
+- `{part_number}-quick-reference.md` - with source URL at top
+
+**PHASE 3: JSON Results File**
+Manus creates a structured JSON file with:
+```json
+{
+  "manufacturer_website": "https://www.apple.com",
+  "product_page_url": "https://www.apple.com/shop/buy-tv/apple-tv-4k/128gb",
+  "support_page_url": "https://support.apple.com/apple-tv-4k",
+  "documents": [
+    {
+      "type": "user_guide",
+      "title": "Apple TV 4K User Guide",
+      "url": "https://support.apple.com/guide/tv/welcome/tvos",
+      "format": "web",
+      "found": true
+    },
+    {
+      "type": "install_guide",
+      "title": "Setup Guide PDF",
+      "url": "https://cdsassets.apple.com/..../setup.pdf",
+      "format": "pdf",
+      "found": true
+    }
+  ],
+  "specifications": { ... }
+}
+```
+
+#### Document URL Types (Green vs Purple Dots)
+
+The UI shows two types of documentation links with color-coded indicators:
+
+| Color | Meaning | Source | Example |
+|-------|---------|--------|---------|
+| 🟢 Green | Manufacturer Source | Original URLs from manufacturer website | `https://apple.com/support/...` |
+| 🟣 Purple | AI Compiled (SharePoint) | PDFs/markdown uploaded to company SharePoint | `https://isehome.sharepoint.com/...` |
+
+**Database Fields:**
+- `manufacturer_website` - Company website (green)
+- `product_page_url` - Direct product page (green)
+- `install_manual_urls[]` - Original manufacturer install guide URLs (green)
+- `technical_manual_urls[]` - Original manufacturer tech doc URLs (green)
+- `install_manual_sharepoint_url` - SharePoint copy of install guide (purple)
+- `user_guide_sharepoint_url` - SharePoint copy of user guide (purple)
+- `technical_manual_sharepoint_urls[]` - SharePoint copies of tech docs (purple)
+- `parts_folder_sharepoint_url` - Link to SharePoint folder with all docs
+
+#### Webhook Processing Flow
+
+When Manus completes, it calls `/api/manus-webhook.js` which:
+
+1. **Parses JSON Attachment** (CRITICAL FIX 2026-01-30)
+   - Looks for `.json` file in attachments
+   - Fetches and parses to extract `manufacturer_website`, `product_page_url`, `documents[]`
+   - This is where the green dot URLs come from!
+
+2. **Categorizes Document URLs by Type**
+   - `user_guide` / `user_manual` / `install` → `install_manual_urls`
+   - `tech_specs` / `datasheet` / `product_info` → `technical_manual_urls`
+
+3. **Two-Stage Document Processing**
+   - Stage 1: Download PDFs from manufacturer to Supabase storage
+   - Stage 2: Upload from Supabase to SharePoint
+   - Returns SharePoint URLs separately (doesn't overwrite manufacturer URLs)
+
+4. **Saves via RPC**
+   - Calls `save_parts_enrichment()` with all URLs preserved
+
+#### Key Files
+
+| File | Purpose |
+|------|---------|
+| `/api/enrich-parts-batch-manus.js` | Creates Manus tasks with the prompt |
+| `/api/manus-webhook.js` | Processes completed tasks, extracts URLs |
+| `/src/components/PartsAILookupPage.js` | UI for batch part selection |
+| `/src/components/PartDetailPage.js` | Shows documentation with green/purple dots |
+| `database/migrations/20260127_add_parts_folder_url.sql` | RPC function for saving |
+
+#### Common Issues & Fixes
+
+**Issue: Manufacturer URLs not showing (only SharePoint markdown files)**
+- **Cause:** JSON attachment wasn't being fetched/parsed
+- **Fix:** Added code to download and parse `.json` attachment from Manus
+- **Commit:** `e3ea80a` (2026-01-30)
+
+**Issue: Document type not recognized (user_guide vs user_manual)**
+- **Cause:** Type matching was too narrow
+- **Fix:** Added `user_guide`, `install`, `product_info` to type matching
+- **Commit:** `af07e23` (2026-01-30)
+
+**Issue: Parts stuck in "processing" status**
+- **Cause:** Manus task failed or timed out without calling webhook
+- **Fix:** Created `/api/admin/clear-stale-statuses.js` endpoint to reset stuck parts
+- **Usage:** POST to endpoint to clear parts stuck >1 hour
+
+#### Brand Colors
+
+- **Manufacturer Source (Green):** `#94AF32`
+- **SharePoint/AI Compiled (Purple):** `#8B5CF6`
+
+#### Environment Variables
+
+```
+MANUS_API_KEY=your-manus-api-key
+```
+
+Add to Vercel: Settings → Environment Variables
+
+---
+
