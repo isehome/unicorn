@@ -188,61 +188,156 @@ module.exports = async function handler(req, res) {
 
 /**
  * Build the research prompt for Manus
- * Includes instructions to create markdown docs when PDFs aren't available
+ *
+ * This prompt is designed to help Manus build a comprehensive knowledge base
+ * with verified manufacturer sources. The focus is on:
+ * 1. Capturing actual manufacturer URLs (product pages, support pages, PDF downloads)
+ * 2. Downloading or linking to real PDFs from official sources
+ * 3. Creating backup markdown files with source links embedded
  */
 function buildResearchPrompt(part) {
   const manufacturer = part.manufacturer || 'Unknown';
   const partNumber = part.part_number || 'Unknown';
   const productName = part.name || partNumber;
-  const category = part.category || 'Equipment';
+  const category = part.category || 'AV/IT Equipment';
 
-  return `Research documentation for this AV/IT product and create documentation files:
+  return `# ${partNumber} Documentation Research and Creation
 
-**PRODUCT:**
-- Manufacturer: ${manufacturer}
-- Part Number: ${partNumber}
-- Product Name: ${productName}
-- Category: ${category}
+## OBJECTIVE
+Help us build the most comprehensive and accurate knowledge base possible for this product. We need VERIFIED manufacturer sources that our technicians can reference during installations and service calls.
 
-**TASK 1: Find existing PDF documentation**
-1. Go to ${manufacturer}'s official website
-2. Find the product page for ${partNumber}
-3. Look for downloadable PDFs: User Manual, Installation Guide, Datasheet, Quick Start Guide, Spec Sheet
+## PRODUCT INFORMATION
+- **Manufacturer:** ${manufacturer}
+- **Part/Model Number:** ${partNumber}
+- **Product Name:** ${productName}
+- **Category:** ${category}
 
-**TASK 2: Create markdown documentation files**
-For EACH of the following document types, create a .md file with useful information gathered from your research:
+---
 
-1. **${partNumber}-installation-guide.md** - Installation instructions including:
-   - Physical installation steps
-   - Mounting requirements (rack mount, shelf, wall, etc.)
-   - Cable connections and wiring
-   - Network setup if applicable
-   - Initial configuration steps
+## PHASE 1: MANUFACTURER SOURCE DISCOVERY
 
-2. **${partNumber}-specifications.md** - Technical specifications including:
-   - Physical dimensions (width, depth, height in inches)
-   - Weight
-   - Power requirements (watts, voltage)
-   - Network ports and connectivity
-   - Environmental requirements
-   - Rack mount info (U height if applicable)
+### Step 1: Find the Official Product Page
+1. Navigate to ${manufacturer}'s official website (${manufacturer.toLowerCase().replace(/\\s+/g, '')}.com or search for it)
+2. Search for "${partNumber}" on their site
+3. Find the OFFICIAL product page URL - this is critical
+4. Record the exact URL to the product page
 
-3. **${partNumber}-quick-reference.md** - Quick reference card including:
-   - Common settings and configurations
-   - LED indicator meanings
-   - Reset procedures
-   - Troubleshooting tips
-   - Support contact info
+### Step 2: Find Support & Documentation Pages
+From the product page or support section, find:
+- **Support/Downloads page** - where PDFs and manuals are hosted
+- **User Guide / Manual** - the main usage documentation (PDF or web-based)
+- **Installation Guide** - step-by-step setup instructions
+- **Quick Start Guide** - condensed setup reference
+- **Technical Specifications / Datasheet** - detailed specs sheet
+- **Service/Troubleshooting Guide** - if available
 
-**RESPONSE FORMAT:**
-Return a JSON object with:
+### Step 3: Locate Downloadable PDFs
+Look for direct PDF download links for:
+- User Manual PDF
+- Installation Manual PDF
+- Quick Start PDF
+- Specifications/Datasheet PDF
+- Any other service-related documentation
+
+**IMPORTANT:** We need the ACTUAL URLs to these PDFs, not just that they exist.
+
+### Step 4: Check Additional Verified Sources
+If manufacturer documentation is incomplete, also check:
+- FCC ID database (fcc.gov) for internal photos and test reports
+- CNET, TechRadar for detailed reviews with specs
+- Professional AV integrator resources (AvNation, rAVe, etc.)
+
+**Only include sources that can be verified as legitimate.**
+
+---
+
+## PHASE 2: CREATE BACKUP DOCUMENTATION FILES
+
+Create markdown (.md) files that serve as our knowledge base backup. Each file should include:
+- The source URL where information was found
+- Key information extracted from that source
+- Links to original PDFs and pages
+
+### Required Files:
+
+**1. ${partNumber}-installation-guide.md**
+Include:
+- Source URL at the top: "Source: [URL]"
+- Physical installation steps (mounting, placement)
+- Cable connections and wiring diagrams
+- Network/IP setup if applicable
+- Initial configuration and pairing
+- Common installation tips from the manufacturer
+
+**2. ${partNumber}-specifications.md**
+Include:
+- Source URL at the top
+- Physical: dimensions (W x D x H in inches), weight
+- Electrical: power consumption (watts), voltage, connector type
+- Connectivity: ports, wireless standards, protocols
+- Environmental: operating temp, humidity
+- Rack mounting: is it rack mountable? U height?
+
+**3. ${partNumber}-quick-reference.md**
+Include:
+- Source URL at the top
+- LED/indicator meanings and status lights
+- Button functions and reset procedures
+- Common settings and configurations
+- Troubleshooting: common issues and solutions
+- Factory reset procedure
+- Support contact information
+
+---
+
+## PHASE 3: JSON RESULTS FILE
+
+Create a JSON file named "${partNumber.toLowerCase().replace(/[^a-z0-9]/g, '-')}-documentation-results.json" with this structure:
+
+\`\`\`json
 {
-  "manufacturer_website": "https://...",
-  "product_page_url": "https://... (CRITICAL: the DIRECT URL to this specific product's page on the manufacturer website)",
+  "manufacturer": "${manufacturer}",
+  "part_number": "${partNumber}",
+  "product_name": "${productName}",
+  "manufacturer_website": "https://www.${manufacturer.toLowerCase().replace(/\\s+/g, '')}.com",
+  "product_page_url": "[ACTUAL PRODUCT PAGE URL]",
+  "support_page_url": "[SUPPORT/DOWNLOADS PAGE URL]",
   "documents": [
-    {"type": "user_manual", "title": "...", "url": "https://...pdf", "found": true},
-    {"type": "install_guide", "title": "...", "url": "https://...pdf", "found": true},
-    {"type": "datasheet", "title": "...", "url": null, "found": false}
+    {
+      "type": "user_guide",
+      "title": "[Document Title]",
+      "url": "[ACTUAL URL to PDF or web page]",
+      "format": "pdf|web",
+      "found": true
+    },
+    {
+      "type": "install_guide",
+      "title": "[Document Title]",
+      "url": "[ACTUAL URL]",
+      "format": "pdf|web",
+      "found": true
+    },
+    {
+      "type": "quick_start",
+      "title": "[Document Title]",
+      "url": "[ACTUAL URL]",
+      "format": "pdf|web",
+      "found": true
+    },
+    {
+      "type": "tech_specs",
+      "title": "[Document Title]",
+      "url": "[ACTUAL URL]",
+      "format": "pdf|web",
+      "found": true
+    },
+    {
+      "type": "datasheet",
+      "title": "[Document Title]",
+      "url": "[ACTUAL URL]",
+      "format": "pdf|web",
+      "found": true|false
+    }
   ],
   "specifications": {
     "width_inches": null,
@@ -250,21 +345,28 @@ Return a JSON object with:
     "height_inches": null,
     "weight_lbs": null,
     "power_watts": null,
+    "voltage": null,
     "is_rack_mountable": false,
     "u_height": null,
-    "network_ports": null
+    "has_network_port": false,
+    "wireless": false
   },
-  "created_files": [
-    {"filename": "${partNumber}-installation-guide.md", "type": "install_guide"},
-    {"filename": "${partNumber}-specifications.md", "type": "datasheet"},
-    {"filename": "${partNumber}-quick-reference.md", "type": "quick_reference"}
-  ],
-  "notes": "Summary of what was found and created"
+  "notes": "[Summary of what was found and any limitations]",
+  "sources_verified": true,
+  "research_date": "[TODAY'S DATE]"
 }
+\`\`\`
 
-**CRITICAL REQUIREMENTS:**
-1. **product_page_url is REQUIRED** - This must be the DIRECT link to this specific product on the manufacturer's website (e.g., https://www.apple.com/shop/product/MN893LL/A). A technician should be able to click this link and go straight to the product page. Do NOT use search result pages or category pages.
-2. Only include document URLs you verified exist and work
-3. ALWAYS create the markdown files with researched information
-4. If you can't find official PDFs, the markdown files become the primary documentation`;
+---
+
+## IMPORTANT NOTES
+
+1. **URL Accuracy is Critical** - We need the ACTUAL URLs that work, not placeholder text
+2. **Prefer Official Sources** - Manufacturer website > official distributors > third-party
+3. **PDF Links** - If you find a PDF, include the direct download URL
+4. **Web-based Guides** - Many manufacturers now have web-based guides instead of PDFs - those URLs are equally valuable
+5. **Verification** - Only include information you can verify from official sources
+6. **Be Thorough** - Check multiple pages on the manufacturer site (support, downloads, resources, documentation)
+
+The goal is to give our field technicians quick access to accurate documentation during installations and service calls. Quality and accuracy matter more than quantity.`;
 }
