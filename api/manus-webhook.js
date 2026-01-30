@@ -477,6 +477,30 @@ async function parseManusResponse(manusResult) {
     }
   }
 
+  // Safely parse numeric and boolean values from specifications
+  // These might come as strings like "2U for two Amps" or "125W per channel"
+  const parsedUHeight = safeParseInt(specifications.u_height);
+  const parsedWidthInches = safeParseFloat(specifications.width_inches);
+  const parsedDepthInches = safeParseFloat(specifications.depth_inches);
+  const parsedHeightInches = safeParseFloat(specifications.height_inches);
+  const parsedPowerWatts = safeParseFloat(specifications.power_watts);
+  const parsedIsRackMountable = safeParseBoolean(specifications.is_rack_mountable);
+  const parsedNeedsShelf = safeParseBoolean(specifications.needs_shelf);
+  const parsedIsWireless = safeParseBoolean(specifications.is_wireless);
+  const parsedPoeEnabled = safeParseBoolean(specifications.poe_enabled);
+  const parsedIsNetworkSwitch = safeParseBoolean(specifications.is_network_switch);
+  const parsedIsPowerDevice = safeParseBoolean(specifications.is_power_device);
+  const parsedTotalPorts = safeParseInt(specifications.total_ports);
+  const parsedSwitchPorts = safeParseInt(specifications.switch_ports);
+  const parsedPoeBudgetWatts = safeParseFloat(specifications.poe_budget_watts);
+  const parsedPoePorts = safeParseInt(specifications.poe_ports);
+  const parsedUplinkPorts = safeParseInt(specifications.uplink_ports);
+  const parsedPowerOutlets = safeParseInt(specifications.power_outlets);
+  const parsedPowerOutletsProvided = safeParseInt(specifications.power_outlets_provided);
+
+  console.log('[Manus Webhook] Parsed u_height:', specifications.u_height, '->', parsedUHeight);
+  console.log('[Manus Webhook] Parsed power_watts:', specifications.power_watts, '->', parsedPowerWatts);
+
   const enrichmentData = {
     manufacturer_website: data.manufacturer_website || null,
     product_page_url: productPageUrl,
@@ -488,13 +512,28 @@ async function parseManusResponse(manusResult) {
     original_manufacturer_urls: originalManufacturerUrls,
     install_manual_urls: originalInstallManualUrls,  // Start with manufacturer URLs
     technical_manual_urls: originalTechnicalManualUrls, // Start with manufacturer URLs
-    // Specifications
-    width_inches: specifications.width_inches || null,
-    depth_inches: specifications.depth_inches || null,
-    height_inches: specifications.height_inches || null,
-    power_watts: specifications.power_watts || null,
-    is_rack_mountable: specifications.is_rack_mountable || null,
-    u_height: specifications.u_height || null,
+    // Specifications - using safe parsing to prevent type errors in RPC
+    width_inches: parsedWidthInches,
+    depth_inches: parsedDepthInches,
+    height_inches: parsedHeightInches,
+    power_watts: parsedPowerWatts,
+    is_rack_mountable: parsedIsRackMountable,
+    u_height: parsedUHeight,
+    needs_shelf: parsedNeedsShelf,
+    is_wireless: parsedIsWireless,
+    // Network fields
+    is_network_switch: parsedIsNetworkSwitch,
+    total_ports: parsedTotalPorts,
+    switch_ports: parsedSwitchPorts,
+    poe_enabled: parsedPoeEnabled,
+    poe_budget_watts: parsedPoeBudgetWatts,
+    poe_ports: parsedPoePorts,
+    uplink_ports: parsedUplinkPorts,
+    // Power fields
+    is_power_device: parsedIsPowerDevice,
+    power_outlets: parsedPowerOutlets,
+    power_outlets_provided: parsedPowerOutletsProvided,
+    // Notes
     notes: rawText || data.notes || 'Researched via Manus AI',
     manus_message: rawText,
     confidence: 0.95
@@ -511,6 +550,55 @@ async function parseManusResponse(manusResult) {
   console.log('  - support_page_url:', enrichmentData.support_page_url);
 
   return enrichmentData;
+}
+
+/**
+ * Safely extract an integer from a value that might be a string with extra text
+ * e.g., "2U for two Amps" -> 2, "125W per channel" -> 125, "4.63 lbs" -> null (not integer)
+ */
+function safeParseInt(value) {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'number') return Number.isInteger(value) ? value : null;
+  if (typeof value !== 'string') return null;
+
+  // Try to extract just the leading number
+  const match = value.match(/^(\d+)/);
+  if (match) {
+    return parseInt(match[1], 10);
+  }
+  return null;
+}
+
+/**
+ * Safely extract a float from a value that might be a string with extra text
+ * e.g., "4.63 lbs" -> 4.63, "2.52 x 8.54" -> 2.52
+ */
+function safeParseFloat(value) {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'number') return value;
+  if (typeof value !== 'string') return null;
+
+  // Try to extract the first number (integer or decimal)
+  const match = value.match(/^([\d.]+)/);
+  if (match) {
+    const num = parseFloat(match[1]);
+    return isNaN(num) ? null : num;
+  }
+  return null;
+}
+
+/**
+ * Safely parse a boolean from various formats
+ */
+function safeParseBoolean(value) {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') {
+    const lower = value.toLowerCase().trim();
+    if (lower === 'true' || lower === 'yes' || lower === '1') return true;
+    if (lower === 'false' || lower === 'no' || lower === '0') return false;
+  }
+  return null;
 }
 
 /**
