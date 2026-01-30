@@ -1,8 +1,52 @@
-# UNICORN QUICKSTART - Claude Cowork Development Guide
+# UNICORN - Claude Cowork Development Guide
 
-> **This file contains everything you need for Unicorn development in Cowork.**
-> Read this ONCE at session start. Then use topic docs for deep dives.
-> **NEVER read AGENT.md** - it's 300KB and exhausts context.
+> **Read this file at the start of EVERY Cowork session.**
+
+---
+
+## ⚠️ FIRST: CREATE YOUR TODO LIST
+
+**Before starting ANY work, create a todo list that includes documentation updates:**
+
+```
+Example todos for "Add a new equipment filter":
+1. [ ] Understand current equipment filtering (read docs if needed)
+2. [ ] Implement the filter feature
+3. [ ] Test the feature
+4. [ ] Update AGENT.md changelog (MANDATORY)
+5. [ ] Update docs/EQUIPMENT.md if needed
+```
+
+**The "Update AGENT.md changelog" todo is MANDATORY for every task.** This ensures the AI brain stays current.
+
+---
+
+## HOW TO ACCESS UNICORN DOCUMENTATION
+
+| Need | Action |
+|------|--------|
+| **Dev patterns, colors, rules** | Use this file (already loaded) |
+| **Deep dive on a feature** | Read `docs/[TOPIC].md` (see routing table below) |
+| **Detailed business logic not in topic doc** | Read specific section of `AGENT.md` (see below) |
+
+### Reading AGENT.md Selectively
+
+AGENT.md is 300KB - **never read the whole file**. Instead, read only the section you need:
+
+| Topic | AGENT.md Lines | What You'll Find |
+|-------|----------------|------------------|
+| Wire Drops, Stages, Prewire | 1-500 | Complete wire drop business logic |
+| Equipment, Parts, CSV Import | 500-900 | Equipment system, 3-tier architecture |
+| Milestones, Progress | 900-1200 | All 8 milestone calculations |
+| Procurement, POs | 1200-1500 | PO workflow, receiving, vendors |
+| Shades, Measurements | (in PART 1) | Shade measuring workflow |
+| Styling, UI Patterns | 1510-2000 | Component patterns, mobile UX |
+| Database Rules, Auth | 2000-2400 | MSAL auth, RLS, timestamp rules |
+| Voice AI, Copilot | 2700-3100 | Gemini integration, 5 meta-tools |
+| External Portals | 3118-3260 | Public portal architecture |
+
+**Example:** "I need to understand how milestone calculations work in detail"
+→ Read AGENT.md lines 900-1200
 
 ---
 
@@ -396,12 +440,24 @@ const PublicPortal = () => {
 
 ## MANDATORY: UPDATE DOCUMENTATION AFTER EVERY CHANGE
 
-**This is NOT optional. Every completed feature/fix MUST update docs.**
+**This is NOT optional. You MUST have "Update AGENT.md changelog" in your todo list.**
 
-### Step 1: Update AGENT.md Changelog
+### Why This Is Critical
 
-Add entry to PART 6 (Changelog) at the TOP of the changelog section:
+AGENT.md is the **AI brain** for:
+- Voice copilot (Sarah/Gemini) understanding the app
+- Future AI agents that work with Unicorn
+- New Claude Cowork sessions understanding business context
 
+**Undocumented features don't exist to AI.** If it's not in AGENT.md, the voice copilot won't know about it, and the next Claude session won't know either.
+
+### Step 1: Update AGENT.md Changelog (ALWAYS)
+
+Add entry to **PART 6 (Changelog)** at the TOP of the changelog section.
+
+**To find the changelog:** Read AGENT.md starting around line 3200, look for "# PART 6" or "## Changelog"
+
+**Entry format:**
 ```markdown
 ### YYYY-MM-DD - [Feature/Fix Name]
 **What:** Brief description of what was added/changed
@@ -430,20 +486,11 @@ Add entry to PART 6 (Changelog) at the TOP of the changelog section:
 
 If you changed a core pattern, color, service, or added a new "NEVER DO" rule, update this file.
 
-### Why This Matters
-
-AGENT.md is the **AI brain** for:
-- Voice copilot (Sarah/Gemini) understanding the app
-- Future AI agents that work with Unicorn
-- New developers/Claude sessions understanding business context
-
-**Undocumented features don't exist to AI.** If it's not in AGENT.md, the voice copilot won't know about it.
-
 ---
 
 ## NEVER DO
 
-- Read AGENT.md (300KB, exhausts context)
+- Read ALL of AGENT.md (300KB exhausts context - read sections selectively per the table above)
 - Use `green-*` or `emerald-*` Tailwind classes
 - Use `gray-*` classes (use `zinc-*`)
 - Custom back buttons (use AppHeader)
@@ -475,19 +522,16 @@ AGENT.md is the **AI brain** for:
 
 ## AFTER COMPLETING WORK - MANDATORY
 
-**DO NOT mark work as complete until documentation is updated.**
+**DO NOT mark the "Update AGENT.md changelog" todo as complete until it's actually done.**
 
-### Required Updates:
+### Your Final Todo Item
 
-1. **`AGENT.md` changelog** (ALWAYS) - Add entry to PART 6 with:
-   - Date, feature name
-   - What changed and why (business context)
-   - Files modified
-   - AI-relevant notes
+Every task should end with updating documentation. Before saying "done":
 
-2. **Topic doc** (if applicable) - Update the relevant `docs/*.md`
-
-3. **This file** (if pattern changed) - Update QUICKSTART.md
+1. ✅ Read the changelog section of AGENT.md (around line 3200+)
+2. ✅ Add your changelog entry at the TOP
+3. ✅ Update any relevant `docs/*.md` file
+4. ✅ Mark your documentation todo as complete
 
 ### Changelog Entry Template:
 
@@ -500,8 +544,16 @@ AGENT.md is the **AI brain** for:
 **AI Note:** [What voice copilot needs to know]
 ```
 
-**Remember: Undocumented features don't exist to AI.**
-
 ---
 
-**Session ready. What would you like to work on?**
+## SESSION START CHECKLIST
+
+When you read this file, immediately:
+
+1. ✅ Understand the task
+2. ✅ Create todo list WITH "Update AGENT.md changelog" as final item
+3. ✅ Read relevant `docs/*.md` if needed
+4. ✅ Read specific AGENT.md section if topic doc is insufficient
+5. ✅ Begin work
+
+**Ready to help. What would you like to work on?**

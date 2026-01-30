@@ -74,6 +74,40 @@ const HRPreferencesManager = () => {
   const [newHolidayName, setNewHolidayName] = useState('');
   const [newHolidayDate, setNewHolidayDate] = useState('');
 
+  // Default preferences (used when table doesn't exist or no data)
+  const getDefaultPreferences = () => ({
+    use_unified_pto: false,
+    unified_pto_name: 'Personal Time Off',
+    unified_pto_annual_hours: 120,
+    vacation_annual_hours: 80,
+    sick_annual_hours: 40,
+    personal_annual_hours: 24,
+    vacation_max_carryover_hours: 40,
+    sick_max_carryover_hours: 40,
+    personal_max_carryover_hours: 0,
+    unified_max_carryover_hours: 40,
+    pto_accrual_method: 'annual',
+    fiscal_year_start_month: 1,
+    observed_holidays: STANDARD_HOLIDAYS.filter(h => h.defaultObserved).map(h => h.name),
+    custom_holidays: [],
+    min_notice_days: 2,
+    allow_negative_balance: false,
+    max_negative_hours: 0,
+    require_approval: true,
+    blackout_dates: [],
+    hours_per_day: 8,
+    enable_tenure_increases: false,
+    tenure_tiers: [
+      { years: 1, additional_vacation_hours: 0 },
+      { years: 3, additional_vacation_hours: 8 },
+      { years: 5, additional_vacation_hours: 16 },
+      { years: 10, additional_vacation_hours: 24 }
+    ]
+  });
+
+  // Check if table exists
+  const [tableExists, setTableExists] = useState(true);
+
   // Load preferences
   const loadPreferences = useCallback(async () => {
     try {
@@ -86,48 +120,35 @@ const HRPreferencesManager = () => {
         .limit(1)
         .single();
 
-      if (fetchError && fetchError.code !== 'PGRST116') {
-        throw fetchError;
+      // Check if table doesn't exist (error code 42P01 = relation does not exist)
+      if (fetchError) {
+        if (fetchError.code === '42P01' || fetchError.message?.includes('does not exist')) {
+          setTableExists(false);
+          setPreferences(getDefaultPreferences());
+          return;
+        }
+        // PGRST116 = no rows returned, which is okay
+        if (fetchError.code !== 'PGRST116') {
+          throw fetchError;
+        }
       }
 
       // If no preferences exist, use defaults
       if (!data) {
-        setPreferences({
-          use_unified_pto: false,
-          unified_pto_name: 'Personal Time Off',
-          unified_pto_annual_hours: 120,
-          vacation_annual_hours: 80,
-          sick_annual_hours: 40,
-          personal_annual_hours: 24,
-          vacation_max_carryover_hours: 40,
-          sick_max_carryover_hours: 40,
-          personal_max_carryover_hours: 0,
-          unified_max_carryover_hours: 40,
-          pto_accrual_method: 'annual',
-          fiscal_year_start_month: 1,
-          observed_holidays: STANDARD_HOLIDAYS.filter(h => h.defaultObserved).map(h => h.name),
-          custom_holidays: [],
-          min_notice_days: 2,
-          allow_negative_balance: false,
-          max_negative_hours: 0,
-          require_approval: true,
-          blackout_dates: [],
-          hours_per_day: 8,
-          enable_tenure_increases: false,
-          tenure_tiers: [
-            { years: 1, additional_vacation_hours: 0 },
-            { years: 3, additional_vacation_hours: 8 },
-            { years: 5, additional_vacation_hours: 16 },
-            { years: 10, additional_vacation_hours: 24 }
-          ]
-        });
+        setPreferences(getDefaultPreferences());
       } else {
         setPreferences(data);
       }
 
     } catch (err) {
       console.error('[HRPreferencesManager] Load error:', err);
-      setError('Failed to load HR preferences');
+      // If it's a table-not-found error, show helpful message
+      if (err.code === '42P01' || err.message?.includes('does not exist')) {
+        setTableExists(false);
+        setPreferences(getDefaultPreferences());
+      } else {
+        setError('Failed to load HR preferences. Please check the console for details.');
+      }
     } finally {
       setLoading(false);
     }
@@ -139,6 +160,12 @@ const HRPreferencesManager = () => {
 
   // Save preferences
   const handleSave = async () => {
+    // Show error if table doesn't exist
+    if (!tableExists) {
+      setError('Cannot save: Please run the database migration first (see warning above)');
+      return;
+    }
+
     try {
       setSaving(true);
       setError(null);
@@ -151,11 +178,18 @@ const HRPreferencesManager = () => {
       };
 
       // Check if record exists
-      const { data: existing } = await supabase
+      const { data: existing, error: checkError } = await supabase
         .from('company_hr_preferences')
         .select('id')
         .limit(1)
         .single();
+
+      // Handle table not existing
+      if (checkError && (checkError.code === '42P01' || checkError.message?.includes('does not exist'))) {
+        setTableExists(false);
+        setError('Cannot save: Please run the database migration first');
+        return;
+      }
 
       if (existing) {
         const { error: updateError } = await supabase
@@ -273,6 +307,27 @@ const HRPreferencesManager = () => {
           )}
         </button>
       </div>
+
+      {/* Database Setup Warning */}
+      {!tableExists && (
+        <div className="p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl">
+          <div className="flex items-start gap-3">
+            <AlertCircle size={20} className="text-amber-500 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="font-medium text-amber-700 dark:text-amber-300">Database Migration Required</p>
+              <p className="text-sm text-amber-600 dark:text-amber-400 mt-1">
+                The HR preferences table hasn't been created yet. To enable this feature, run the following migration in your Supabase SQL editor:
+              </p>
+              <code className="block mt-2 p-2 bg-amber-100 dark:bg-amber-900/30 rounded text-xs font-mono text-amber-800 dark:text-amber-200 overflow-x-auto">
+                database/migrations/2026-01-29_hr_company_preferences.sql
+              </code>
+              <p className="text-xs text-amber-500 mt-2">
+                You can still view and configure settings below, but changes won't be saved until the migration is run.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Messages */}
       {error && (
