@@ -81,9 +81,10 @@ const ServiceAITest = lazy(() => import('./pages/ServiceAITest'));
 // Admin
 const AdminPage = lazy(() => import('./pages/AdminPage'));
 
-// Career Development
+// Career Development & HR
 const CareerDevelopmentPage = lazy(() => import('./pages/CareerDevelopmentPage'));
 const TeamReviewsPage = lazy(() => import('./pages/TeamReviewsPage'));
+const MyHRPage = lazy(() => import('./pages/MyHRPage'));
 
 
 const AppRoutes = () => {
@@ -515,7 +516,15 @@ const AppRoutes = () => {
                   </ProtectedRoute>
                 }
               />
-              {/* Career Development Routes */}
+              {/* HR & Career Development Routes */}
+              <Route
+                path="/my-hr"
+                element={
+                  <ProtectedRoute>
+                    <MyHRPage />
+                  </ProtectedRoute>
+                }
+              />
               <Route
                 path="/career"
                 element={

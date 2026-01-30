@@ -1088,6 +1088,15 @@ Organization structure - who reports to whom.
 
 **Constraint:** `employee_id != manager_id` (no self-management)
 
+**RPC Function - get_all_reports:**
+```sql
+-- Get all reports (direct and indirect) for a manager recursively
+SELECT * FROM get_all_reports(p_manager_id UUID, p_include_inactive BOOLEAN DEFAULT FALSE);
+```
+Returns: `employee_id`, `full_name`, `email`, `role`, `avatar_color`, `is_active`, `direct_manager_id`, `direct_manager_name`, `hierarchy_level`, `hierarchy_path`
+
+Used by: `PeopleManager.js`, `TeamReviewsPage.js`, `careerDevelopmentService.js`
+
 ---
 
 ### review_cycles

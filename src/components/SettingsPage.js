@@ -9,11 +9,10 @@ import ThemeToggle from './ui/ThemeToggle';
 import Button from './ui/Button';
 import ColorPicker from './ui/ColorPicker';
 import TechnicianAvatar from './TechnicianAvatar';
-import { Printer, CheckCircle, WifiOff, AlertCircle, Smartphone, LogOut, ChevronRight, Loader2, X, Shield, GraduationCap } from 'lucide-react';
+import { Printer, CheckCircle, WifiOff, AlertCircle, Smartphone, LogOut, ChevronRight, Loader2, X, Shield, Briefcase } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
 import AISettings from './UserSettings/AISettings';
-import UserSkillsSection from './UserSettings/UserSkillsSection';
 
 
 const SettingsPage = () => {
@@ -414,22 +413,19 @@ const SettingsPage = () => {
       {/* AI Copilot Settings */}
       <AISettings />
 
-      {/* User Skills Section */}
-      <UserSkillsSection />
-
-      {/* Career Development Section */}
+      {/* My HR Section - replaces My Skills and Career Development */}
       <section className="rounded-2xl border p-4" style={sectionStyles.card}>
         <button
-          onClick={() => navigate('/career')}
+          onClick={() => navigate('/my-hr')}
           className="w-full flex items-center justify-between"
         >
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-lg bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center">
-              <GraduationCap size={20} className="text-violet-600 dark:text-violet-400" />
+              <Briefcase size={20} className="text-violet-600 dark:text-violet-400" />
             </div>
             <div className="text-left">
-              <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Career Development</h2>
-              <p className="text-xs text-gray-500 dark:text-gray-400">Self-evaluation, development goals, and quarterly reviews</p>
+              <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">My HR</h2>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Career development, team reviews, and time off</p>
             </div>
           </div>
           <ChevronRight size={20} className="text-gray-400" />

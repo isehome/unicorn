@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { companySettingsService } from '../../services/companySettingsService';
 import { supabase } from '../../lib/supabase';
 import Button from '../ui/Button';
@@ -16,9 +16,52 @@ import {
   Clock,
   DollarSign,
   ChevronDown,
-  ChevronRight
+  ChevronRight,
+  CalendarDays,
+  Plus,
+  Trash2,
+  Loader2
 } from 'lucide-react';
 import BrandColorPicker from '../ui/BrandColorPicker';
+
+// Standard US holidays for quick-add
+const STANDARD_HOLIDAYS = [
+  { name: "New Year's Day", getDate: (year) => `${year}-01-01` },
+  { name: "Martin Luther King Jr. Day", getDate: (year) => getNthWeekday(year, 1, 1, 3) }, // 3rd Monday of January
+  { name: "Presidents' Day", getDate: (year) => getNthWeekday(year, 2, 1, 3) }, // 3rd Monday of February
+  { name: "Memorial Day", getDate: (year) => getLastWeekday(year, 5, 1) }, // Last Monday of May
+  { name: "Juneteenth", getDate: (year) => `${year}-06-19` },
+  { name: "Independence Day", getDate: (year) => `${year}-07-04` },
+  { name: "Labor Day", getDate: (year) => getNthWeekday(year, 9, 1, 1) }, // 1st Monday of September
+  { name: "Columbus Day", getDate: (year) => getNthWeekday(year, 10, 1, 2) }, // 2nd Monday of October
+  { name: "Veterans Day", getDate: (year) => `${year}-11-11` },
+  { name: "Thanksgiving", getDate: (year) => getNthWeekday(year, 11, 4, 4) }, // 4th Thursday of November
+  { name: "Day After Thanksgiving", getDate: (year) => {
+    const thanksgiving = getNthWeekday(year, 11, 4, 4);
+    const date = new Date(thanksgiving);
+    date.setDate(date.getDate() + 1);
+    return date.toISOString().split('T')[0];
+  }},
+  { name: "Christmas Eve", getDate: (year) => `${year}-12-24` },
+  { name: "Christmas Day", getDate: (year) => `${year}-12-25` },
+  { name: "New Year's Eve", getDate: (year) => `${year}-12-31` }
+];
+
+// Helper to get nth weekday of a month
+function getNthWeekday(year, month, dayOfWeek, n) {
+  const firstDay = new Date(year, month - 1, 1);
+  const firstOccurrence = 1 + (dayOfWeek - firstDay.getDay() + 7) % 7;
+  const nthOccurrence = firstOccurrence + (n - 1) * 7;
+  return `${year}-${String(month).padStart(2, '0')}-${String(nthOccurrence).padStart(2, '0')}`;
+}
+
+// Helper to get last weekday of a month
+function getLastWeekday(year, month, dayOfWeek) {
+  const lastDay = new Date(year, month, 0); // Last day of month
+  const diff = (lastDay.getDay() - dayOfWeek + 7) % 7;
+  lastDay.setDate(lastDay.getDate() - diff);
+  return lastDay.toISOString().split('T')[0];
+}
 
 /**
  * CompanySettingsManager Component
@@ -35,6 +78,14 @@ const CompanySettingsManager = () => {
   const [success, setSuccess] = useState(null);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [showBrandColors, setShowBrandColors] = useState(false);
+  const [showHolidays, setShowHolidays] = useState(false);
+
+  // Holidays state
+  const [holidays, setHolidays] = useState([]);
+  const [holidaysLoading, setHolidaysLoading] = useState(false);
+  const [holidaysSaving, setHolidaysSaving] = useState(false);
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [newHoliday, setNewHoliday] = useState({ name: '', date: '', is_paid: true, is_company_closed: true });
 
   // Form state
   const [formData, setFormData] = useState({
@@ -94,6 +145,156 @@ const CompanySettingsManager = () => {
 
   const handleInputChange = (field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  // Load holidays for selected year
+  const loadHolidays = useCallback(async () => {
+    try {
+      setHolidaysLoading(true);
+      const { data, error: fetchError } = await supabase
+        .from('company_holidays')
+        .select('*')
+        .eq('year', selectedYear)
+        .order('date', { ascending: true });
+
+      if (fetchError) throw fetchError;
+      setHolidays(data || []);
+    } catch (err) {
+      console.error('Failed to load holidays:', err);
+    } finally {
+      setHolidaysLoading(false);
+    }
+  }, [selectedYear]);
+
+  useEffect(() => {
+    if (showHolidays) {
+      loadHolidays();
+    }
+  }, [showHolidays, loadHolidays]);
+
+  // Add a single holiday
+  const addHoliday = async () => {
+    if (!newHoliday.name.trim() || !newHoliday.date) return;
+
+    try {
+      setHolidaysSaving(true);
+      const holidayDate = new Date(newHoliday.date);
+
+      const { error: insertError } = await supabase
+        .from('company_holidays')
+        .insert({
+          name: newHoliday.name.trim(),
+          date: newHoliday.date,
+          year: holidayDate.getFullYear(),
+          is_paid: newHoliday.is_paid,
+          is_company_closed: newHoliday.is_company_closed
+        });
+
+      if (insertError) throw insertError;
+
+      setNewHoliday({ name: '', date: '', is_paid: true, is_company_closed: true });
+      await loadHolidays();
+      setSuccess('Holiday added');
+      setTimeout(() => setSuccess(null), 2000);
+    } catch (err) {
+      console.error('Failed to add holiday:', err);
+      setError('Failed to add holiday');
+    } finally {
+      setHolidaysSaving(false);
+    }
+  };
+
+  // Delete a holiday
+  const deleteHoliday = async (holidayId) => {
+    try {
+      const { error: deleteError } = await supabase
+        .from('company_holidays')
+        .delete()
+        .eq('id', holidayId);
+
+      if (deleteError) throw deleteError;
+      await loadHolidays();
+    } catch (err) {
+      console.error('Failed to delete holiday:', err);
+      setError('Failed to delete holiday');
+    }
+  };
+
+  // Add standard holidays for a year
+  const addStandardHolidays = async () => {
+    try {
+      setHolidaysSaving(true);
+
+      const holidaysToAdd = STANDARD_HOLIDAYS.map(h => ({
+        name: h.name,
+        date: h.getDate(selectedYear),
+        year: selectedYear,
+        is_paid: true,
+        is_company_closed: true
+      }));
+
+      // Use upsert to avoid duplicates
+      const { error: insertError } = await supabase
+        .from('company_holidays')
+        .upsert(holidaysToAdd, { onConflict: 'date,name', ignoreDuplicates: true });
+
+      if (insertError) throw insertError;
+
+      await loadHolidays();
+      setSuccess(`Standard holidays added for ${selectedYear}`);
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (err) {
+      console.error('Failed to add standard holidays:', err);
+      setError('Failed to add standard holidays');
+    } finally {
+      setHolidaysSaving(false);
+    }
+  };
+
+  // Copy holidays to next year
+  const copyHolidaysToNextYear = async () => {
+    try {
+      setHolidaysSaving(true);
+      const nextYear = selectedYear + 1;
+
+      // Get current year holidays that are standard
+      const holidaysToAdd = holidays.map(h => {
+        // Try to find a standard holiday match to get the correct date
+        const standardMatch = STANDARD_HOLIDAYS.find(sh => sh.name === h.name);
+        let newDate;
+
+        if (standardMatch) {
+          newDate = standardMatch.getDate(nextYear);
+        } else {
+          // For custom holidays, just bump the year
+          const date = new Date(h.date);
+          date.setFullYear(nextYear);
+          newDate = date.toISOString().split('T')[0];
+        }
+
+        return {
+          name: h.name,
+          date: newDate,
+          year: nextYear,
+          is_paid: h.is_paid,
+          is_company_closed: h.is_company_closed
+        };
+      });
+
+      const { error: insertError } = await supabase
+        .from('company_holidays')
+        .upsert(holidaysToAdd, { onConflict: 'date,name', ignoreDuplicates: true });
+
+      if (insertError) throw insertError;
+
+      setSuccess(`Holidays copied to ${nextYear}`);
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (err) {
+      console.error('Failed to copy holidays:', err);
+      setError('Failed to copy holidays to next year');
+    } finally {
+      setHolidaysSaving(false);
+    }
   };
 
   const handleLogoUpload = async (e) => {
@@ -495,6 +696,168 @@ const CompanySettingsManager = () => {
               This rate will be used when calculating labor costs on service tickets unless a different rate is set on the individual ticket.
             </p>
           </div>
+        </div>
+
+        {/* Company Holidays Section - Collapsible */}
+        <div className="border border-gray-200 dark:border-zinc-700 rounded-lg overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setShowHolidays(!showHolidays)}
+            className="w-full flex items-center justify-between p-4 text-left hover:bg-gray-50 dark:hover:bg-zinc-800/50 transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <CalendarDays className="w-4 h-4 text-amber-500" />
+              <h4 className="text-sm font-semibold text-gray-900 dark:text-white">Company Holidays</h4>
+              <span className="text-xs text-gray-500 dark:text-gray-400">
+                (Observed days off)
+              </span>
+            </div>
+            {showHolidays ? (
+              <ChevronDown className="w-4 h-4 text-gray-400" />
+            ) : (
+              <ChevronRight className="w-4 h-4 text-gray-400" />
+            )}
+          </button>
+
+          {showHolidays && (
+            <div className="p-4 pt-0 border-t border-gray-200 dark:border-zinc-700 space-y-4">
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Define company-observed holidays. These dates will appear in the Time Off section and are used for PTO calculations.
+              </p>
+
+              {/* Year Selector and Actions */}
+              <div className="flex items-center justify-between gap-4 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <label className="text-sm text-gray-600 dark:text-gray-400">Year:</label>
+                  <select
+                    value={selectedYear}
+                    onChange={(e) => setSelectedYear(parseInt(e.target.value))}
+                    className="px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white text-sm"
+                  >
+                    {[...Array(5)].map((_, i) => {
+                      const year = new Date().getFullYear() + i;
+                      return <option key={year} value={year}>{year}</option>;
+                    })}
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={addStandardHolidays}
+                    disabled={holidaysSaving}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 hover:bg-amber-200 dark:hover:bg-amber-900/50 disabled:opacity-50"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    Add US Holidays
+                  </button>
+                  <button
+                    type="button"
+                    onClick={copyHolidaysToNextYear}
+                    disabled={holidaysSaving || holidays.length === 0}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 disabled:opacity-50"
+                  >
+                    Copy to {selectedYear + 1}
+                  </button>
+                </div>
+              </div>
+
+              {/* Holidays List */}
+              <div className="rounded-lg border border-gray-200 dark:border-zinc-700 overflow-hidden">
+                {holidaysLoading ? (
+                  <div className="p-4 text-center">
+                    <Loader2 className="w-5 h-5 animate-spin mx-auto text-gray-400" />
+                  </div>
+                ) : holidays.length > 0 ? (
+                  <div className="divide-y divide-gray-200 dark:divide-zinc-700 max-h-64 overflow-y-auto">
+                    {holidays.map(holiday => {
+                      const date = new Date(holiday.date + 'T00:00:00');
+                      return (
+                        <div key={holiday.id} className="flex items-center gap-3 p-3 hover:bg-gray-50 dark:hover:bg-zinc-800/50">
+                          <div className="w-12 text-center flex-shrink-0">
+                            <p className="text-lg font-bold text-gray-900 dark:text-white">{date.getDate()}</p>
+                            <p className="text-xs text-gray-500 uppercase">{date.toLocaleDateString('en-US', { month: 'short' })}</p>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{holiday.name}</p>
+                            <p className="text-xs text-gray-500">
+                              {date.toLocaleDateString('en-US', { weekday: 'long' })}
+                              {holiday.is_paid && ' · Paid'}
+                              {holiday.is_company_closed && ' · Office Closed'}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => deleteHoliday(holiday.id)}
+                            className="p-1.5 rounded-lg text-red-500 hover:bg-red-100 dark:hover:bg-red-900/30"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="p-4 text-center text-sm text-gray-500 dark:text-gray-400">
+                    No holidays configured for {selectedYear}. Click "Add US Holidays" to add standard holidays.
+                  </div>
+                )}
+              </div>
+
+              {/* Add Custom Holiday */}
+              <div className="p-3 bg-gray-50 dark:bg-zinc-800/50 rounded-lg">
+                <p className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2">Add Custom Holiday</p>
+                <div className="flex items-end gap-2 flex-wrap">
+                  <div className="flex-1 min-w-[200px]">
+                    <input
+                      type="text"
+                      value={newHoliday.name}
+                      onChange={(e) => setNewHoliday(prev => ({ ...prev, name: e.target.value }))}
+                      placeholder="Holiday name"
+                      className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-zinc-900 text-gray-900 dark:text-white text-sm"
+                    />
+                  </div>
+                  <div>
+                    <input
+                      type="date"
+                      value={newHoliday.date}
+                      onChange={(e) => setNewHoliday(prev => ({ ...prev, date: e.target.value }))}
+                      className="px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-zinc-900 text-gray-900 dark:text-white text-sm"
+                    />
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <label className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-400 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={newHoliday.is_paid}
+                        onChange={(e) => setNewHoliday(prev => ({ ...prev, is_paid: e.target.checked }))}
+                        className="rounded border-gray-300 text-violet-500"
+                      />
+                      Paid
+                    </label>
+                    <label className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-400 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={newHoliday.is_company_closed}
+                        onChange={(e) => setNewHoliday(prev => ({ ...prev, is_company_closed: e.target.checked }))}
+                        className="rounded border-gray-300 text-violet-500"
+                      />
+                      Closed
+                    </label>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={addHoliday}
+                    disabled={holidaysSaving || !newHoliday.name.trim() || !newHoliday.date}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium bg-violet-500 text-white hover:bg-violet-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {holidaysSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                    Add
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Save Button */}

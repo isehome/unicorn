@@ -35,6 +35,7 @@ import CompanySettingsManager from '../components/procurement/CompanySettingsMan
 import ReviewCyclesManager from '../components/Admin/ReviewCyclesManager';
 import OrgStructureManager from '../components/Admin/OrgStructureManager';
 import PeopleManager from '../components/Admin/PeopleManager';
+import HRPreferencesManager from '../components/Admin/HRPreferencesManager';
 
 // Role definitions with hierarchy
 const USER_ROLES = [
@@ -2472,6 +2473,17 @@ const AdminPage = () => {
           Review Cycles
         </button>
         <button
+          onClick={() => setActiveTab('hr-preferences')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            activeTab === 'hr-preferences'
+              ? 'bg-violet-500 text-white'
+              : 'bg-gray-100 dark:bg-zinc-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-zinc-600'
+          }`}
+        >
+          <Briefcase size={16} />
+          HR Preferences
+        </button>
+        <button
           onClick={() => setActiveTab('features')}
           className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
             activeTab === 'features'
@@ -2549,6 +2561,11 @@ const AdminPage = () => {
       {activeTab === 'review-cycles' && (
         <div className="mt-6 p-6 rounded-xl border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800">
           <ReviewCyclesManager />
+        </div>
+      )}
+      {activeTab === 'hr-preferences' && (
+        <div className="mt-6 p-6 rounded-xl border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800">
+          <HRPreferencesManager />
         </div>
       )}
       {activeTab === 'features' && renderFeaturesTab()}
