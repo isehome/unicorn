@@ -290,83 +290,103 @@ Include:
 
 ---
 
-## PHASE 3: JSON RESULTS FILE
+## PHASE 3: JSON RESULTS FILE - CRITICAL OUTPUT
 
-Create a JSON file named "${partNumber.toLowerCase().replace(/[^a-z0-9]/g, '-')}-documentation-results.json" with this structure:
+**THIS IS THE MOST IMPORTANT OUTPUT.** Create a JSON file named "${partNumber.toLowerCase().replace(/[^a-z0-9]/g, '-')}-documentation-results.json".
+
+**CRITICAL: You MUST include the actual URLs you visited during research. Do NOT use placeholder text like "[URL]" - use the REAL URLs you found.**
+
+Example of WRONG output:
+  "product_page_url": "[ACTUAL PRODUCT PAGE URL]"  ❌ WRONG
+
+Example of CORRECT output:
+  "product_page_url": "https://www.sonos.com/en-us/shop/amp"  ✅ CORRECT
+
+Here is the structure - replace ALL bracketed placeholders with real data:
 
 \`\`\`json
 {
   "manufacturer": "${manufacturer}",
   "part_number": "${partNumber}",
   "product_name": "${productName}",
-  "manufacturer_website": "https://www.${manufacturer.toLowerCase().replace(/\\s+/g, '')}.com",
-  "product_page_url": "[ACTUAL PRODUCT PAGE URL]",
-  "support_page_url": "[SUPPORT/DOWNLOADS PAGE URL]",
+  "manufacturer_website": "https://www.example.com",
+  "product_page_url": "https://www.example.com/products/actual-product-page",
+  "support_page_url": "https://www.example.com/support/actual-support-page",
+  "all_discovered_urls": [
+    {
+      "url": "https://actual-url-you-visited.com/page",
+      "title": "Page title or description",
+      "type": "product_page|support|manual|datasheet|other"
+    }
+  ],
   "documents": [
     {
       "type": "user_guide",
-      "title": "[Document Title]",
-      "url": "[ACTUAL URL to PDF or web page]",
-      "format": "pdf|web",
+      "title": "Actual Document Title",
+      "url": "https://actual-url-to-pdf-or-webpage.com/doc.pdf",
+      "format": "pdf",
       "found": true
     },
     {
       "type": "install_guide",
-      "title": "[Document Title]",
-      "url": "[ACTUAL URL]",
-      "format": "pdf|web",
+      "title": "Actual Document Title",
+      "url": "https://actual-url.com/install-guide",
+      "format": "web",
       "found": true
     },
     {
       "type": "quick_start",
-      "title": "[Document Title]",
-      "url": "[ACTUAL URL]",
-      "format": "pdf|web",
+      "title": "Actual Document Title",
+      "url": "https://actual-url.com/quick-start.pdf",
+      "format": "pdf",
       "found": true
     },
     {
       "type": "tech_specs",
-      "title": "[Document Title]",
-      "url": "[ACTUAL URL]",
-      "format": "pdf|web",
+      "title": "Actual Document Title",
+      "url": "https://actual-url.com/specifications",
+      "format": "web",
       "found": true
-    },
-    {
-      "type": "datasheet",
-      "title": "[Document Title]",
-      "url": "[ACTUAL URL]",
-      "format": "pdf|web",
-      "found": true|false
     }
   ],
   "specifications": {
-    "width_inches": null,
-    "depth_inches": null,
-    "height_inches": null,
-    "weight_lbs": null,
-    "power_watts": null,
-    "voltage": null,
+    "width_inches": 7.5,
+    "depth_inches": 5.2,
+    "height_inches": 2.1,
+    "weight_lbs": 4.5,
+    "power_watts": 125,
+    "voltage": "100-240V",
     "is_rack_mountable": false,
     "u_height": null,
-    "has_network_port": false,
-    "wireless": false
+    "has_network_port": true,
+    "wireless": true
   },
-  "notes": "[Summary of what was found and any limitations]",
+  "notes": "Summary of what was found",
   "sources_verified": true,
-  "research_date": "[TODAY'S DATE]"
+  "research_date": "2026-01-30"
 }
 \`\`\`
+
+### MANDATORY URL REQUIREMENTS:
+
+1. **product_page_url** - The EXACT URL to this product's page on the manufacturer website. This is the #1 most important field. A technician clicking this link should land directly on the product page.
+
+2. **support_page_url** - The URL to the support/downloads page for this product.
+
+3. **all_discovered_urls** - List EVERY useful URL you visited during research. Include product pages, support pages, PDF downloads, specification pages, etc. This helps us build a complete knowledge base.
+
+4. **documents[].url** - For each document, include the actual URL where it can be accessed (either a direct PDF download link or a web page URL).
 
 ---
 
 ## IMPORTANT NOTES
 
-1. **URL Accuracy is Critical** - We need the ACTUAL URLs that work, not placeholder text
-2. **Prefer Official Sources** - Manufacturer website > official distributors > third-party
-3. **PDF Links** - If you find a PDF, include the direct download URL
-4. **Web-based Guides** - Many manufacturers now have web-based guides instead of PDFs - those URLs are equally valuable
-5. **Verification** - Only include information you can verify from official sources
+1. **NO PLACEHOLDER TEXT** - Every URL field must contain an actual URL you found, not placeholder text
+2. **Include ALL URLs** - Put every useful URL in the all_discovered_urls array
+3. **Prefer Official Sources** - Manufacturer website > official distributors > third-party
+4. **PDF Links** - If you find a PDF, include the direct download URL
+5. **Web-based Guides** - Many manufacturers now have web-based guides instead of PDFs - those URLs are equally valuable
 6. **Be Thorough** - Check multiple pages on the manufacturer site (support, downloads, resources, documentation)
 
-The goal is to give our field technicians quick access to accurate documentation during installations and service calls. Quality and accuracy matter more than quantity.`;
+The goal is to give our field technicians quick access to accurate documentation during installations and service calls. **We need the actual clickable URLs, not descriptions of where to find them.**`;
 }

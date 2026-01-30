@@ -78,6 +78,8 @@ module.exports = async function handler(req, res) {
     const stop_reason = task_detail?.stop_reason;
     const message = task_detail?.message;
     const attachments = task_detail?.attachments || [];
+    // IMPORTANT: Manus also returns links in a separate array!
+    const links = task_detail?.links || task_detail?.urls || [];
 
     if (!task_id) {
       console.error('[Manus Webhook] No task_id in task_detail');
@@ -85,6 +87,7 @@ module.exports = async function handler(req, res) {
     }
 
     console.log(`[Manus Webhook] Task ${task_id} stopped, reason: ${stop_reason}`);
+    console.log(`[Manus Webhook] Found ${attachments.length} attachments, ${links.length} links`);
 
     // Find the pending task in our database
     const { data: pendingTask, error: findError } = await getSupabase()
@@ -107,9 +110,11 @@ module.exports = async function handler(req, res) {
       console.log(`[Manus Webhook] Processing completed task with ${attachments.length} attachments`);
 
       // Parse and process the results from task_detail
+      // Pass links array separately - this is where Manus puts discovered URLs!
       const enrichmentData = await parseManusResponse({
         message,
         attachments,
+        links,  // IMPORTANT: Pass the links array from Manus
         task_detail,
         ...req.body
       });
@@ -227,6 +232,7 @@ async function parseManusResponse(manusResult) {
   let data = {};
   let rawText = manusResult.message || '';
   let createdFiles = [];
+  let discoveredLinks = [];  // Links discovered by Manus during research
 
   console.log('[Manus Webhook] Parsing response, keys:', Object.keys(manusResult || {}));
 
@@ -241,6 +247,27 @@ async function parseManusResponse(manusResult) {
         size: attachment.size_bytes,
         type: guessFileType(attachment.file_name)
       });
+    }
+
+    // IMPORTANT: Extract links from Manus links array
+    // This is where Manus puts URLs it discovers during research!
+    const links = manusResult.links || manusResult.urls || [];
+    console.log('[Manus Webhook] Processing', links.length, 'links from Manus');
+    for (const link of links) {
+      // Links can be objects or strings
+      const url = typeof link === 'string' ? link : (link.url || link.href || link.link);
+      const title = typeof link === 'object' ? (link.title || link.name || link.description || '') : '';
+      const linkType = typeof link === 'object' ? (link.type || link.category || '') : '';
+
+      if (url && !url.includes('sharepoint.com') && !url.includes('1drv.ms')) {
+        console.log('[Manus Webhook] Found link:', url, '- Title:', title);
+        discoveredLinks.push({
+          url: url,
+          title: title,
+          type: linkType,
+          source: 'manus_links'
+        });
+      }
     }
 
     // Also check for legacy files array format
@@ -283,6 +310,7 @@ async function parseManusResponse(manusResult) {
             data = { ...data, ...jsonData };
             console.log('[Manus Webhook] manufacturer_website from JSON:', jsonData.manufacturer_website);
             console.log('[Manus Webhook] product_page_url from JSON:', jsonData.product_page_url);
+            console.log('[Manus Webhook] support_page_url from JSON:', jsonData.support_page_url);
           }
         } catch (jsonError) {
           console.error('[Manus Webhook] Error fetching JSON attachment:', jsonError.message);
@@ -296,6 +324,20 @@ async function parseManusResponse(manusResult) {
   // Convert to enrichment format
   const documents = data.documents || [];
   const specifications = data.specifications || {};
+  const allDiscoveredUrls = data.all_discovered_urls || [];
+
+  // Add URLs from all_discovered_urls to discoveredLinks
+  for (const item of allDiscoveredUrls) {
+    if (item.url && !discoveredLinks.some(l => l.url === item.url)) {
+      discoveredLinks.push({
+        url: item.url,
+        title: item.title || '',
+        type: item.type || 'other',
+        source: 'json_all_discovered_urls'
+      });
+    }
+  }
+  console.log('[Manus Webhook] Added', allDiscoveredUrls.length, 'URLs from all_discovered_urls');
 
   // Extract ORIGINAL manufacturer source URLs (these are the green dot URLs)
   // These should NOT be overwritten by SharePoint URLs
@@ -303,13 +345,49 @@ async function parseManusResponse(manusResult) {
   const originalInstallManualUrls = [];
   const originalTechnicalManualUrls = [];
 
-  // Extract URLs by type from found documents in JSON
+  // FIRST: Process links discovered by Manus (from links array)
+  // These are the URLs shown in the "Links" tab in Manus UI
+  console.log('[Manus Webhook] Processing', discoveredLinks.length, 'discovered links');
+  for (const link of discoveredLinks) {
+    const url = link.url;
+    const title = (link.title || '').toLowerCase();
+    const type = (link.type || '').toLowerCase();
+
+    // Add to original manufacturer URLs
+    originalManufacturerUrls.push({
+      url: url,
+      type: link.type || 'web_link',
+      title: link.title || url,
+      found: true,
+      source: 'manus_links'
+    });
+
+    // Categorize based on URL content or title
+    if (url.includes('/support') || url.includes('/download') || url.includes('/manual') ||
+        url.includes('/guide') || url.includes('/install') || url.includes('/setup') ||
+        title.includes('guide') || title.includes('manual') || title.includes('install') ||
+        title.includes('setup') || title.includes('support')) {
+      originalInstallManualUrls.push(url);
+    } else if (url.includes('/spec') || url.includes('/datasheet') || url.includes('/tech') ||
+               title.includes('spec') || title.includes('datasheet') || title.includes('technical')) {
+      originalTechnicalManualUrls.push(url);
+    } else if (url.endsWith('.pdf')) {
+      // PDFs go to technical by default
+      originalTechnicalManualUrls.push(url);
+    }
+    // Note: product pages are captured separately via product_page_url
+  }
+
+  // SECOND: Extract URLs by type from documents array in JSON
   for (const doc of documents) {
     if (!doc.url || doc.found === false) continue;
 
     // Skip non-manufacturer URLs (our own SharePoint, etc.)
     const url = doc.url;
     if (url.includes('sharepoint.com') || url.includes('1drv.ms')) continue;
+
+    // Skip if already added from links
+    if (originalManufacturerUrls.some(m => m.url === url)) continue;
 
     const type = (doc.type || '').toLowerCase();
     const title = (doc.title || '').toLowerCase();
@@ -319,26 +397,25 @@ async function parseManusResponse(manusResult) {
       url: url,
       type: doc.type || 'document',
       title: doc.title || '',
-      found: doc.found !== false
+      found: doc.found !== false,
+      source: 'json_documents'
     });
 
     // Also categorize by type for the specific arrays
-    // user_guide and user_manual are installation/usage docs (green dot links for technicians)
-    // tech_specs and product_info are technical reference docs
     if (type.includes('user_guide') || type.includes('user_manual') || type.includes('setup') ||
         type.includes('install') || title.includes('setup') || title.includes('user guide') ||
         title.includes('installation') || title.includes('quick start')) {
-      originalInstallManualUrls.push(url);
+      if (!originalInstallManualUrls.includes(url)) originalInstallManualUrls.push(url);
     } else if (type.includes('tech_specs') || type.includes('datasheet') || type.includes('spec') ||
                type.includes('product_info')) {
-      originalTechnicalManualUrls.push(url);
+      if (!originalTechnicalManualUrls.includes(url)) originalTechnicalManualUrls.push(url);
     } else {
       // Default: treat unknown types as technical docs
-      originalTechnicalManualUrls.push(url);
+      if (!originalTechnicalManualUrls.includes(url)) originalTechnicalManualUrls.push(url);
     }
   }
 
-  // Also extract PDF URLs from attachments (these are usually manufacturer PDFs we downloaded)
+  // THIRD: Extract PDF URLs from attachments (these are usually manufacturer PDFs we downloaded)
   for (const file of createdFiles) {
     if (!file.url) continue;
     const name = (file.name || '').toLowerCase();
@@ -346,29 +423,67 @@ async function parseManusResponse(manusResult) {
 
     // Skip SharePoint URLs
     if (url.includes('sharepoint.com') || url.includes('1drv.ms')) continue;
+    // Skip if already added
+    if (originalManufacturerUrls.some(m => m.url === url)) continue;
 
-    // Only process PDFs from manufacturer sites
-    if (name.endsWith('.pdf') && (url.includes('apple.com') || url.includes('manuals.info'))) {
+    // Process PDFs - don't limit to specific domains
+    if (name.endsWith('.pdf')) {
       originalManufacturerUrls.push({
         url: url,
         type: 'pdf',
         title: file.name,
-        found: true
+        found: true,
+        source: 'attachments'
       });
 
-      if (name.includes('setup') || name.includes('guide') || name.includes('install')) {
-        originalInstallManualUrls.push(url);
+      if (name.includes('setup') || name.includes('guide') || name.includes('install') ||
+          name.includes('user') || name.includes('quick')) {
+        if (!originalInstallManualUrls.includes(url)) originalInstallManualUrls.push(url);
       } else {
-        originalTechnicalManualUrls.push(url);
+        if (!originalTechnicalManualUrls.includes(url)) originalTechnicalManualUrls.push(url);
       }
+    }
+  }
+
+  // Try to extract product_page_url from discovered links if not in JSON
+  let productPageUrl = data.product_page_url || null;
+  let supportPageUrl = data.support_page_url || null;
+
+  if (!productPageUrl && discoveredLinks.length > 0) {
+    // Look for product page in discovered links
+    const productLink = discoveredLinks.find(l => {
+      const url = l.url.toLowerCase();
+      const title = (l.title || '').toLowerCase();
+      return url.includes('/product') || url.includes('/shop') ||
+             title.includes('product') || title.includes('overview');
+    });
+    if (productLink) {
+      productPageUrl = productLink.url;
+      console.log('[Manus Webhook] Extracted product_page_url from links:', productPageUrl);
+    }
+  }
+
+  if (!supportPageUrl && discoveredLinks.length > 0) {
+    // Look for support page in discovered links
+    const supportLink = discoveredLinks.find(l => {
+      const url = l.url.toLowerCase();
+      const title = (l.title || '').toLowerCase();
+      return url.includes('/support') || url.includes('/download') ||
+             title.includes('support') || title.includes('download');
+    });
+    if (supportLink) {
+      supportPageUrl = supportLink.url;
+      console.log('[Manus Webhook] Extracted support_page_url from links:', supportPageUrl);
     }
   }
 
   const enrichmentData = {
     manufacturer_website: data.manufacturer_website || null,
-    product_page_url: data.product_page_url || null,
+    product_page_url: productPageUrl,
+    support_page_url: supportPageUrl,
     documents: documents,
     created_files: createdFiles,
+    discovered_links: discoveredLinks,  // Store all discovered links
     // ORIGINAL manufacturer source URLs (green dot) - separate from SharePoint
     original_manufacturer_urls: originalManufacturerUrls,
     install_manual_urls: originalInstallManualUrls,  // Start with manufacturer URLs
@@ -385,9 +500,15 @@ async function parseManusResponse(manusResult) {
     confidence: 0.95
   };
 
-  console.log('[Manus Webhook] Found', documents.length, 'documents,', createdFiles.length, 'attachments');
-  console.log('[Manus Webhook] Original manufacturer URLs:', originalManufacturerUrls.length);
-  console.log('[Manus Webhook] product_page_url:', enrichmentData.product_page_url);
+  console.log('[Manus Webhook] Summary:');
+  console.log('  - Discovered links:', discoveredLinks.length);
+  console.log('  - Documents from JSON:', documents.length);
+  console.log('  - Attachments:', createdFiles.length);
+  console.log('  - Total manufacturer URLs:', originalManufacturerUrls.length);
+  console.log('  - Install manual URLs:', originalInstallManualUrls.length);
+  console.log('  - Technical manual URLs:', originalTechnicalManualUrls.length);
+  console.log('  - product_page_url:', enrichmentData.product_page_url);
+  console.log('  - support_page_url:', enrichmentData.support_page_url);
 
   return enrichmentData;
 }
