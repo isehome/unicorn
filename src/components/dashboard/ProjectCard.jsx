@@ -73,7 +73,8 @@ const ProjectCard = memo(({
             ) : (
               <button
                 onClick={onCheckIn}
-                className="w-[70px] h-[70px] flex flex-col items-center justify-center text-sm font-medium rounded-lg text-green-700 dark:text-green-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors border-2 border-gray-200 dark:border-gray-600"
+                className="w-[70px] h-[70px] flex flex-col items-center justify-center text-sm font-medium rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors border-2 border-gray-200 dark:border-gray-600"
+                style={{ color: '#94AF32' }}
               >
                 <LogIn className="w-5 h-5 mb-1" />
                 <span className="text-[10px]">Check In</span>

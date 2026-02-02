@@ -196,7 +196,7 @@ const PartsReceivingPage = () => {
     const received = item.received_quantity || 0;
 
     if (received >= planned && received > 0) {
-      return { label: 'Fully Received', color: 'text-green-600 dark:text-green-400', icon: CheckCircle };
+      return { label: 'Fully Received', color: '', style: { color: '#94AF32' }, icon: CheckCircle };
     }
     if (received > 0 && received < ordered) {
       return { label: 'Partial', color: 'text-yellow-600 dark:text-yellow-400', icon: AlertCircle };
@@ -231,8 +231,8 @@ const PartsReceivingPage = () => {
         )}
 
         {successMessage && (
-          <div className="mb-4 p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
-            <p className="text-sm text-green-800 dark:text-green-200">{successMessage}</p>
+          <div className="mb-4 p-4 rounded-lg" style={{ backgroundColor: 'rgba(148, 175, 50, 0.1)', borderWidth: '1px', borderStyle: 'solid', borderColor: 'rgba(148, 175, 50, 0.3)' }}>
+            <p className="text-sm" style={{ color: '#94AF32' }}>{successMessage}</p>
           </div>
         )}
 
@@ -309,11 +309,12 @@ const PartsReceivingPage = () => {
                     key={item.id}
                     className={`border rounded-lg p-4 transition-colors ${
                       isFullyReceived
-                        ? 'border-green-300 dark:border-green-700 bg-green-50 dark:bg-green-900/10'
+                        ? ''
                         : isPartial
                         ? 'border-yellow-300 dark:border-yellow-700 bg-yellow-50 dark:bg-yellow-900/10'
                         : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-zinc-800'
                     }`}
+                    style={isFullyReceived ? { borderColor: 'rgba(148, 175, 50, 0.3)', backgroundColor: 'rgba(148, 175, 50, 0.1)' } : undefined}
                   >
                     {/* Item Header */}
                     <div className="flex items-start justify-between mb-3">
@@ -327,7 +328,7 @@ const PartsReceivingPage = () => {
                           </p>
                         )}
                       </div>
-                      <div className={`flex items-center gap-1 ${status.color}`}>
+                      <div className={`flex items-center gap-1 ${status.color}`} style={status.style}>
                         <StatusIcon className="w-4 h-4" />
                         <span className="text-sm font-medium">{status.label}</span>
                       </div>
@@ -365,7 +366,8 @@ const PartsReceivingPage = () => {
                             />
                             <button
                               onClick={() => handleSaveQuantity(item, 'ordered_quantity')}
-                              className="px-2 py-1 bg-green-600 text-white rounded text-xs"
+                              className="px-2 py-1 text-white rounded text-xs"
+                              style={{ backgroundColor: '#94AF32' }}
                               disabled={saving}
                             >
                               ✓
@@ -407,7 +409,8 @@ const PartsReceivingPage = () => {
                             />
                             <button
                               onClick={() => handleSaveQuantity(item, 'received_quantity')}
-                              className="px-2 py-1 bg-green-600 text-white rounded text-xs"
+                              className="px-2 py-1 text-white rounded text-xs"
+                              style={{ backgroundColor: '#94AF32' }}
                               disabled={saving}
                             >
                               ✓

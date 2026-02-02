@@ -35,7 +35,7 @@ import {
 
 // Role icons and colors
 const ROLE_CONFIG = {
-  owner: { icon: Crown, color: '#10B981', label: 'Owner' },
+  owner: { icon: Crown, color: '#94AF32', label: 'Owner' },
   admin: { icon: Shield, color: '#F59E0B', label: 'Admin' },
   director: { icon: UserCog, color: '#8B5CF6', label: 'Director' },
   manager: { icon: Briefcase, color: '#3B82F6', label: 'Manager' },
@@ -481,9 +481,9 @@ const OrgStructureManager = () => {
       )}
 
       {success && (
-        <div className="flex items-center gap-2 p-3 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800">
-          <CheckCircle size={16} className="text-green-500" />
-          <span className="text-sm text-green-700 dark:text-green-300">{success}</span>
+        <div className="flex items-center gap-2 p-3 rounded-lg" style={{ backgroundColor: 'rgba(148, 175, 50, 0.1)', borderWidth: '1px', borderStyle: 'solid', borderColor: 'rgba(148, 175, 50, 0.3)' }}>
+          <CheckCircle size={16} style={{ color: '#94AF32' }} />
+          <span className="text-sm" style={{ color: '#94AF32' }}>{success}</span>
         </div>
       )}
 

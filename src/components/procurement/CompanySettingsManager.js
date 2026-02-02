@@ -406,7 +406,7 @@ const CompanySettingsManager = () => {
       )}
 
       {success && (
-        <div className="flex items-center gap-2 p-3 rounded-lg bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300 text-sm">
+        <div className="flex items-center gap-2 p-3 rounded-lg text-sm" style={{ backgroundColor: 'rgba(148, 175, 50, 0.1)', color: '#94AF32' }}>
           <CheckCircle className="w-4 h-4" />
           <span>{success}</span>
         </div>

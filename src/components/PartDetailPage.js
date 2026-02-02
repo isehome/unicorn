@@ -111,6 +111,10 @@ const PartDetailPage = () => {
   const [aiSectionExpanded, setAiSectionExpanded] = useState(false);
   const [flaggingWrong, setFlaggingWrong] = useState(false);
 
+  // Collapsible sections state
+  const [rackSectionExpanded, setRackSectionExpanded] = useState(false);
+  const [powerSectionExpanded, setPowerSectionExpanded] = useState(false);
+
   const {
     data: part,
     isLoading,
@@ -491,9 +495,10 @@ const PartDetailPage = () => {
           <span
             className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-medium ${
               formState.is_wire_drop_visible
-                ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
+                ? 'dark:bg-opacity-10'
                 : 'bg-gray-100 text-gray-600 dark:bg-zinc-800 dark:text-gray-300'
             }`}
+            style={formState.is_wire_drop_visible ? { backgroundColor: 'rgba(148, 175, 50, 0.1)', color: '#94AF32' } : undefined}
           >
             {formState.is_wire_drop_visible ? 'Visible in wire drop selector' : 'Hidden from wire drop selector'}
           </span>
@@ -975,14 +980,51 @@ const PartDetailPage = () => {
           </div>
         </div>
 
-        {/* Rack Layout Section */}
-        <div className={styles.card + ' p-6 space-y-4'}>
-          <p className={styles.sectionTitle}>Rack Layout</p>
-          <p className={styles.textSecondary}>
-            Configure how this part appears in the head-end rack layout view.
-          </p>
+        {/* Rack Layout Section - Collapsible */}
+        <div className={styles.card + ' overflow-hidden'}>
+          <button
+            type="button"
+            onClick={() => setRackSectionExpanded(!rackSectionExpanded)}
+            className="w-full p-4 flex items-center justify-between text-left hover:bg-gray-50 dark:hover:bg-zinc-800/50 transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              <Server className="h-5 w-5 text-violet-500" />
+              <div>
+                <p className="text-sm font-medium text-gray-900 dark:text-white">
+                  Rack Layout
+                </p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  {formState.is_rack_mountable
+                    ? `${formState.u_height || '?'}U rack-mountable`
+                    : formState.needs_shelf
+                    ? `Needs ${formState.shelf_u_height || '?'}U shelf`
+                    : formState.exclude_from_rack
+                    ? 'Excluded from rack'
+                    : 'Not configured'}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              {formState.is_rack_mountable && (
+                <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400">
+                  {formState.u_height}U
+                </span>
+              )}
+              {formState.needs_shelf && (
+                <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
+                  Shelf
+                </span>
+              )}
+              {rackSectionExpanded ? (
+                <ChevronUp className="h-5 w-5 text-gray-400" />
+              ) : (
+                <ChevronDown className="h-5 w-5 text-gray-400" />
+              )}
+            </div>
+          </button>
 
-          <div className="space-y-4">
+          {rackSectionExpanded && (
+          <div className="p-6 pt-2 border-t border-gray-200 dark:border-gray-700 space-y-4">
             {/* Rack Mountable Option */}
             <div className="flex items-start gap-4">
               <div className="flex-1">
@@ -1120,16 +1162,52 @@ const PartDetailPage = () => {
               </p>
             </div>
           </div>
+          )}
         </div>
 
-        {/* Power Section */}
-        <div className={styles.card + ' p-6 space-y-4'}>
-          <p className={styles.sectionTitle}>Power Requirements</p>
-          <p className={styles.textSecondary}>
-            Configure power consumption and outlet requirements for this equipment.
-          </p>
+        {/* Power Section - Collapsible */}
+        <div className={styles.card + ' overflow-hidden'}>
+          <button
+            type="button"
+            onClick={() => setPowerSectionExpanded(!powerSectionExpanded)}
+            className="w-full p-4 flex items-center justify-between text-left hover:bg-gray-50 dark:hover:bg-zinc-800/50 transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              <Zap className="h-5 w-5 text-amber-500" />
+              <div>
+                <p className="text-sm font-medium text-gray-900 dark:text-white">
+                  Power Requirements
+                </p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  {formState.power_watts
+                    ? `${formState.power_watts}W, ${formState.power_outlets || 1} outlet${formState.power_outlets > 1 ? 's' : ''}`
+                    : formState.is_power_device
+                    ? 'Power distribution device'
+                    : 'Not configured'}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              {formState.power_watts && (
+                <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                  {formState.power_watts}W
+                </span>
+              )}
+              {formState.is_power_device && (
+                <span className="px-2 py-0.5 text-xs font-medium rounded-full" style={{ backgroundColor: 'rgba(148, 175, 50, 0.1)', color: '#94AF32' }}>
+                  PDU/UPS
+                </span>
+              )}
+              {powerSectionExpanded ? (
+                <ChevronUp className="h-5 w-5 text-gray-400" />
+              ) : (
+                <ChevronDown className="h-5 w-5 text-gray-400" />
+              )}
+            </div>
+          </button>
 
-          <div className="space-y-4">
+          {powerSectionExpanded && (
+          <div className="p-6 pt-2 border-t border-gray-200 dark:border-gray-700 space-y-4">
             {/* Power Consumption */}
             <div className="grid md:grid-cols-2 gap-4">
               <div>
@@ -1227,14 +1305,15 @@ const PartDetailPage = () => {
 
                   {/* UPS Battery Backup Outlets */}
                   <div>
-                    <label className="text-sm font-medium text-green-700 dark:text-green-300 flex items-center gap-2">
+                    <label className="text-sm font-medium flex items-center gap-2" style={{ color: '#94AF32' }}>
                       <Zap className="h-4 w-4" />
                       Battery Backup Outlets
                     </label>
                     <select
                       value={formState.ups_outlets_provided || ''}
                       onChange={(event) => handleFieldChange('ups_outlets_provided', event.target.value ? Number(event.target.value) : null)}
-                      className="mt-2 w-full rounded-lg border border-green-300 dark:border-green-700 bg-white dark:bg-zinc-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                      className="mt-2 w-full rounded-lg bg-white dark:bg-zinc-800 px-3 py-2 text-sm focus:outline-none focus:ring-2"
+                      style={{ borderColor: 'rgba(148, 175, 50, 0.3)', '--tw-ring-color': '#94AF32' }}
                     >
                       <option value="">None</option>
                       {Array.from({ length: 42 }, (_, i) => i + 1).map((n) => (
@@ -1243,7 +1322,7 @@ const PartDetailPage = () => {
                         </option>
                       ))}
                     </select>
-                    <p className="text-xs text-green-600 dark:text-green-400 mt-1">
+                    <p className="text-xs mt-1" style={{ color: '#94AF32' }}>
                       UPS battery backup + surge protection
                     </p>
                   </div>
@@ -1257,6 +1336,7 @@ const PartDetailPage = () => {
               </div>
             )}
           </div>
+          )}
         </div>
 
         {/* AI-Powered Data Search Section - Collapsible at bottom */}
@@ -1285,7 +1365,7 @@ const PartDetailPage = () => {
             </div>
             <div className="flex items-center gap-2">
               {part?.ai_enrichment_status === 'completed' && (
-                <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                <span className="px-2 py-0.5 text-xs font-medium rounded-full" style={{ backgroundColor: 'rgba(148, 175, 50, 0.1)', color: '#94AF32' }}>
                   Completed
                 </span>
               )}
@@ -1324,13 +1404,13 @@ const PartDetailPage = () => {
               )}
 
               {part?.ai_enrichment_status === 'completed' && !aiSearchResult && (
-                <div className="rounded-lg border border-green-200 bg-green-50 p-3 dark:border-green-800 dark:bg-green-900/20">
+                <div className="rounded-lg p-3" style={{ backgroundColor: 'rgba(148, 175, 50, 0.1)', borderWidth: '1px', borderStyle: 'solid', borderColor: 'rgba(148, 175, 50, 0.3)' }}>
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-green-700 dark:text-green-300 text-sm">
+                    <div className="flex items-center gap-2 text-sm" style={{ color: '#94AF32' }}>
                       <CheckCircle className="h-4 w-4" />
                       AI research completed
                       {part?.ai_last_enriched_at && (
-                        <span className="text-green-600 dark:text-green-400">
+                        <span style={{ color: '#94AF32' }}>
                           • {new Date(part.ai_last_enriched_at).toLocaleDateString()}
                         </span>
                       )}
@@ -1400,16 +1480,16 @@ const PartDetailPage = () => {
 
               {/* Search Result - Completed */}
               {aiSearchResult && !aiSearchResult.async && (
-                <div className="rounded-lg border border-green-200 bg-green-50 p-4 dark:border-green-800 dark:bg-green-900/20">
-                  <div className="flex items-center gap-2 text-green-700 dark:text-green-300 font-medium mb-2">
+                <div className="rounded-lg p-4" style={{ backgroundColor: 'rgba(148, 175, 50, 0.1)', borderWidth: '1px', borderStyle: 'solid', borderColor: 'rgba(148, 175, 50, 0.3)' }}>
+                  <div className="flex items-center gap-2 font-medium mb-2" style={{ color: '#94AF32' }}>
                     <CheckCircle className="h-4 w-4" />
                     Data Found - Confidence: {Math.round((aiSearchResult.confidence || 0) * 100)}%
                   </div>
-                  <p className="text-sm text-green-600 dark:text-green-400">
+                  <p className="text-sm" style={{ color: '#94AF32' }}>
                     {aiSearchResult.notes || 'Enrichment data has been applied to the form. Review and save to keep changes.'}
                   </p>
                   {aiSearchResult.data?.sources?.length > 0 && (
-                    <div className="mt-2 text-xs text-green-600 dark:text-green-400">
+                    <div className="mt-2 text-xs" style={{ color: '#94AF32' }}>
                       Sources: {aiSearchResult.data.sources.join(', ')}
                     </div>
                   )}

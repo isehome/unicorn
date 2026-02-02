@@ -14,9 +14,9 @@ import { useAuth } from '../../contexts/AuthContext';
 
 // Proficiency levels with styling
 const PROFICIENCY_LEVELS = [
-  { id: 'training', label: 'Training', icon: GraduationCap, color: '#F59E0B', bgColor: 'bg-amber-100 dark:bg-amber-900/30', textColor: 'text-amber-600 dark:text-amber-400' },
-  { id: 'proficient', label: 'Proficient', icon: CheckCircle, color: '#3B82F6', bgColor: 'bg-blue-100 dark:bg-blue-900/30', textColor: 'text-blue-600 dark:text-blue-400' },
-  { id: 'expert', label: 'Expert', icon: Star, color: '#10B981', bgColor: 'bg-emerald-100 dark:bg-emerald-900/30', textColor: 'text-emerald-600 dark:text-emerald-400' }
+  { id: 'training', label: 'Training', icon: GraduationCap, color: '#F59E0B', bgColor: 'bg-amber-100 dark:bg-amber-900/30', textColor: 'text-amber-600 dark:text-amber-400', bgStyle: {}, textStyle: {} },
+  { id: 'proficient', label: 'Proficient', icon: CheckCircle, color: '#3B82F6', bgColor: 'bg-blue-100 dark:bg-blue-900/30', textColor: 'text-blue-600 dark:text-blue-400', bgStyle: {}, textStyle: {} },
+  { id: 'expert', label: 'Expert', icon: Star, color: '#94AF32', bgColor: '', textColor: '', bgStyle: { backgroundColor: 'rgba(148, 175, 50, 0.1)' }, textStyle: { color: '#94AF32' } }
 ];
 
 const UserSkillsSection = () => {
@@ -145,6 +145,7 @@ const UserSkillsSection = () => {
               <div
                 key={level.id}
                 className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${level.bgColor} ${level.textColor}`}
+                style={{ ...level.bgStyle, ...level.textStyle }}
               >
                 <Icon size={12} />
                 {count} {level.label}
@@ -209,6 +210,7 @@ const UserSkillsSection = () => {
                                 </span>
                                 <span
                                   className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs ${proficiency.bgColor} ${proficiency.textColor}`}
+                                  style={{ ...proficiency.bgStyle, ...proficiency.textStyle }}
                                 >
                                   <Icon size={10} />
                                   {proficiency.label}

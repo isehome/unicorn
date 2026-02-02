@@ -110,14 +110,14 @@ const SecureDataDebug = ({ projectId }) => {
             <h3 className="font-semibold mb-2">Authentication Status:</h3>
             <div className="text-sm space-y-1">
               <div>
-                User: {debugInfo.auth?.user ? 
-                  <span className="text-green-600">✓ Authenticated as {debugInfo.auth.user.email}</span> : 
+                User: {debugInfo.auth?.user ?
+                  <span style={{ color: '#94AF32' }}>✓ Authenticated as {debugInfo.auth.user.email}</span> : 
                   <span className="text-red-600">✗ Not authenticated</span>
                 }
               </div>
               <div>
-                Session: {debugInfo.auth?.session?.hasToken ? 
-                  <span className="text-green-600">✓ Active session</span> : 
+                Session: {debugInfo.auth?.session?.hasToken ?
+                  <span style={{ color: '#94AF32' }}>✓ Active session</span> : 
                   <span className="text-red-600">✗ No session</span>
                 }
               </div>
@@ -135,14 +135,14 @@ const SecureDataDebug = ({ projectId }) => {
             <h3 className="font-semibold mb-2">Database Tests:</h3>
             <div className="text-sm space-y-2">
               <div>
-                SELECT Test: {debugInfo.testSelect?.success ? 
-                  <span className="text-green-600">✓ Can read secure data</span> : 
+                SELECT Test: {debugInfo.testSelect?.success ?
+                  <span style={{ color: '#94AF32' }}>✓ Can read secure data</span> : 
                   <span className="text-red-600">✗ Cannot read - {debugInfo.testSelect?.error?.message}</span>
                 }
               </div>
               <div>
-                INSERT Test: {debugInfo.testInsert?.success ? 
-                  <span className="text-green-600">✓ Can create secure data</span> : 
+                INSERT Test: {debugInfo.testInsert?.success ?
+                  <span style={{ color: '#94AF32' }}>✓ Can create secure data</span> : 
                   <span className="text-red-600">✗ Cannot create - {debugInfo.testInsert?.error?.message}</span>
                 }
               </div>
@@ -189,7 +189,8 @@ const SecureDataDebug = ({ projectId }) => {
             </button>
             <button
               onClick={() => window.location.reload()}
-              className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600"
+              className="px-4 py-2 text-white rounded"
+              style={{ backgroundColor: '#94AF32' }}
             >
               Reload Page
             </button>

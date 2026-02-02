@@ -668,7 +668,8 @@ const POLineItemsEditor = ({
             {visibleItems.map((item) => (
               <tr
                 key={item.id}
-                className={`${item._isModified ? 'bg-amber-50 dark:bg-amber-900/10' : ''} ${item._isNew ? 'bg-green-50 dark:bg-green-900/10' : ''}`}
+                className={`${item._isModified ? 'bg-amber-50 dark:bg-amber-900/10' : ''}`}
+                style={item._isNew ? { backgroundColor: 'rgba(148, 175, 50, 0.1)' } : {}}
               >
                 <td className="px-3 py-2 text-zinc-900 dark:text-white">
                   {item.line_number}
@@ -1043,11 +1044,12 @@ const POLineItemsEditor = ({
                         {importPreview.map((row, idx) => (
                           <tr
                             key={idx}
-                            className={row.action === 'add' ? 'bg-green-50 dark:bg-green-900/10' : row.changes?.qtyChanged || row.changes?.costChanged ? 'bg-amber-50 dark:bg-amber-900/10' : ''}
+                            className={row.changes?.qtyChanged || row.changes?.costChanged ? 'bg-amber-50 dark:bg-amber-900/10' : ''}
+                            style={row.action === 'add' ? { backgroundColor: 'rgba(148, 175, 50, 0.1)' } : {}}
                           >
                             <td className="px-2 py-1.5">
                               {row.action === 'add' ? (
-                                <span className="inline-flex items-center gap-1 text-green-600 dark:text-green-400">
+                                <span className="inline-flex items-center gap-1" style={{ color: '#94AF32' }}>
                                   <Plus className="w-3 h-3" /> New
                                 </span>
                               ) : (
@@ -1082,7 +1084,7 @@ const POLineItemsEditor = ({
 
                   {/* Summary */}
                   <div className="flex items-center gap-4 text-xs">
-                    <span className="inline-flex items-center gap-1 text-green-600 dark:text-green-400">
+                    <span className="inline-flex items-center gap-1" style={{ color: '#94AF32' }}>
                       <Plus className="w-3 h-3" />
                       {importPreview.filter(r => r.action === 'add').length} new parts
                     </span>

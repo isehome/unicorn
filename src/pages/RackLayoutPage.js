@@ -825,7 +825,7 @@ const RackLayoutPage = () => {
                 <div className="w-px h-4 bg-zinc-300 dark:bg-zinc-600" />
                 <div className="flex items-center gap-1.5">
                   <span className="text-zinc-500 dark:text-zinc-400">Placed:</span>
-                  <span className="font-semibold text-green-500">{placedEquipment.length}</span>
+                  <span className="font-semibold" style={{ color: '#94AF32' }}>{placedEquipment.length}</span>
                 </div>
                 <div className="w-px h-4 bg-zinc-300 dark:bg-zinc-600" />
                 <div className="flex items-center gap-1.5">

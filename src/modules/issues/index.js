@@ -146,13 +146,16 @@ const IssuesModule = ({ projectId }) => {
                   </p>
                 )}
                 <div className="flex gap-2 mt-2">
-                  <span className={`text-xs px-2 py-1 rounded-full font-medium ${
-                    issue.status === 'resolved'
-                      ? 'bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-300'
-                      : issue.status === 'blocked'
-                      ? 'bg-red-100 dark:bg-red-900/20 text-red-700 dark:text-red-300'
-                      : 'bg-amber-100 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300'
-                  }`}>
+                  <span
+                    className={`text-xs px-2 py-1 rounded-full font-medium ${
+                      issue.status === 'blocked'
+                        ? 'bg-red-100 dark:bg-red-900/20 text-red-700 dark:text-red-300'
+                        : issue.status !== 'resolved'
+                        ? 'bg-amber-100 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300'
+                        : ''
+                    }`}
+                    style={issue.status === 'resolved' ? { backgroundColor: 'rgba(148, 175, 50, 0.1)', color: '#94AF32' } : undefined}
+                  >
                     {issue.status}
                   </span>
                 </div>
@@ -209,8 +212,12 @@ const IssuesModule = ({ projectId }) => {
                 <button type="submit" className="px-4 py-2 bg-blue-500 text-white rounded">
                   Save Changes
                 </button>
-                <button type="button" onClick={() => handleResolveIssue(selectedIssue)} 
-                  className="px-4 py-2 bg-green-500 text-white rounded">
+                <button
+                  type="button"
+                  onClick={() => handleResolveIssue(selectedIssue)}
+                  className="px-4 py-2 text-white rounded"
+                  style={{ backgroundColor: '#94AF32' }}
+                >
                   Mark Resolved
                 </button>
                 <button type="button" onClick={() => setEditMode(false)} 

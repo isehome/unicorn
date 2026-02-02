@@ -270,10 +270,10 @@ const ShippingAddressManager = ({
 
       {/* Success Message */}
       {success && (
-        <div className="p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+        <div className="p-4 rounded-lg" style={{ backgroundColor: 'rgba(148, 175, 50, 0.1)', borderWidth: '1px', borderStyle: 'solid', borderColor: 'rgba(148, 175, 50, 0.3)' }}>
           <div className="flex items-center gap-2">
-            <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400" />
-            <p className="text-sm text-green-800 dark:text-green-200">{success}</p>
+            <CheckCircle className="w-5 h-5" style={{ color: '#94AF32' }} />
+            <p className="text-sm" style={{ color: '#94AF32' }}>{success}</p>
           </div>
         </div>
       )}

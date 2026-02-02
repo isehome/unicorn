@@ -196,7 +196,7 @@ const EmployeeNotesList = ({
 
                     {/* Incorporated badge or action button */}
                     {note.incorporated_at ? (
-                      <div className="flex items-center gap-1 mt-2 text-xs text-emerald-600 dark:text-emerald-400">
+                      <div className="flex items-center gap-1 mt-2 text-xs" style={{ color: '#94AF32' }}>
                         <CheckCircle size={12} />
                         Incorporated into review
                       </div>

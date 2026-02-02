@@ -262,7 +262,7 @@ const AISettings = () => {
                         <div className="flex items-center gap-2">
                             <MessageSquare size={14} className="text-zinc-500" />
                             <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Custom Context</span>
-                            {instructions && <span className="text-xs text-green-500">Configured</span>}
+                            {instructions && <span className="text-xs" style={{ color: '#94AF32' }}>Configured</span>}
                         </div>
                         {expandedSections.context ? <ChevronDown size={16} className="text-zinc-400" /> : <ChevronRight size={16} className="text-zinc-400" />}
                     </button>
@@ -295,12 +295,14 @@ const AISettings = () => {
                             <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Conversation Transcript</span>
                             {transcript.length > 0 && <span className="text-xs text-zinc-500">{transcript.length} messages</span>}
                             {/* Status indicator inline */}
-                            <div className={`w-2 h-2 rounded-full ${
-                                status === 'listening' ? 'bg-green-500 animate-pulse' :
-                                status === 'speaking' ? 'bg-violet-500 animate-pulse' :
-                                status === 'connecting' ? 'bg-amber-500 animate-pulse' :
-                                'bg-zinc-400'
-                            }`} />
+                            <div
+                                className={`w-2 h-2 rounded-full ${
+                                    status === 'speaking' ? 'bg-violet-500 animate-pulse' :
+                                    status === 'connecting' ? 'bg-amber-500 animate-pulse' :
+                                    status !== 'listening' ? 'bg-zinc-400' : 'animate-pulse'
+                                }`}
+                                style={status === 'listening' ? { backgroundColor: '#94AF32' } : undefined}
+                            />
                         </div>
                         {expandedSections.transcript ? <ChevronDown size={16} className="text-zinc-400" /> : <ChevronRight size={16} className="text-zinc-400" />}
                     </button>
@@ -321,10 +323,11 @@ const AISettings = () => {
                                         onClick={copyTranscript}
                                         disabled={transcript.length === 0}
                                         className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
-                                            copied
-                                                ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                                                : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700'
+                                            !copied
+                                                ? 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700'
+                                                : ''
                                         } ${transcript.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                        style={copied ? { backgroundColor: 'rgba(148, 175, 50, 0.1)', color: '#94AF32' } : undefined}
                                     >
                                         {copied ? <Check size={12} /> : <Copy size={12} />}
                                         {copied ? 'Copied!' : 'Copy'}

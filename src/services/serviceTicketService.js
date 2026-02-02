@@ -559,6 +559,37 @@ export const serviceScheduleService = {
   },
 
   /**
+   * Get a single schedule by ID
+   */
+  async getById(id) {
+    if (!supabase || !id) return null;
+
+    try {
+      const { data, error } = await supabase
+        .from('service_schedules')
+        .select(`
+          *,
+          ticket:service_tickets(
+            id, ticket_number, title, category, priority,
+            customer_name, customer_phone, customer_address
+          )
+        `)
+        .eq('id', id)
+        .single();
+
+      if (error) {
+        console.error('[ServiceScheduleService] Failed to fetch schedule:', error);
+        throw new Error(error.message || 'Failed to fetch schedule');
+      }
+
+      return data;
+    } catch (error) {
+      console.error('[ServiceScheduleService] Failed to fetch schedule:', error);
+      throw error;
+    }
+  },
+
+  /**
    * Delete schedule
    */
   async remove(id) {

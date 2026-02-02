@@ -161,9 +161,10 @@ const WireDropsModule = ({ projectId }) => {
                 
                 <div className="flex gap-4">
                   <div className="flex items-center gap-2">
-                    <div className={`w-3 h-3 rounded-full ${
-                      drop.prewire_photo ? 'bg-green-500' : 'bg-gray-300'
-                    }`} />
+                    <div
+                      className={`w-3 h-3 rounded-full ${!drop.prewire_photo ? 'bg-gray-300' : ''}`}
+                      style={drop.prewire_photo ? { backgroundColor: '#94AF32' } : undefined}
+                    />
                     <span className="text-sm text-gray-600 dark:text-gray-400">
                       Pre-wired
                     </span>
@@ -201,9 +202,10 @@ const WireDropsModule = ({ projectId }) => {
                   </div>
                   
                   <div className="flex items-center gap-2">
-                    <div className={`w-3 h-3 rounded-full ${
-                      drop.installed_photo ? 'bg-green-500' : 'bg-gray-300'
-                    }`} />
+                    <div
+                      className={`w-3 h-3 rounded-full ${!drop.installed_photo ? 'bg-gray-300' : ''}`}
+                      style={drop.installed_photo ? { backgroundColor: '#94AF32' } : undefined}
+                    />
                     <span className="text-sm text-gray-600 dark:text-gray-400">
                       Installed
                     </span>

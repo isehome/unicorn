@@ -24,7 +24,7 @@ const PRESET_COLORS = [
 const IMPORT_MODES = [
   { id: 'replace', label: 'Replace All', description: 'Delete all existing skills and import fresh', icon: AlertTriangle, color: 'text-red-500' },
   { id: 'merge', label: 'Merge', description: 'Update existing, add new (match by Category+Class+Skill)', icon: Layers, color: 'text-yellow-500' },
-  { id: 'append', label: 'Append', description: 'Add all as new (may create duplicates)', icon: Plus, color: 'text-green-500' }
+  { id: 'append', label: 'Append', description: 'Add all as new (may create duplicates)', icon: Plus, color: '', style: { color: '#94AF32' } }
 ];
 
 const SkillsManager = ({ onSuccess, onError }) => {
@@ -724,9 +724,10 @@ const SkillsManager = ({ onSuccess, onError }) => {
                 onClick={() => setNewCategoryShowInService(!newCategoryShowInService)}
                 className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-colors ${
                   newCategoryShowInService
-                    ? 'bg-green-500/10 border-green-500/50 text-green-600 dark:text-green-400'
+                    ? ''
                     : 'bg-zinc-500/10 border-zinc-500/50 text-zinc-500'
                 }`}
+                style={newCategoryShowInService ? { backgroundColor: 'rgba(148, 175, 50, 0.1)', borderColor: 'rgba(148, 175, 50, 0.5)', color: '#94AF32' } : undefined}
               >
                 {newCategoryShowInService ? <Eye size={16} /> : <EyeOff size={16} />}
                 <span className="text-sm">{newCategoryShowInService ? 'Visible in Service' : 'Hidden from Service'}</span>
@@ -791,9 +792,10 @@ const SkillsManager = ({ onSuccess, onError }) => {
                     onClick={() => setEditingItem({ ...editingItem, data: { ...editingItem.data, show_in_service: !editingItem.data.show_in_service } })}
                     className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-colors ${
                       editingItem.data.show_in_service
-                        ? 'bg-green-500/10 border-green-500/50 text-green-600 dark:text-green-400'
+                        ? ''
                         : 'bg-zinc-500/10 border-zinc-500/50 text-zinc-500'
                     }`}
+                    style={editingItem.data.show_in_service ? { backgroundColor: 'rgba(148, 175, 50, 0.1)', borderColor: 'rgba(148, 175, 50, 0.5)', color: '#94AF32' } : undefined}
                   >
                     {editingItem.data.show_in_service ? <Eye size={16} /> : <EyeOff size={16} />}
                     <span className="text-sm">{editingItem.data.show_in_service ? 'Visible in Service' : 'Hidden from Service'}</span>
@@ -914,7 +916,7 @@ const SkillsManager = ({ onSuccess, onError }) => {
                     <div className="pl-12 pr-4 pb-2">
                       {/* Add Skill */}
                       {addingTo?.type === 'skill' && addingTo?.parentId === cls.id ? (
-                        <div className="p-3 bg-emerald-500/10 rounded-lg space-y-2 mb-2">
+                        <div className="p-3 rounded-lg space-y-2 mb-2" style={{ backgroundColor: 'rgba(148, 175, 50, 0.1)' }}>
                           <input
                             type="text"
                             value={newItemName}
@@ -952,7 +954,8 @@ const SkillsManager = ({ onSuccess, onError }) => {
                       ) : (
                         <button
                           onClick={() => setAddingTo({ type: 'skill', parentId: cls.id })}
-                          className="w-full py-2 text-sm text-emerald-500 hover:text-emerald-600 flex items-center gap-1 mb-2"
+                          className="w-full py-2 text-sm flex items-center gap-1 mb-2"
+                          style={{ color: '#94AF32' }}
                         >
                           <Plus size={14} /> Add Skill
                         </button>
@@ -962,7 +965,7 @@ const SkillsManager = ({ onSuccess, onError }) => {
                       {getSkillsForClass(cls.id).map(skill => (
                         editingItem?.type === 'skill' && editingItem.data.id === skill.id ? (
                           // Edit Skill Mode
-                          <div key={skill.id} className="p-3 bg-emerald-500/10 rounded-lg space-y-2 mb-2">
+                          <div key={skill.id} className="p-3 rounded-lg space-y-2 mb-2" style={{ backgroundColor: 'rgba(148, 175, 50, 0.1)' }}>
                             <input
                               type="text"
                               value={editingItem.data.name}
@@ -1164,7 +1167,7 @@ const SkillsManager = ({ onSuccess, onError }) => {
                       }`}
                     >
                       <div className="flex items-center gap-2 mb-1">
-                        <mode.icon size={16} className={mode.color} />
+                        <mode.icon size={16} className={mode.color} style={mode.style} />
                         <span className="font-medium text-sm text-gray-900 dark:text-white">{mode.label}</span>
                       </div>
                       <p className="text-xs text-gray-500">{mode.description}</p>

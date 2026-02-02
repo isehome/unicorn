@@ -238,7 +238,8 @@ export default function WireDropMapper({ projectId, documentData, onSave, onCanc
           </button>
           <button
             onClick={handleSave}
-            className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
+            className="px-4 py-2 text-white rounded"
+            style={{ backgroundColor: '#94AF32' }}
             disabled={saving || associations.length === 0}
           >
             {saving ? 'Saving...' : `💾 Save ${associations.length} Associations`}
@@ -275,14 +276,18 @@ export default function WireDropMapper({ projectId, documentData, onSave, onCanc
                   selectedShape?.id === shape.id
                     ? 'bg-blue-100 border-blue-500'
                     : isShapeAssociated(shape.id)
-                    ? 'bg-green-50 border-green-300'
-                    : 'bg-white hover:bg-gray-50'
+                    ? ''
+                    : 'bg-white hover:bg-zinc-50'
+                }
+                style={isShapeAssociated(shape.id) && selectedShape?.id !== shape.id
+                  ? { backgroundColor: 'rgba(148, 175, 50, 0.1)', borderColor: 'rgba(148, 175, 50, 0.4)' }
+                  : {}
                 }`}
               >
                 <div className="font-medium">{shape.text || 'Unnamed Shape'}</div>
                 <div className="text-sm text-gray-500">{shape.pageTitle}</div>
                 {isShapeAssociated(shape.id) && (
-                  <div className="text-xs text-green-600 mt-1">✓ Associated</div>
+                  <div className="text-xs mt-1" style={{ color: '#94AF32' }}>✓ Associated</div>
                 )}
               </div>
             ))}
@@ -310,8 +315,12 @@ export default function WireDropMapper({ projectId, documentData, onSave, onCanc
                     selectedWireDrop?.id === drop.id
                       ? 'bg-blue-100 border-blue-500'
                       : associatedShape
-                      ? 'bg-green-50 border-green-300'
-                      : 'bg-white hover:bg-gray-50'
+                      ? ''
+                      : 'bg-white hover:bg-zinc-50'
+                }
+                style={associatedShape && selectedWireDrop?.id !== drop.id
+                  ? { backgroundColor: 'rgba(148, 175, 50, 0.1)', borderColor: 'rgba(148, 175, 50, 0.4)' }
+                  : {}
                   }`}
                 >
                   <div className="font-medium">{drop.name}</div>
@@ -320,7 +329,7 @@ export default function WireDropMapper({ projectId, documentData, onSave, onCanc
                   )}
                   {associatedShape && (
                     <div className="mt-2 flex items-center justify-between">
-                      <div className="text-xs text-green-600">
+                      <div className="text-xs" style={{ color: '#94AF32' }}>
                         ✓ Linked to: {associatedShape.text || 'Shape'}
                       </div>
                       <button

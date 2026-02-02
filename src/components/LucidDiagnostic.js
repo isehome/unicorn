@@ -265,8 +265,8 @@ const LucidDiagnostic = () => {
             </div>
 
             {documentId && (
-              <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
-                <p className="text-sm font-medium text-green-800 dark:text-green-300">
+              <div className="p-3 rounded-lg" style={{ backgroundColor: 'rgba(148, 175, 50, 0.1)', border: '1px solid rgba(148, 175, 50, 0.3)' }}>
+                <p className="text-sm font-medium" style={{ color: '#94AF32' }}>
                   Document ID: <code className="font-mono">{documentId}</code>
                 </p>
               </div>
@@ -311,7 +311,10 @@ const LucidDiagnostic = () => {
               <button
                 onClick={handleRunFullTest}
                 disabled={loading || !documentUrl.trim()}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="inline-flex items-center gap-2 px-4 py-2 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                style={{ backgroundColor: '#94AF32' }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#7a9029'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#94AF32'}
               >
                 {loading ? <Loader className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
                 Run Full Test
@@ -379,9 +382,10 @@ const LucidDiagnostic = () => {
                   key={index}
                   className={`p-3 rounded-lg border ${
                     result.success
-                      ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
+                      ? ''
                       : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
                   }`}
+                  style={result.success ? { backgroundColor: 'rgba(148, 175, 50, 0.1)', borderColor: 'rgba(148, 175, 50, 0.3)' } : {}}
                 >
                   <div className="flex items-start gap-2">
                     {result.success ? (
@@ -392,16 +396,16 @@ const LucidDiagnostic = () => {
                     <div className="flex-1">
                       <p className={`font-medium ${
                         result.success
-                          ? 'text-green-800 dark:text-green-300'
+                          ? ''
                           : 'text-red-800 dark:text-red-300'
-                      }`}>
+                      }`} style={result.success ? { color: '#94AF32' } : {}}>
                         {result.test}
                       </p>
                       <p className={`text-sm mt-1 ${
                         result.success
-                          ? 'text-green-700 dark:text-green-400'
+                          ? ''
                           : 'text-red-700 dark:text-red-400'
-                      }`}>
+                      }`} style={result.success ? { color: '#94AF32' } : {}}>
                         {result.message}
                       </p>
                       {result.data && (
@@ -409,7 +413,7 @@ const LucidDiagnostic = () => {
                           <summary className="text-xs cursor-pointer text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200">
                             View details
                           </summary>
-                          <pre className="mt-2 p-2 bg-zinc-900 dark:bg-black text-green-400 text-xs rounded overflow-x-auto">
+                          <pre className="mt-2 p-2 bg-zinc-900 dark:bg-black text-xs rounded overflow-x-auto" style={{ color: '#94AF32' }}>
                             {JSON.stringify(result.data, null, 2)}
                           </pre>
                         </details>
@@ -548,23 +552,23 @@ const LucidDiagnostic = () => {
             </p>
           </div>
           
-          <div className="mt-4 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
-            <p className="text-sm text-green-800 dark:text-green-300 font-medium mb-2">
+          <div className="mt-4 p-3 rounded-lg" style={{ backgroundColor: 'rgba(148, 175, 50, 0.1)', border: '1px solid rgba(148, 175, 50, 0.3)' }}>
+            <p className="text-sm font-medium mb-2" style={{ color: '#94AF32' }}>
               ✅ Display Methods Available
             </p>
-            
+
             <div className="space-y-2 text-sm">
               <div>
-                <p className="text-green-700 dark:text-green-400">
+                <p style={{ color: '#94AF32' }}>
                   <strong>1. PNG Export:</strong> Display charts as images (API required)
                 </p>
               </div>
-              
+
               <div>
-                <p className="text-green-700 dark:text-green-400">
+                <p style={{ color: '#94AF32' }}>
                   <strong>2. Iframe Embed - Three Options:</strong>
                 </p>
-                <ul className="ml-4 mt-1 space-y-1 text-green-600 dark:text-green-500">
+                <ul className="ml-4 mt-1 space-y-1" style={{ color: 'rgba(148, 175, 50, 0.85)' }}>
                   <li>• <strong>Token-based:</strong> No public share or login required!</li>
                   <li>• <strong>Cookie-based:</strong> Works if user has Lucid access</li>
                   <li>• <strong>Public:</strong> Only if document is publicly shared</li>
@@ -590,7 +594,10 @@ const LucidDiagnostic = () => {
                       setShowEmbed(!showEmbed);
                       setShowImageDisplay(false);
                     }}
-                    className="inline-flex items-center gap-2 px-3 py-1 bg-green-600 text-white text-sm rounded hover:bg-green-700 transition-colors"
+                    className="inline-flex items-center gap-2 px-3 py-1 text-white text-sm rounded transition-colors"
+                    style={{ backgroundColor: '#94AF32' }}
+                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#7a9029'}
+                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#94AF32'}
                   >
                     <Eye className="w-4 h-4" />
                     {showEmbed ? 'Hide' : 'Show'} Iframe Embed

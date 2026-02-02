@@ -677,7 +677,8 @@ const GlobalPartsManager = () => {
                       href={url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex items-center gap-2 text-xs text-green-600 hover:text-green-700 dark:text-green-400 dark:hover:text-green-300 hover:underline"
+                      className="flex items-center gap-2 text-xs hover:underline hover:opacity-80"
+                      style={{ color: '#94AF32' }}
                     >
                       <FileText className="h-3 w-3" />
                       <span>Technical Manual {part.technical_manual_urls.length > 1 ? `#${idx + 1}` : ''}</span>

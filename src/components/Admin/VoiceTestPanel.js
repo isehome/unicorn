@@ -843,25 +843,28 @@ Start by greeting the user and offering to tune the voice settings.`;
         </button>
 
         <div className="flex items-center gap-2">
-          <div className={`w-3 h-3 rounded-full ${
-            status === 'idle' ? 'bg-gray-400' :
-            status === 'connecting' ? 'bg-yellow-400 animate-pulse' :
-            status === 'connected' ? 'bg-green-400' :
-            status === 'listening' ? 'bg-blue-400 animate-pulse' :
-            status === 'speaking' ? 'bg-purple-400 animate-pulse' :
-            'bg-red-400'
-          }`} />
+          <div
+            className={`w-3 h-3 rounded-full ${
+              status === 'idle' ? 'bg-gray-400' :
+              status === 'connecting' ? 'bg-yellow-400 animate-pulse' :
+              status === 'connected' ? '' :
+              status === 'listening' ? 'bg-blue-400 animate-pulse' :
+              status === 'speaking' ? 'bg-purple-400 animate-pulse' :
+              'bg-red-400'
+            }`}
+            style={status === 'connected' ? { backgroundColor: '#94AF32' } : undefined}
+          />
           <span className={`text-sm ${textSecondary} capitalize`}>{status}</span>
         </div>
 
         {/* Audio Level */}
         {status !== 'idle' && (
           <div className="flex items-center gap-2 flex-1">
-            <Mic className={`w-4 h-4 ${audioLevel > 0.05 ? 'text-green-400' : textSecondary}`} />
+            <Mic className={`w-4 h-4 ${textSecondary}`} style={audioLevel > 0.05 ? { color: '#94AF32' } : undefined} />
             <div className="flex-1 h-2 bg-zinc-700 rounded-full overflow-hidden">
               <div
-                className="h-full bg-green-500 transition-all duration-75"
-                style={{ width: `${audioLevel * 100}%` }}
+                className="h-full transition-all duration-75"
+                style={{ width: `${audioLevel * 100}%`, backgroundColor: '#94AF32' }}
               />
             </div>
           </div>
@@ -883,13 +886,16 @@ Start by greeting the user and offering to tune the voice settings.`;
             <Clock className="w-3 h-3 text-blue-400" />
             <span className={`text-xs ${textSecondary}`}>Response Latency</span>
           </div>
-          <span className={`text-xl font-bold ${
-            metrics.responseLatency
-              ? parseInt(metrics.responseLatency) < 500 ? 'text-green-400'
-                : parseInt(metrics.responseLatency) < 1000 ? 'text-yellow-400'
-                : 'text-red-400'
-              : textPrimary
-          }`}>
+          <span
+            className={`text-xl font-bold ${
+              metrics.responseLatency
+                ? parseInt(metrics.responseLatency) < 500 ? ''
+                  : parseInt(metrics.responseLatency) < 1000 ? 'text-yellow-400'
+                  : 'text-red-400'
+                : textPrimary
+            }`}
+            style={metrics.responseLatency && parseInt(metrics.responseLatency) < 500 ? { color: '#94AF32' } : undefined}
+          >
             {metrics.responseLatency ? `${metrics.responseLatency}ms` : '—'}
           </span>
         </div>
@@ -906,7 +912,7 @@ Start by greeting the user and offering to tune the voice settings.`;
 
         <div className={`p-3 rounded ${mode === 'dark' ? 'bg-zinc-900' : 'bg-gray-100'}`}>
           <div className="flex items-center gap-1 mb-1">
-            <Volume2 className="w-3 h-3 text-green-400" />
+            <Volume2 className="w-3 h-3" style={{ color: '#94AF32' }} />
             <span className={`text-xs ${textSecondary}`}>Audio Sent</span>
           </div>
           <span className={`text-xl font-bold ${textPrimary}`}>
@@ -941,14 +947,18 @@ Start by greeting the user and offering to tune the voice settings.`;
             <p className={textSecondary}>Start a session to see events...</p>
           ) : (
             eventLog.map((entry, i) => (
-              <div key={i} className={`py-0.5 ${
-                entry.type === 'error' ? 'text-red-400' :
-                entry.type === 'warn' ? 'text-yellow-400' :
-                entry.type === 'success' ? 'text-green-400' :
-                entry.type === 'user' ? 'text-blue-400' :
-                entry.type === 'ai' ? 'text-purple-400' :
-                textSecondary
-              }`}>
+              <div
+                key={i}
+                className={`py-0.5 ${
+                  entry.type === 'error' ? 'text-red-400' :
+                  entry.type === 'warn' ? 'text-yellow-400' :
+                  entry.type === 'success' ? '' :
+                  entry.type === 'user' ? 'text-blue-400' :
+                  entry.type === 'ai' ? 'text-purple-400' :
+                  textSecondary
+                }`}
+                style={entry.type === 'success' ? { color: '#94AF32' } : undefined}
+              >
                 <span className="text-zinc-600">[{entry.time}]</span> {entry.message}
               </div>
             ))

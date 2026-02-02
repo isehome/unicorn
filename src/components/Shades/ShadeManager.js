@@ -650,7 +650,7 @@ const ShadeManager = ({ isPMView = false, embeddedProjectId = null }) => {
                                     </span>
                                 </div>
                                 <div className="flex items-center gap-1.5">
-                                    <div className="w-2 h-2 rounded-full bg-green-500" />
+                                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: '#94AF32' }} />
                                     <span className={mode === 'dark' ? 'text-zinc-400' : 'text-zinc-600'}>
                                         Installed: {orderingStats.installed}
                                     </span>

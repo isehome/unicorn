@@ -343,10 +343,10 @@ const SettingsPage = () => {
                   <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">
                     Brady M211 Printer
                   </div>
-                  <div className={`text-xs flex items-center gap-1.5 mt-1 ${connected
-                    ? 'text-green-600 dark:text-green-400'
-                    : 'text-gray-500 dark:text-gray-400'
-                    }`}>
+                  <div
+                    className="text-xs flex items-center gap-1.5 mt-1"
+                    style={connected ? { color: '#94AF32' } : { color: '#6B7280' }}
+                  >
                     {connected ? (
                       <>
                         <CheckCircle size={14} />
@@ -401,7 +401,7 @@ const SettingsPage = () => {
                 </p>
               )}
               {connected && (
-                <p className="text-green-600 dark:text-green-400 font-medium">
+                <p className="font-medium" style={{ color: '#94AF32' }}>
                   ✓ Ready to print from Wire Drops pages
                 </p>
               )}
@@ -565,7 +565,10 @@ const SettingsPage = () => {
                 />
 
                 {avatarColorMessage && (
-                  <p className={`text-sm ${avatarColorMessage.includes('Failed') || avatarColorMessage.includes('not linked') ? 'text-red-500' : 'text-green-500'}`}>
+                  <p
+                    className="text-sm"
+                    style={{ color: avatarColorMessage.includes('Failed') || avatarColorMessage.includes('not linked') ? '#EF4444' : '#94AF32' }}
+                  >
                     {avatarColorMessage}
                   </p>
                 )}

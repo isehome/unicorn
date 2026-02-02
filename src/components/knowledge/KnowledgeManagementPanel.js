@@ -362,7 +362,10 @@ const KnowledgeManagementPanel = () => {
         switch (status) {
             case 'ready':
                 return (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">
+                    <span
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs"
+                        style={{ backgroundColor: 'rgba(148, 175, 50, 0.1)', color: '#94AF32' }}
+                    >
                         <CheckCircle size={12} /> Ready
                     </span>
                 );
@@ -884,7 +887,7 @@ const KnowledgeManagementPanel = () => {
                         {/* Step 4: Complete */}
                         {scrapeStep === 'complete' && (
                             <div className="space-y-4 text-center py-4">
-                                <CheckCircle size={32} className="mx-auto text-green-500" />
+                                <CheckCircle size={32} className="mx-auto" style={{ color: '#94AF32' }} />
                                 <div>
                                     <h4 className="text-sm font-medium">Import Complete!</h4>
                                     <p className="text-xs text-gray-500 mt-1">

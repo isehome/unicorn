@@ -31,9 +31,9 @@ export async function getCurrentCycle() {
       .in('status', ['self_eval', 'manager_review'])
       .order('start_date', { ascending: false })
       .limit(1)
-      .single();
+      .maybeSingle();
 
-    if (error && error.code !== 'PGRST116') { // PGRST116 = no rows
+    if (error) {
       console.error('[CareerDevelopmentService] getCurrentCycle error:', error);
       throw error;
     }
@@ -1070,9 +1070,9 @@ export async function getSession(cycleId, employeeId) {
       `)
       .eq('review_cycle_id', cycleId)
       .eq('employee_id', employeeId)
-      .single();
+      .maybeSingle();
 
-    if (error && error.code !== 'PGRST116') {
+    if (error) {
       console.error('[CareerDevelopmentService] getSession error:', error);
       throw error;
     }
@@ -1343,7 +1343,7 @@ export async function getPendingActions(userId, userRole) {
         .select('self_eval_submitted_at')
         .eq('review_cycle_id', cycle.id)
         .eq('employee_id', userId)
-        .single();
+        .maybeSingle();
 
       if (!session?.self_eval_submitted_at) {
         actions.selfEval.push({
@@ -1364,7 +1364,7 @@ export async function getPendingActions(userId, userRole) {
           .select('manager_review_submitted_at, self_eval_submitted_at')
           .eq('review_cycle_id', cycle.id)
           .eq('employee_id', report.id)
-          .single();
+          .maybeSingle();
 
         if (session?.self_eval_submitted_at && !session?.manager_review_submitted_at) {
           actions.managerReviews.push({

@@ -449,7 +449,7 @@ function ProjectPermits({ projectId, onMilestoneChange }) {
                       type="checkbox"
                       checked={permit.rough_in_completed}
                       onChange={() => handleRoughInToggle(permit)}
-                      className="mt-1 w-5 h-5 rounded border-gray-300 text-green-600 focus:ring-green-500"
+                      className="mt-1 w-5 h-5 rounded border-zinc-300 text-violet-600 focus:ring-violet-500"
                     />
                     <div className="flex-1">
                       <span className="text-sm text-gray-700 dark:text-gray-300">
@@ -501,7 +501,7 @@ function ProjectPermits({ projectId, onMilestoneChange }) {
                       type="checkbox"
                       checked={permit.final_inspection_completed}
                       onChange={() => handleFinalInspectionToggle(permit)}
-                      className="mt-1 w-5 h-5 rounded border-gray-300 text-green-600 focus:ring-green-500"
+                      className="mt-1 w-5 h-5 rounded border-zinc-300 text-violet-600 focus:ring-violet-500"
                     />
                     <div className="flex-1">
                       <span className="text-sm text-gray-700 dark:text-gray-300">

@@ -1,13 +1,57 @@
 # AGENT.md - Unicorn Project Guidelines
 
-**⚠️ AI ASSISTANT: Read this ENTIRE file before writing any code.**
+> **This is the SINGLE SOURCE OF TRUTH for the Unicorn application.**
+> For AI agents, voice copilots, and any system that needs to understand this app completely.
 
-**📁 FILE MANAGEMENT RULES:**
-- **NEVER create duplicate agent files** (no AGENT 2.md, AGENT 3.md, agent-copy.md, etc.)
-- **ALWAYS update THIS file** (AGENT.md) directly when documentation changes are needed
+---
+
+## 📖 TABLE OF CONTENTS (Quick Navigation)
+
+| Section | Lines | What's There |
+|---------|-------|--------------|
+| **PART 1: What This App Is** | 50-1500 | Business overview, features, workflows |
+| → App Overview & User Roles | 50-100 | What Unicorn does, who uses it |
+| → Wire Drops | 100-400 | 3-stage workflow, completion logic |
+| → Equipment System | 400-700 | 3-tier architecture, CSV import |
+| → Milestones/Progress | 700-1000 | 8 gauges, SSOT calculation |
+| → Procurement | 1000-1300 | PO workflow, receiving |
+| → Shades | 1300-1500 | Shade measuring, ordering |
+| **PART 2: How To Work On This App** | 1533-2700 | Dev patterns, styling, code standards |
+| → Brand Colors | 1604-1700 | **CRITICAL** - `#94AF32` olive green rule |
+| → Styling System | 1700-1900 | Theme, zinc not gray, dark mode |
+| → Mobile UX | 1900-2000 | iOS zoom prevention, touch targets |
+| → Database Rules | 2000-2400 | MSAL auth, RLS, timestamps |
+| → Code Standards | 2400-2700 | Service layer, React patterns |
+| **PART 3: AI & Voice Copilot** | 2722-3100 | Gemini, AppStateContext, 5 meta-tools |
+| **PART 4: External Portals** | 3139-3280 | Public pages, standalone pattern |
+| **PART 5: TODO / Known Issues** | 3283-3700 | Current bugs, planned work |
+| **PART 6: Changelog** | 3740+ | All changes (ADD NEW ENTRIES HERE) |
+
+---
+
+## 📁 FILE MANAGEMENT RULES
+
+- **NEVER create duplicate agent files** (no AGENT 2.md, AGENT 3.md, etc.)
+- **ALWAYS update THIS file** directly when documentation changes are needed
 - **APPEND new sections** to the appropriate part of this file
-- If this file gets too long, discuss with the user before restructuring
-- The only documentation files should be: `AGENT.md` (primary) and topic-specific files in `/docs/`
+- Topic-specific deep-dives live in `/docs/` but THIS file is the master reference
+- **After ANY code change, update the CHANGELOG section (PART 6)**
+
+---
+
+## 🎨 BRAND COLORS - QUICK REFERENCE
+
+| Purpose | Hex | Usage |
+|---------|-----|-------|
+| Primary | `#8B5CF6` | `violet-500` Tailwind class |
+| **Success** | `#94AF32` | **INLINE ONLY** - `style={{ color: '#94AF32' }}` |
+| Warning | `#F59E0B` | `amber-500` Tailwind class |
+| Danger | `#EF4444` | `red-500` Tailwind class |
+
+**NEVER use `green-*`, `emerald-*`, or `gray-*` Tailwind classes!**
+**ALWAYS use `zinc-*` (not gray) with `dark:` variants.**
+
+See PART 2, lines 1604-1700 for complete styling guide.
 
 ---
 
@@ -3282,6 +3326,41 @@ CREATE TABLE shade_comments (
 
 # PART 5: TODO / KNOWN ISSUES
 
+## Brand Color Violations (RESOLVED 2026-01-30) ✅
+
+**Status:** COMPLETE - All ~200 violations fixed
+
+**What was fixed:** All Tailwind `green-*` and `emerald-*` classes replaced with inline styles using brand olive `#94AF32`.
+
+**50+ files fixed across all modules:**
+- Admin, Procurement, HR, Settings, Service, Equipment, Pages, Modules
+
+**Intentionally preserved (NOT violations):**
+- `VoiceCopilotOverlay.js` - Debug panel terminal aesthetic
+- `UnifiTestPage.js` - Debug console styling
+- `RackBackView.jsx`, `RackFrontView.jsx` - Network online/offline status (green=online, red=offline)
+- `PowerConnectionsView.jsx` - UPS battery backup indicators
+
+**Fix pattern (for future reference):**
+```jsx
+// Text color
+style={{ color: '#94AF32' }}
+
+// Background (light)
+style={{ backgroundColor: 'rgba(148, 175, 50, 0.1)' }}
+
+// Border
+style={{ borderColor: 'rgba(148, 175, 50, 0.3)' }}
+```
+
+**Verification script:**
+```bash
+# Should return only intentional exceptions (debug panels, network status, UPS)
+grep -rn "text-green-\|bg-green-\|text-emerald-\|bg-emerald-\|border-green-" src --include="*.js" --include="*.jsx" | grep -v "VoiceCopilotOverlay\|UnifiTestPage\|RackBackView\|RackFrontView\|PowerConnectionsView\|UnifiDebug\|styleSystem"
+```
+
+---
+
 ## Supabase Security Linter Issues (Logged 2025-12-10)
 
 **Status:** Deferred - needs careful review to avoid breaking production
@@ -3738,6 +3817,115 @@ The application needs a proper user capabilities/roles system to control access 
 ---
 
 # PART 6: CHANGELOG
+
+## 2026-02-02
+
+### Service Weekly Planning: Fix Unschedule Ticket Bug
+
+**What:** Added missing `getById()` method to `serviceScheduleService` to fix the "cannot move tickets off schedule" error.
+
+**Why:** Users could not drag service tickets from the weekly planning calendar back to the unscheduled panel. The error `ge.AD.getById is not a function` appeared in the console because `serviceScheduleService.getById()` was being called but didn't exist.
+
+**Root Cause:** The `handleUnschedule` function in `WeeklyPlanning.js` (line 1129) calls `serviceScheduleService.getById(scheduleId)` to fetch the schedule before deletion (needed to get calendar_event_id for cancellation emails). However, this method was never implemented in `serviceScheduleService`.
+
+**Fix Applied:**
+- Added `getById(id)` method to `serviceScheduleService` in `serviceTicketService.js`
+- Method fetches a single schedule by ID with related ticket data
+- Follows same pattern as `getByDateRange()` query structure
+
+**Files:** `src/services/serviceTicketService.js`
+
+**AI Note:** The service layer pattern requires all CRUD operations to be in services. When calling `serviceXxxService.getById()`, ensure the method exists - this was a missing method that went unnoticed until runtime.
+
+---
+
+## 2026-01-30
+
+### HR System: Quick Notes & Team Development Fixes
+
+**What:** Fixed Quick Notes save functionality and Team Development notes display in the HR system. Also enhanced Quick Notes to allow managers to write notes about ANY employee, not just direct reports.
+
+**Why:**
+1. Quick Notes were failing with 401 Unauthorized due to RLS policies checking `auth.uid()` which is always NULL with MSAL authentication.
+2. Managers need to document observations about any employee, not just their direct reports (e.g., cross-team collaboration, observed behaviors).
+
+**Root Cause:** Supabase RLS policies use `auth.uid()` which only works with Supabase Auth. Since Unicorn uses MSAL (Microsoft authentication), `auth.uid()` always returns NULL, causing all INSERT operations to be denied.
+
+**Fixes Applied:**
+1. Disabled RLS on `employee_notes` table (app handles auth via MSAL)
+2. Fixed `EmployeeNotesList` props in `TeamDevelopmentSection` - was passing wrong props (`notes`, `employeeName`) instead of expected props (`employeeId`, `reviewCycleId`)
+3. Removed redundant manual notes loading in `TeamDevelopmentSection` (component handles its own data fetching)
+4. Added "Other Employees" expandable section in Quick Notes for managers
+5. Added search functionality to find employees by name or email
+6. Added `getAllEmployees()` function to hrService
+
+**Files:**
+- `database/migrations/2026-01-30_disable_employee_notes_rls.sql` - Disables RLS for MSAL compatibility
+- `src/pages/MyHRPage.js` - Fixed EmployeeNotesList props, added allEmployees state, passes userRole to QuickNoteButton
+- `src/components/HR/QuickNoteButton.js` - Added "Other Employees" section with search for managers
+- `src/services/hrService.js` - Added `getAllEmployees()` function, `.maybeSingle()` fix for PTO balance checks
+- `src/services/careerDevelopmentService.js` - Changed `.single()` to `.maybeSingle()` for queries that may return no rows (fixes 406 errors)
+
+**Database:** No new tables. RLS disabled on `employee_notes` table.
+
+**AI Note:** For MSAL-authenticated apps, RLS policies using `auth.uid()` will always fail. Either disable RLS or use service role key. The app handles authorization at the application layer instead. Quick Notes now supports writing about any employee for users with manager/director/admin/owner roles.
+
+---
+
+### 🎨 MAJOR: Brand Color Compliance Overhaul (Complete)
+
+**What:** Fixed ALL ~200 green/emerald Tailwind color violations across the codebase, replacing them with the brand olive color `#94AF32` using inline styles.
+
+**Why:** Enforcing brand consistency - success/positive colors must use olive `#94AF32`, not Tailwind `green-*` or `emerald-*` classes.
+
+**Scope:** 50+ files modified across all modules:
+- Admin components (AdminPage.js, BugTodosTab.js, AITrainingTab.js, SkillsManager.js, etc.)
+- Procurement (ProcurementDashboard.js, SupplierManager.js, POLineItemsEditor.js, etc.)
+- HR components (TimeOffSection.js, HRPreferencesManager.js, TeamPTOAllocations.js, etc.)
+- Settings (SettingsPage.js, AISettings.js, UserSkillsSection.js)
+- Service (NewTicketForm.js, TechnicianFilterBar.jsx, ServicePhotosManager.js)
+- Equipment (ProjectEquipmentManager.js, PartDetailPage.js, GlobalPartsManager.js)
+- Pages (AdminPage.js, ServiceReports.js, WeeklyPlanning.js, MyHRPage.js, etc.)
+- Modules (wire-drops, issues, wire-drop-commissioning)
+
+**Intentionally Preserved (NOT violations):**
+- `VoiceCopilotOverlay.js` - Debug panel terminal aesthetic (green-on-black)
+- `UnifiTestPage.js` - Debug console styling
+- `RackBackView.jsx` - Network online/offline status indicators
+- `RackFrontView.jsx` - Network status dots (green=online, red=offline)
+- `PowerConnectionsView.jsx` - UPS battery backup indicators
+
+**Pattern Applied:**
+```jsx
+// Text color
+style={{ color: '#94AF32' }}
+
+// Background (light)
+style={{ backgroundColor: 'rgba(148, 175, 50, 0.1)' }}
+
+// Solid background (buttons)
+style={{ backgroundColor: '#94AF32' }}
+
+// Border
+style={{ borderColor: 'rgba(148, 175, 50, 0.3)' }}
+```
+
+**AI Note:** The codebase is now brand-compliant. ALWAYS use inline styles with `#94AF32` for success states. The only exceptions are: (1) terminal/debug aesthetics, (2) network online/offline status, (3) UPS power indicators.
+
+---
+
+### Documentation Architecture Overhaul
+**What:** Restructured documentation to make AGENT.md the single source of truth
+**Why:** Prevent doc fragmentation and ensure AI agents always have complete context
+**Files:** `AGENT.md`, `.claude/skills/unicorn/SKILL.md`
+**Changes:**
+- Added comprehensive Table of Contents with line number references to AGENT.md
+- Updated unicorn skill to be a "loader" that guides selective AGENT.md reading
+- Archived redundant docs (QUICKSTART.md, CORE.md, CLAUDE.md, START-SESSION.md)
+- AGENT.md is now THE source - no more duplicate docs to maintain
+**AI Note:** When working on Unicorn, invoke `/unicorn` skill which provides line-number guide for reading AGENT.md sections efficiently without loading all 300KB
+
+---
 
 ## 2026-01-29
 
@@ -8199,7 +8387,8 @@ When Manus completes, it calls `/api/manus-webhook.js` which:
 | File | Purpose |
 |------|---------|
 | `/api/enrich-parts-batch-manus.js` | Creates Manus tasks with the prompt |
-| `/api/manus-webhook.js` | Processes completed tasks, extracts URLs |
+| `/api/manus-webhook.js` | Processes completed tasks, extracts URLs, sanitizes data types |
+| `/api/replay-manus-enrichment.js` | Re-process stored results without re-running Manus |
 | `/src/components/PartsAILookupPage.js` | UI for batch part selection |
 | `/src/components/PartDetailPage.js` | Shows documentation with green/purple dots |
 | `database/migrations/20260127_add_parts_folder_url.sql` | RPC function for saving |
@@ -8220,6 +8409,53 @@ When Manus completes, it calls `/api/manus-webhook.js` which:
 - **Cause:** Manus task failed or timed out without calling webhook
 - **Fix:** Created `/api/admin/clear-stale-statuses.js` endpoint to reset stuck parts
 - **Usage:** POST to endpoint to clear parts stuck >1 hour
+
+**Issue: Enrichment data not saving - Type mismatch on numeric fields (CRITICAL FIX 2026-01-30)**
+- **Cause:** Manus returns descriptive strings for numeric fields (e.g., `u_height: "2U for two Amps, 3U for four Amps"`) which fail PostgreSQL integer parsing
+- **Error:** `invalid input syntax for type integer: "2U for two Amps, 3U for four Amps"`
+- **Fix:** Added safe parsing helper functions to `/api/manus-webhook.js`:
+  ```javascript
+  function safeParseInt(value) {
+    if (value === null || value === undefined) return null;
+    if (typeof value === 'number') return Number.isInteger(value) ? value : null;
+    if (typeof value !== 'string') return null;
+    const match = value.match(/^(\d+)/);  // Extract leading digits
+    return match ? parseInt(match[1], 10) : null;
+  }
+  ```
+- **Fields sanitized:**
+  - Integer: `u_height`, `power_watts`, `num_channels`
+  - Float: `width_inches`, `height_inches`, `depth_inches`, `weight_lbs`, `msrp`, `confidence`
+  - Boolean: `poe_powered`, `rack_mountable`
+
+#### Replay Manus Enrichment Endpoint
+
+**Purpose:** Re-process stored Manus task results without re-running Manus (saves credits).
+
+**Endpoint:** `POST /api/replay-manus-enrichment`
+
+**Request Body:**
+```json
+{ "partId": "uuid-of-part" }
+// OR
+{ "taskId": "manus-task-id" }
+```
+
+**Use Cases:**
+- Fixing data that failed to save due to type mismatches
+- Re-applying improved parsing logic to existing data
+- Recovering enrichment data after webhook errors
+
+**How It Works:**
+1. Finds the most recent completed Manus task for the part
+2. Retrieves stored result from `manus_tasks.result`
+3. Applies `sanitizeEnrichmentData()` to fix type issues
+4. Saves via `save_parts_enrichment()` RPC
+5. Marks task as replayed with `_replayed_at` timestamp
+
+**Important Limitation:** Only works if the full enrichment data was stored in `manus_tasks.result`. Some older tasks may only have `notes` stored, requiring manual data entry or re-running Manus.
+
+**File:** `/api/replay-manus-enrichment.js`
 
 #### Brand Colors
 

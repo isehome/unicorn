@@ -366,7 +366,8 @@ const ServicePhotosManager = ({ ticketId, user, sharePointFolderUrl }) => {
                       />
                       <button
                         onClick={() => handleSaveCaption(selectedPhoto.id)}
-                        className="p-1 text-green-400 hover:text-green-300"
+                        className="p-1 hover:opacity-80"
+                        style={{ color: '#94AF32' }}
                       >
                         <Check size={18} />
                       </button>

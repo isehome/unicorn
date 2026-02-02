@@ -18,7 +18,7 @@ import {
   GraduationCap, Star, Sparkles, Shield, UserCog, Crown, Briefcase,
   Wrench, Mail, UserPlus, UserX, ArrowLeft, ToggleLeft, ToggleRight,
   Link2, Link2Off, BookOpen, Bot, Zap, ExternalLink, Upload, FileSpreadsheet,
-  ArrowRight, RefreshCw, AlertTriangle, Bug, Building2, Calendar
+  ArrowRight, RefreshCw, AlertTriangle, Bug, Building2
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useTheme } from '../contexts/ThemeContext';
@@ -31,11 +31,8 @@ import SystemAccountSettings from '../components/Admin/SystemAccountSettings';
 import AITrainingTab from '../components/Admin/AITrainingTab';
 import BugTodosTab from '../components/Admin/BugTodosTab';
 import SkillsManager from '../components/Admin/SkillsManager';
-import CompanySettingsManager from '../components/procurement/CompanySettingsManager';
-import ReviewCyclesManager from '../components/Admin/ReviewCyclesManager';
 import OrgStructureManager from '../components/Admin/OrgStructureManager';
 import PeopleManager from '../components/Admin/PeopleManager';
-import HRPreferencesManager from '../components/Admin/HRPreferencesManager';
 
 // Role definitions with hierarchy
 const USER_ROLES = [
@@ -1063,11 +1060,11 @@ const AdminPage = () => {
                     <button
                       onClick={() => handleToggleUserActive(usr.id, !usr.is_active)}
                       disabled={saving}
-                      className={`p-2 rounded-lg transition-colors ${
-                        usr.is_active
-                          ? 'hover:bg-red-500/20 text-red-400'
-                          : 'hover:bg-green-500/20 text-green-400'
-                      }`}
+                      className="p-2 rounded-lg transition-colors"
+                      style={usr.is_active
+                        ? { color: '#EF4444' }
+                        : { color: '#94AF32' }
+                      }
                       title={usr.is_active ? 'Deactivate user' : 'Activate user'}
                     >
                       {usr.is_active ? <UserX size={16} /> : <UserPlus size={16} />}
@@ -1260,7 +1257,7 @@ const AdminPage = () => {
                                   className="p-1 rounded-lg transition-colors disabled:opacity-50"
                                 >
                                   {enabled ? (
-                                    <ToggleRight size={24} className="text-green-500" />
+                                    <ToggleRight size={24} style={{ color: '#94AF32' }} />
                                   ) : (
                                     <ToggleLeft size={24} className="text-zinc-500" />
                                   )}
@@ -1347,7 +1344,7 @@ const AdminPage = () => {
                             className="p-1 rounded-lg transition-colors disabled:opacity-50"
                           >
                             {currentValue ? (
-                              <ToggleRight size={24} className="text-green-500" />
+                              <ToggleRight size={24} style={{ color: '#94AF32' }} />
                             ) : (
                               <ToggleLeft size={24} className="text-zinc-500" />
                             )}
@@ -1871,10 +1868,13 @@ const AdminPage = () => {
       <div className="flex items-center gap-2 text-sm flex-wrap">
         {['upload', 'map', 'ai-processing', 'preview', 'importing', 'done'].map((step, idx) => (
           <React.Fragment key={step}>
-            <div className={`flex items-center gap-1 ${
-              importStep === step ? 'text-violet-600 font-medium' :
-              ['upload', 'map', 'ai-processing', 'preview', 'importing', 'done'].indexOf(importStep) > idx ? 'text-green-600' : 'text-zinc-400'
-            }`}>
+            <div
+              className={`flex items-center gap-1 ${
+                importStep === step ? 'text-violet-600 font-medium' :
+                ['upload', 'map', 'ai-processing', 'preview', 'importing', 'done'].indexOf(importStep) > idx ? '' : 'text-zinc-400'
+              }`}
+              style={['upload', 'map', 'ai-processing', 'preview', 'importing', 'done'].indexOf(importStep) > idx && importStep !== step ? { color: '#94AF32' } : {}}
+            >
               {['upload', 'map', 'ai-processing', 'preview', 'importing', 'done'].indexOf(importStep) > idx ? (
                 <CheckCircle size={16} />
               ) : importStep === step && step === 'ai-processing' ? (
@@ -2020,16 +2020,20 @@ const AdminPage = () => {
       {/* Step 3: Preview */}
       {importStep === 'preview' && (
         <div className="space-y-4">
-          <div className={`p-4 rounded-lg border ${
-            useAIProcessing && aiProcessedData.length > 0
-              ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
-              : 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800'
-          }`}>
-            <p className={`text-sm ${
-              useAIProcessing && aiProcessedData.length > 0
-                ? 'text-green-700 dark:text-green-300'
-                : 'text-amber-700 dark:text-amber-300'
-            }`}>
+          <div
+            className="p-4 rounded-lg border"
+            style={useAIProcessing && aiProcessedData.length > 0
+              ? { backgroundColor: 'rgba(148, 175, 50, 0.1)', borderColor: 'rgba(148, 175, 50, 0.3)' }
+              : { backgroundColor: 'rgba(245, 158, 11, 0.1)', borderColor: 'rgba(245, 158, 11, 0.3)' }
+            }
+          >
+            <p
+              className="text-sm"
+              style={useAIProcessing && aiProcessedData.length > 0
+                ? { color: '#94AF32' }
+                : { color: '#F59E0B' }
+              }
+            >
               {useAIProcessing && aiProcessedData.length > 0 ? (
                 <>
                   <Sparkles size={14} className="inline mr-1" />
@@ -2074,7 +2078,7 @@ const AdminPage = () => {
                         {row.is_company ? (
                           <span className="px-2 py-1 text-xs rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">Company</span>
                         ) : (
-                          <span className="px-2 py-1 text-xs rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300">Person</span>
+                          <span className="px-2 py-1 text-xs rounded-full" style={{ backgroundColor: 'rgba(148, 175, 50, 0.2)', color: '#94AF32' }}>Person</span>
                         )}
                       </td>
                     )}
@@ -2120,7 +2124,7 @@ const AdminPage = () => {
       {/* Step 5: Done */}
       {importStep === 'done' && (
         <div className="space-y-4 text-center py-8">
-          <CheckCircle size={48} className="mx-auto text-green-500" />
+          <CheckCircle size={48} className="mx-auto" style={{ color: '#94AF32' }} />
           <h3 className="font-medium text-lg">Import Complete!</h3>
           <p className="text-zinc-600 dark:text-zinc-400">
             Processed {importProgress.total} records.
@@ -2190,8 +2194,8 @@ const AdminPage = () => {
       {/* QuickBooks Integration */}
       <div className="rounded-xl border p-4 space-y-4" style={sectionStyles.card}>
         <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-lg bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
-            <Link2 size={24} className="text-green-600 dark:text-green-400" />
+          <div className="w-12 h-12 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(148, 175, 50, 0.2)' }}>
+            <Link2 size={24} style={{ color: '#94AF32' }} />
           </div>
           <div>
             <h3 className="font-medium text-gray-900 dark:text-white">QuickBooks Online</h3>
@@ -2206,14 +2210,14 @@ const AdminPage = () => {
           </div>
         ) : qboStatus.connected ? (
           <div className="space-y-3">
-            <div className="flex items-center gap-3 p-3 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800">
-              <CheckCircle size={20} className="text-green-600 dark:text-green-400" />
+            <div className="flex items-center gap-3 p-3 rounded-lg" style={{ backgroundColor: 'rgba(148, 175, 50, 0.1)', border: '1px solid rgba(148, 175, 50, 0.3)' }}>
+              <CheckCircle size={20} style={{ color: '#94AF32' }} />
               <div className="flex-1">
-                <p className="text-sm font-medium text-green-800 dark:text-green-200">
+                <p className="text-sm font-medium" style={{ color: '#94AF32' }}>
                   Connected to QuickBooks
                 </p>
                 {qboStatus.companyName && (
-                  <p className="text-xs text-green-700 dark:text-green-300">
+                  <p className="text-xs" style={{ color: '#94AF32' }}>
                     Company: {qboStatus.companyName}
                   </p>
                 )}
@@ -2431,9 +2435,9 @@ const AdminPage = () => {
       )}
 
       {success && (
-        <div className="flex items-center gap-2 p-3 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800">
-          <CheckCircle size={16} className="text-green-500" />
-          <span className="text-sm text-green-700 dark:text-green-300">{success}</span>
+        <div className="flex items-center gap-2 p-3 rounded-lg" style={{ backgroundColor: 'rgba(148, 175, 50, 0.1)', border: '1px solid rgba(148, 175, 50, 0.3)' }}>
+          <CheckCircle size={16} style={{ color: '#94AF32' }} />
+          <span className="text-sm" style={{ color: '#94AF32' }}>{success}</span>
         </div>
       )}
 
@@ -2462,26 +2466,11 @@ const AdminPage = () => {
           Skills
         </button>
         <button
-          onClick={() => setActiveTab('review-cycles')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-            activeTab === 'review-cycles'
-              ? 'bg-violet-500 text-white'
-              : 'bg-gray-100 dark:bg-zinc-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-zinc-600'
-          }`}
+          onClick={() => navigate('/company-settings')}
+          className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors bg-gray-100 dark:bg-zinc-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-zinc-600"
         >
-          <Calendar size={16} />
-          Review Cycles
-        </button>
-        <button
-          onClick={() => setActiveTab('hr-preferences')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-            activeTab === 'hr-preferences'
-              ? 'bg-violet-500 text-white'
-              : 'bg-gray-100 dark:bg-zinc-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-zinc-600'
-          }`}
-        >
-          <Briefcase size={16} />
-          HR Preferences
+          <Building2 size={16} />
+          Company Settings
         </button>
         <button
           onClick={() => setActiveTab('features')}
@@ -2504,28 +2493,6 @@ const AdminPage = () => {
         >
           <Link2 size={16} />
           Integrations
-        </button>
-        <button
-          onClick={() => setActiveTab('import')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-            activeTab === 'import'
-              ? 'bg-violet-500 text-white'
-              : 'bg-gray-100 dark:bg-zinc-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-zinc-600'
-          }`}
-        >
-          <Upload size={16} />
-          Import
-        </button>
-        <button
-          onClick={() => setActiveTab('company')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-            activeTab === 'company'
-              ? 'bg-violet-500 text-white'
-              : 'bg-gray-100 dark:bg-zinc-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-zinc-600'
-          }`}
-        >
-          <Building2 size={16} />
-          Company
         </button>
         <button
           onClick={() => setActiveTab('ai-training')}
@@ -2558,33 +2525,8 @@ const AdminPage = () => {
         </div>
       )}
       {activeTab === 'skills' && renderSkillsTab()}
-      {activeTab === 'review-cycles' && (
-        <div className="mt-6 p-6 rounded-xl border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800">
-          <ReviewCyclesManager />
-        </div>
-      )}
-      {activeTab === 'hr-preferences' && (
-        <div className="mt-6 p-6 rounded-xl border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800">
-          <HRPreferencesManager />
-        </div>
-      )}
       {activeTab === 'features' && renderFeaturesTab()}
       {activeTab === 'integrations' && renderIntegrationsTab()}
-      {activeTab === 'import' && renderImportTab()}
-      {activeTab === 'company' && (
-        <div className="mt-6 p-6 rounded-xl border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="w-10 h-10 rounded-lg bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center">
-              <Building2 className="w-5 h-5 text-violet-600 dark:text-violet-400" />
-            </div>
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Company Settings</h3>
-              <p className="text-sm text-gray-500 dark:text-gray-400">Manage company information, logo, and contact details</p>
-            </div>
-          </div>
-          <CompanySettingsManager />
-        </div>
-      )}
       {activeTab === 'ai-training' && <AITrainingTab />}
       {activeTab === 'bug-todos' && <BugTodosTab />}
 

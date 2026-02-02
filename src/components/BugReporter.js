@@ -486,7 +486,7 @@ export default function BugReporter() {
 
               {/* Status messages */}
               {submitStatus === 'success' && (
-                <div className="flex items-center gap-2 p-3 rounded-lg bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">
+                <div className="flex items-center gap-2 p-3 rounded-lg" style={{ backgroundColor: 'rgba(148, 175, 50, 0.2)', color: '#94AF32' }}>
                   <CheckCircle size={18} />
                   <span className="text-sm font-medium">Bug report sent! Thank you.</span>
                 </div>

@@ -39,7 +39,7 @@ const BugTodosTab = () => {
     critical: 'bg-red-500/10 text-red-500 border-red-500/30',
     high: 'bg-orange-500/10 text-orange-500 border-orange-500/30',
     medium: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/30',
-    low: 'bg-green-500/10 text-green-500 border-green-500/30',
+    low: '', // Uses inline styles for brand olive color
     trivial: 'bg-gray-500/10 text-gray-500 border-gray-500/30'
   };
 
@@ -47,7 +47,7 @@ const BugTodosTab = () => {
   const statusColors = {
     pending: 'bg-yellow-500/10 text-yellow-600 border-yellow-500/30',
     processing: 'bg-blue-500/10 text-blue-500 border-blue-500/30',
-    analyzed: 'bg-green-500/10 text-green-600 border-green-500/30',
+    analyzed: '', // Uses inline styles for brand olive color
     failed: 'bg-red-500/10 text-red-500 border-red-500/30'
   };
 
@@ -558,8 +558,8 @@ const BugTodosTab = () => {
 
         <div className={`${cardBg} p-4 rounded-xl border ${borderColor}`}>
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-green-500/10">
-              <CheckCircle style={{ color: '#94AF32' }} />
+            <div className="p-2 rounded-lg" style={{ backgroundColor: 'rgba(148, 175, 50, 0.1)' }}>
+              <CheckCircle className="w-5 h-5" style={{ color: '#94AF32' }} />
             </div>
             <div>
               <div className={`text-2xl font-bold ${textPrimary}`}>{stats.analyzed}</div>
@@ -637,14 +637,20 @@ const BugTodosTab = () => {
                           {bug.bug_report_id}
                         </span>
                       )}
-                      <span className={`px-2 py-0.5 text-xs font-medium rounded-full border ${statusColors[bug.status]}`}>
+                      <span
+                        className={`px-2 py-0.5 text-xs font-medium rounded-full border ${statusColors[bug.status]}`}
+                        style={bug.status === 'analyzed' ? { backgroundColor: 'rgba(148, 175, 50, 0.1)', color: '#94AF32', borderColor: 'rgba(148, 175, 50, 0.3)' } : {}}
+                      >
                         <span className="flex items-center gap-1">
                           <StatusIcon status={bug.status} />
                           {bug.status}
                         </span>
                       </span>
                       {bug.ai_severity && (
-                        <span className={`px-2 py-0.5 text-xs font-medium rounded-full border ${severityColors[bug.ai_severity]}`}>
+                        <span
+                          className={`px-2 py-0.5 text-xs font-medium rounded-full border ${severityColors[bug.ai_severity]}`}
+                          style={bug.ai_severity === 'low' ? { backgroundColor: 'rgba(148, 175, 50, 0.1)', color: '#94AF32', borderColor: 'rgba(148, 175, 50, 0.3)' } : {}}
+                        >
                           {bug.ai_severity}
                         </span>
                       )}
@@ -676,11 +682,12 @@ const BugTodosTab = () => {
                       onClick={(e) => { e.stopPropagation(); copyBugReportToClipboard(bug); }}
                       className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
                         copiedField === `report-${bug.id}`
-                          ? 'bg-green-500 text-white'
+                          ? 'text-white'
                           : mode === 'dark'
                             ? 'bg-zinc-700 text-white hover:bg-zinc-600'
                             : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                       }`}
+                      style={copiedField === `report-${bug.id}` ? { backgroundColor: '#94AF32' } : {}}
                       title="Copy complete bug report to clipboard"
                     >
                       {copiedField === `report-${bug.id}` ? (
@@ -771,19 +778,25 @@ const BugTodosTab = () => {
                   <div className="p-4 space-y-5">
                     {/* Severity & Confidence Cards - Side by Side */}
                     <div className="grid grid-cols-2 gap-4">
-                      <div className={`p-3 rounded-lg border ${
-                        bug.ai_severity === 'critical' ? 'bg-red-500/10 border-red-500/30' :
-                        bug.ai_severity === 'high' ? 'bg-orange-500/10 border-orange-500/30' :
-                        bug.ai_severity === 'medium' ? 'bg-yellow-500/10 border-yellow-500/30' :
-                        'bg-green-500/10 border-green-500/30'
-                      }`}>
+                      <div
+                        className={`p-3 rounded-lg border ${
+                          bug.ai_severity === 'critical' ? 'bg-red-500/10 border-red-500/30' :
+                          bug.ai_severity === 'high' ? 'bg-orange-500/10 border-orange-500/30' :
+                          bug.ai_severity === 'medium' ? 'bg-yellow-500/10 border-yellow-500/30' :
+                          ''
+                        }`}
+                        style={bug.ai_severity === 'low' || bug.ai_severity === 'trivial' || !['critical', 'high', 'medium'].includes(bug.ai_severity) ? { backgroundColor: 'rgba(148, 175, 50, 0.1)', borderColor: 'rgba(148, 175, 50, 0.3)' } : {}}
+                      >
                         <div className={`text-xs uppercase tracking-wide ${textSecondary}`}>Severity</div>
-                        <div className={`text-lg font-semibold uppercase ${
-                          bug.ai_severity === 'critical' ? 'text-red-500' :
-                          bug.ai_severity === 'high' ? 'text-orange-500' :
-                          bug.ai_severity === 'medium' ? 'text-yellow-500' :
-                          'text-green-500'
-                        }`}>
+                        <div
+                          className={`text-lg font-semibold uppercase ${
+                            bug.ai_severity === 'critical' ? 'text-red-500' :
+                            bug.ai_severity === 'high' ? 'text-orange-500' :
+                            bug.ai_severity === 'medium' ? 'text-yellow-500' :
+                            ''
+                          }`}
+                          style={bug.ai_severity === 'low' || bug.ai_severity === 'trivial' || !['critical', 'high', 'medium'].includes(bug.ai_severity) ? { color: '#94AF32' } : {}}
+                        >
                           {bug.ai_severity || 'Unknown'}
                         </div>
                       </div>
@@ -811,27 +824,37 @@ const BugTodosTab = () => {
                       </div>
                     )}
 
-                    {/* AI Analysis & Suggested Fix - Green Box (Moved up like email) */}
+                    {/* AI Analysis & Suggested Fix - Olive Box (Moved up like email) */}
                     {bug.ai_fix_prompt && (
-                      <div className={`p-4 rounded-lg ${mode === 'dark' ? 'bg-green-900/20 border border-green-500/30' : 'bg-green-50 border border-green-200'}`}>
+                      <div
+                        className="p-4 rounded-lg border"
+                        style={{
+                          backgroundColor: mode === 'dark' ? 'rgba(148, 175, 50, 0.1)' : 'rgba(148, 175, 50, 0.05)',
+                          borderColor: 'rgba(148, 175, 50, 0.3)'
+                        }}
+                      >
                         <div className="flex items-center justify-between mb-2">
-                          <h4 className={`text-sm font-medium ${mode === 'dark' ? 'text-green-300' : 'text-green-700'}`}>
+                          <h4 className="text-sm font-medium" style={{ color: mode === 'dark' ? 'rgba(148, 175, 50, 0.8)' : '#6b8c1a' }}>
                             Suggested Fix
                           </h4>
                           <button
                             onClick={() => copyToClipboard(bug.ai_fix_prompt, `ai-${bug.id}`)}
-                            className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
-                              copiedField === `ai-${bug.id}`
-                                ? 'bg-green-500 text-white'
-                                : mode === 'dark'
-                                  ? 'bg-green-500/20 text-green-300 hover:bg-green-500/30'
-                                  : 'bg-green-100 text-green-600 hover:bg-green-200'
-                            }`}
+                            className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors text-white"
+                            style={{
+                              backgroundColor: copiedField === `ai-${bug.id}` ? '#94AF32' : 'rgba(148, 175, 50, 0.2)',
+                              color: copiedField === `ai-${bug.id}` ? 'white' : (mode === 'dark' ? 'rgba(148, 175, 50, 0.8)' : '#6b8c1a')
+                            }}
                           >
                             {copiedField === `ai-${bug.id}` ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
                           </button>
                         </div>
-                        <pre className={`whitespace-pre-wrap text-sm font-mono ${mode === 'dark' ? 'text-green-200' : 'text-green-800'} ${mode === 'dark' ? 'bg-green-900/30' : 'bg-white/50'} p-3 rounded`}>
+                        <pre
+                          className={`whitespace-pre-wrap text-sm font-mono p-3 rounded`}
+                          style={{
+                            color: mode === 'dark' ? 'rgba(148, 175, 50, 0.7)' : '#4a6b10',
+                            backgroundColor: mode === 'dark' ? 'rgba(148, 175, 50, 0.05)' : 'rgba(255, 255, 255, 0.5)'
+                          }}
+                        >
                           {bug.ai_fix_prompt}
                         </pre>
                       </div>
@@ -916,11 +939,12 @@ const BugTodosTab = () => {
                             onClick={() => copyToClipboard(bug.console_errors.join('\n\n'), `errors-${bug.id}`)}
                             className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
                               copiedField === `errors-${bug.id}`
-                                ? 'bg-green-500 text-white'
+                                ? 'text-white'
                                 : mode === 'dark'
                                   ? 'bg-red-500/20 text-red-300 hover:bg-red-500/30'
                                   : 'bg-red-100 text-red-600 hover:bg-red-200'
                             }`}
+                            style={copiedField === `errors-${bug.id}` ? { backgroundColor: '#94AF32' } : {}}
                           >
                             {copiedField === `errors-${bug.id}` ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
                           </button>
@@ -969,11 +993,12 @@ const BugTodosTab = () => {
                           onClick={() => copyToClipboard(generateFixPrompt(bug), `fix-${bug.id}`)}
                           className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
                             copiedField === `fix-${bug.id}`
-                              ? 'bg-green-500 text-white'
+                              ? 'text-white'
                               : mode === 'dark'
                                 ? 'bg-violet-500/20 text-violet-300 hover:bg-violet-500/30'
                                 : 'bg-violet-100 text-violet-700 hover:bg-violet-200'
                           }`}
+                          style={copiedField === `fix-${bug.id}` ? { backgroundColor: '#94AF32' } : {}}
                         >
                           {copiedField === `fix-${bug.id}` ? (
                             <>

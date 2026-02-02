@@ -128,11 +128,11 @@ const WireDropCommissioning = ({ wireDropId, onClose, onSave }) => {
                   className="w-full flex items-center gap-3 p-3 hover:bg-gray-50 rounded-lg transition-colors text-left"
                 >
                   {commissioningData.checklist[key] ? (
-                    <CheckSquare className="w-5 h-5 text-green-600" />
+                    <CheckSquare className="w-5 h-5" style={{ color: '#94AF32' }} />
                   ) : (
                     <Square className="w-5 h-5 text-gray-400" />
                   )}
-                  <span className={commissioningData.checklist[key] ? 'text-green-800' : 'text-gray-700'}>
+                  <span className={commissioningData.checklist[key] ? '' : 'text-gray-700'} style={commissioningData.checklist[key] ? { color: '#94AF32' } : undefined}>
                     {label}
                   </span>
                 </button>
@@ -140,9 +140,9 @@ const WireDropCommissioning = ({ wireDropId, onClose, onSave }) => {
             </div>
 
             {allChecked && (
-              <div className="bg-green-50 border border-green-200 rounded-lg p-3 flex items-center gap-2">
-                <CheckSquare className="w-5 h-5 text-green-600" />
-                <span className="text-green-800">All items checked - Ready for completion</span>
+              <div className="rounded-lg p-3 flex items-center gap-2" style={{ backgroundColor: 'rgba(148, 175, 50, 0.1)', borderWidth: '1px', borderStyle: 'solid', borderColor: 'rgba(148, 175, 50, 0.3)' }}>
+                <CheckSquare className="w-5 h-5" style={{ color: '#94AF32' }} />
+                <span style={{ color: '#94AF32' }}>All items checked - Ready for completion</span>
               </div>
             )}
           </div>

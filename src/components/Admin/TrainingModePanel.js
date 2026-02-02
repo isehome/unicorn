@@ -384,7 +384,7 @@ Only include fields with actual content. Return ONLY valid JSON, no markdown.`;
           </p>
           <div className="flex items-center gap-2 mt-1">
             {routeStatus.hasTrained ? (
-              <span className="flex items-center gap-1 text-xs text-green-500">
+              <span className="flex items-center gap-1 text-xs" style={{ color: '#94AF32' }}>
                 <CheckCircle className="w-3 h-3" />
                 Trained (v{routeStatus.version})
               </span>
@@ -498,7 +498,8 @@ Only include fields with actual content. Return ONLY valid JSON, no markdown.`;
               <button
                 onClick={handleEndTraining}
                 disabled={isSaving || transcript.length < 2}
-                className={`flex-1 flex items-center justify-center gap-1 py-2 px-3 rounded bg-green-600 text-white hover:bg-green-700 disabled:opacity-50`}
+                className="flex-1 flex items-center justify-center gap-1 py-2 px-3 rounded text-white disabled:opacity-50"
+                style={{ backgroundColor: '#94AF32' }}
               >
                 {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                 Save

@@ -10,6 +10,36 @@
 import { supabase } from '../lib/supabase';
 
 // ============================================================================
+// EMPLOYEE/PROFILE QUERIES
+// ============================================================================
+
+/**
+ * Get all active employees/profiles
+ * @param {object} options - Filter options
+ * @returns {Promise<Array>} List of employees
+ */
+export const getAllEmployees = async (options = {}) => {
+  const { excludeId = null, activeOnly = true } = options;
+
+  let query = supabase
+    .from('profiles')
+    .select('id, full_name, email, role, avatar_color')
+    .order('full_name', { ascending: true });
+
+  if (activeOnly) {
+    query = query.eq('is_active', true);
+  }
+
+  if (excludeId) {
+    query = query.neq('id', excludeId);
+  }
+
+  const { data, error } = await query;
+  if (error) throw error;
+  return data || [];
+};
+
+// ============================================================================
 // EMPLOYEE NOTES
 // Quick capture thoughts about employees (or self) for use in reviews
 // ============================================================================
@@ -250,7 +280,7 @@ export const initializePTOBalances = async (employeeId, year = new Date().getFul
       .eq('employee_id', employeeId)
       .eq('pto_type_id', type.id)
       .eq('year', year)
-      .single();
+      .maybeSingle();
 
     if (!existing) {
       const { data, error } = await supabase
@@ -741,6 +771,9 @@ export const copyAllocationsToYear = async (employeeId, fromYear, toYear, alloca
 
 // Export as named object for consistency
 export const hrService = {
+  // Employees
+  getAllEmployees,
+
   // Notes
   getNotesAboutEmployee,
   getNotesByAuthor,

@@ -248,9 +248,9 @@ const TimeOffSection = () => {
       )}
 
       {success && (
-        <div className="p-4 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-xl flex items-center gap-3">
-          <CheckCircle className="text-emerald-500" size={20} />
-          <p className="text-emerald-700 dark:text-emerald-400">{success}</p>
+        <div className="p-4 rounded-xl flex items-center gap-3" style={{ backgroundColor: 'rgba(148, 175, 50, 0.1)', border: '1px solid rgba(148, 175, 50, 0.3)' }}>
+          <CheckCircle size={20} style={{ color: '#94AF32' }} />
+          <p style={{ color: '#94AF32' }}>{success}</p>
         </div>
       )}
 
@@ -337,7 +337,7 @@ const TimeOffSection = () => {
                 const Icon = getTypeIcon(request.pto_type?.name);
                 const statusColors = {
                   pending: { bg: 'bg-amber-100 dark:bg-amber-900/30', text: 'text-amber-600 dark:text-amber-400' },
-                  approved: { bg: 'bg-emerald-100 dark:bg-emerald-900/30', text: 'text-emerald-600 dark:text-emerald-400' },
+                  approved: { bg: '', text: '', style: { backgroundColor: 'rgba(148, 175, 50, 0.2)', color: '#94AF32' } },
                   denied: { bg: 'bg-red-100 dark:bg-red-900/30', text: 'text-red-600 dark:text-red-400' },
                   cancelled: { bg: 'bg-zinc-100 dark:bg-zinc-800', text: 'text-zinc-500' }
                 };
@@ -357,7 +357,10 @@ const TimeOffSection = () => {
                         <p className="font-medium text-zinc-900 dark:text-white">
                           {request.pto_type?.label}
                         </p>
-                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${status.bg} ${status.text}`}>
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-xs font-medium ${status.bg} ${status.text}`}
+                          style={status.style}
+                        >
                           {request.status}
                         </span>
                       </div>
@@ -462,7 +465,8 @@ const TimeOffSection = () => {
                           <button
                             onClick={() => handleRequestAction(request.id, 'approve', '')}
                             disabled={isProcessing}
-                            className="p-2 rounded-lg text-emerald-500 hover:bg-emerald-100 dark:hover:bg-emerald-900/30 transition-colors disabled:opacity-50"
+                            className="p-2 rounded-lg transition-colors disabled:opacity-50"
+                            style={{ color: '#94AF32' }}
                             title="Approve"
                           >
                             {isProcessing ? <Loader2 size={18} className="animate-spin" /> : <CheckCircle size={18} />}

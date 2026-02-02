@@ -30,7 +30,10 @@ import {
   Star,
   FileText,
   Lock,
-  Send
+  Send,
+  Search,
+  ChevronDown,
+  ChevronRight
 } from 'lucide-react';
 
 // Note type options
@@ -42,7 +45,7 @@ const NOTE_TYPES = [
   { id: 'general', label: 'General', icon: FileText, color: '#64748B', description: 'Other observation' }
 ];
 
-const QuickNoteButton = ({ currentUserId, directReports = [], manager }) => {
+const QuickNoteButton = ({ currentUserId, directReports = [], allEmployees = [], manager, floating = true, userRole }) => {
   const { user } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -54,6 +57,11 @@ const QuickNoteButton = ({ currentUserId, directReports = [], manager }) => {
   const [noteText, setNoteText] = useState('');
   const [noteType, setNoteType] = useState('general');
   const [isPrivate, setIsPrivate] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [showOtherEmployees, setShowOtherEmployees] = useState(false);
+
+  // Check if user is a manager (can write notes about others)
+  const isManager = userRole && ['manager', 'director', 'admin', 'owner'].includes(userRole);
 
   // Reset form
   const resetForm = useCallback(() => {
@@ -63,6 +71,8 @@ const QuickNoteButton = ({ currentUserId, directReports = [], manager }) => {
     setIsPrivate(false);
     setError(null);
     setSuccess(false);
+    setSearchTerm('');
+    setShowOtherEmployees(false);
   }, []);
 
   // Open modal
@@ -117,10 +127,12 @@ const QuickNoteButton = ({ currentUserId, directReports = [], manager }) => {
   const getSubjectName = () => {
     if (subjectId === 'self') return 'myself';
     const report = directReports.find(r => r.id === subjectId);
-    return report?.full_name || 'Unknown';
+    if (report) return report.full_name;
+    const employee = allEmployees.find(e => e.id === subjectId);
+    return employee?.full_name || 'Unknown';
   };
 
-  // People I can write notes about
+  // People I can write notes about - direct reports section
   const noteSubjects = [
     { id: 'self', name: 'Myself', description: 'Note about your own work', isSelf: true }
   ];
@@ -136,19 +148,44 @@ const QuickNoteButton = ({ currentUserId, directReports = [], manager }) => {
     });
   });
 
+  // Filter other employees (not self, not direct reports) for managers
+  const directReportIds = new Set(directReports.map(r => r.id));
+  const otherEmployees = allEmployees.filter(emp =>
+    emp.id !== currentUserId && !directReportIds.has(emp.id)
+  );
+
+  // Apply search filter
+  const filteredOtherEmployees = searchTerm
+    ? otherEmployees.filter(emp =>
+        emp.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        emp.email?.toLowerCase().includes(searchTerm.toLowerCase())
+      )
+    : otherEmployees;
+
   return (
     <>
-      {/* Floating Button */}
-      <button
-        onClick={handleOpen}
-        className="fixed bottom-24 right-4 z-40 w-14 h-14 rounded-full bg-violet-500 hover:bg-violet-600 text-white shadow-lg hover:shadow-xl transition-all flex items-center justify-center group"
-        title="Quick Note"
-      >
-        <MessageSquarePlus size={24} />
-        <span className="absolute right-full mr-3 px-3 py-1.5 bg-zinc-900 dark:bg-zinc-700 text-white text-sm rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
-          Quick Note
-        </span>
-      </button>
+      {/* Button - either floating or inline */}
+      {floating ? (
+        <button
+          onClick={handleOpen}
+          className="fixed bottom-24 right-4 z-40 w-14 h-14 rounded-full bg-violet-500 hover:bg-violet-600 text-white shadow-lg hover:shadow-xl transition-all flex items-center justify-center group"
+          title="Quick Note"
+        >
+          <MessageSquarePlus size={24} />
+          <span className="absolute right-full mr-3 px-3 py-1.5 bg-zinc-900 dark:bg-zinc-700 text-white text-sm rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
+            Quick Note
+          </span>
+        </button>
+      ) : (
+        <button
+          onClick={handleOpen}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium bg-violet-500 hover:bg-violet-600 text-white shadow-md transition-all min-h-[44px]"
+          title="Quick Note"
+        >
+          <MessageSquarePlus size={18} />
+          <span className="hidden sm:inline">Quick Note</span>
+        </button>
+      )}
 
       {/* Modal */}
       {isOpen && (
@@ -180,8 +217,8 @@ const QuickNoteButton = ({ currentUserId, directReports = [], manager }) => {
             {/* Success State */}
             {success ? (
               <div className="flex-1 flex flex-col items-center justify-center p-8">
-                <div className="w-16 h-16 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center mb-4">
-                  <CheckCircle size={32} className="text-emerald-500" />
+                <div className="w-16 h-16 rounded-full flex items-center justify-center mb-4" style={{ backgroundColor: 'rgba(148, 175, 50, 0.1)' }}>
+                  <CheckCircle size={32} style={{ color: '#94AF32' }} />
                 </div>
                 <p className="text-lg font-medium text-zinc-900 dark:text-white">Note Saved!</p>
                 <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-1">
@@ -203,7 +240,10 @@ const QuickNoteButton = ({ currentUserId, directReports = [], manager }) => {
                           <button
                             key={subject.id}
                             type="button"
-                            onClick={() => setSubjectId(subject.id)}
+                            onClick={() => {
+                              setSubjectId(subject.id);
+                              setShowOtherEmployees(false);
+                            }}
                             className={`flex items-center gap-2 p-3 rounded-xl border-2 transition-all text-left ${
                               isSelected
                                 ? 'border-violet-500 bg-violet-50 dark:bg-violet-900/20'
@@ -233,6 +273,79 @@ const QuickNoteButton = ({ currentUserId, directReports = [], manager }) => {
                         );
                       })}
                     </div>
+
+                    {/* Other Employees Section (for managers) */}
+                    {isManager && otherEmployees.length > 0 && (
+                      <div className="mt-3">
+                        <button
+                          type="button"
+                          onClick={() => setShowOtherEmployees(!showOtherEmployees)}
+                          className="flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white transition-colors"
+                        >
+                          {showOtherEmployees ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                          <Users size={16} />
+                          <span>Other Employees ({otherEmployees.length})</span>
+                        </button>
+
+                        {showOtherEmployees && (
+                          <div className="mt-2 border border-zinc-200 dark:border-zinc-700 rounded-xl overflow-hidden">
+                            {/* Search */}
+                            <div className="p-2 border-b border-zinc-200 dark:border-zinc-700">
+                              <div className="relative">
+                                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
+                                <input
+                                  type="text"
+                                  value={searchTerm}
+                                  onChange={(e) => setSearchTerm(e.target.value)}
+                                  placeholder="Search employees..."
+                                  className="w-full pl-9 pr-4 py-2 text-sm rounded-lg border border-zinc-200 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-violet-500"
+                                />
+                              </div>
+                            </div>
+
+                            {/* Employee List */}
+                            <div className="max-h-48 overflow-y-auto">
+                              {filteredOtherEmployees.length === 0 ? (
+                                <p className="p-3 text-sm text-zinc-500 text-center">
+                                  {searchTerm ? 'No employees match your search' : 'No other employees'}
+                                </p>
+                              ) : (
+                                filteredOtherEmployees.map(emp => {
+                                  const isSelected = subjectId === emp.id;
+                                  return (
+                                    <button
+                                      key={emp.id}
+                                      type="button"
+                                      onClick={() => setSubjectId(emp.id)}
+                                      className={`w-full flex items-center gap-2 p-2 text-left hover:bg-zinc-50 dark:hover:bg-zinc-700/50 transition-colors ${
+                                        isSelected ? 'bg-violet-50 dark:bg-violet-900/20' : ''
+                                      }`}
+                                    >
+                                      <TechnicianAvatar
+                                        name={emp.full_name}
+                                        color={emp.avatar_color}
+                                        size="sm"
+                                      />
+                                      <div className="flex-1 min-w-0">
+                                        <p className={`text-sm font-medium truncate ${
+                                          isSelected ? 'text-violet-700 dark:text-violet-300' : 'text-zinc-900 dark:text-white'
+                                        }`}>
+                                          {emp.full_name}
+                                        </p>
+                                        <p className="text-xs text-zinc-500 truncate">{emp.email}</p>
+                                      </div>
+                                      {isSelected && (
+                                        <CheckCircle size={16} className="text-violet-500 flex-shrink-0" />
+                                      )}
+                                    </button>
+                                  );
+                                })
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   {/* Note Type */}

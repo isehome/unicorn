@@ -76,11 +76,12 @@ export default function NotificationTestPage() {
 
       {result && (
         <div
-          className={`rounded-xl px-4 py-3 text-sm ${
+          className={`rounded-xl px-4 py-3 text-sm border ${
             result.type === 'success'
-              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-              : 'bg-rose-50 text-rose-700 border border-rose-200'
+              ? ''
+              : 'bg-rose-50 text-rose-700 border-rose-200'
           }`}
+          style={result.type === 'success' ? { backgroundColor: 'rgba(148, 175, 50, 0.1)', color: '#94AF32', borderColor: 'rgba(148, 175, 50, 0.3)' } : {}}
         >
           {result.message}
         </div>

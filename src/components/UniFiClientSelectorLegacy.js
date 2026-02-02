@@ -172,14 +172,14 @@ const UniFiClientSelector = ({ projectId, equipmentId, wireDropId, onAssign }) =
     <div className="space-y-4">
       {/* Current Assignment Display */}
       {currentAssignment && (
-        <div className="p-3 rounded-md bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700">
+        <div className="p-3 rounded-md" style={{ backgroundColor: 'rgba(148, 175, 50, 0.1)', border: '1px solid rgba(148, 175, 50, 0.3)' }}>
           <div className="flex items-start gap-3">
-            <CheckCircle size={20} className="" style={{ color: '#94AF32' }} flex-shrink-0 mt-0.5" />
+            <CheckCircle size={20} className="flex-shrink-0 mt-0.5" style={{ color: '#94AF32' }} />
             <div className="flex-1">
-              <p className="text-sm font-medium text-green-900 dark:text-green-100">
+              <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
                 Network Client Assigned
               </p>
-              <div className="mt-2 space-y-1 text-xs text-green-800 dark:text-green-200">
+              <div className="mt-2 space-y-1 text-xs text-zinc-700 dark:text-zinc-300">
                 <div><strong>IP:</strong> {currentAssignment.unifi_last_ip || 'N/A'}</div>
                 <div><strong>MAC:</strong> {currentAssignment.unifi_client_mac}</div>
                 <div><strong>Last Seen:</strong> {formatLastSeen(currentAssignment.unifi_last_seen)}</div>

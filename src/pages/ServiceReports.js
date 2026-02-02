@@ -627,11 +627,14 @@ const ServiceReports = () => {
                             </td>
                             <td className="p-3 text-zinc-300">{ticket.customer_name || '--'}</td>
                             <td className="p-3">
-                              <span className={`px-2 py-0.5 rounded text-xs ${
-                                ticket.status === 'closed' ? 'bg-zinc-500/20 text-zinc-400' :
-                                ticket.status === 'resolved' ? 'bg-green-500/20 text-green-400' :
-                                'bg-yellow-500/20 text-yellow-400'
-                              }`}>
+                              <span
+                                className="px-2 py-0.5 rounded text-xs"
+                                style={
+                                  ticket.status === 'closed' ? { backgroundColor: 'rgba(113, 113, 122, 0.2)', color: '#A1A1AA' } :
+                                  ticket.status === 'resolved' ? { backgroundColor: 'rgba(148, 175, 50, 0.2)', color: '#94AF32' } :
+                                  { backgroundColor: 'rgba(234, 179, 8, 0.2)', color: '#FBBF24' }
+                                }
+                              >
                                 {ticket.status}
                               </span>
                             </td>

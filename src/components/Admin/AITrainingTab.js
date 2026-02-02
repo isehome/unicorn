@@ -159,7 +159,7 @@ const AITrainingTab = () => {
         </div>
         <div className={`p-4 rounded-lg ${cardBg} border ${borderColor}`}>
           <p className={textSecondary}>Trained</p>
-          <p className="text-2xl font-bold text-green-500">{trainedCount}</p>
+          <p className="text-2xl font-bold" style={{ color: '#94AF32' }}>{trainedCount}</p>
         </div>
         <div className={`p-4 rounded-lg ${cardBg} border ${borderColor}`}>
           <p className={textSecondary}>Published</p>
@@ -211,7 +211,7 @@ const AITrainingTab = () => {
                   <td className="px-4 py-3 text-center">
                     {page.is_trained ? (
                       page.is_published ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-500/20 text-green-400 rounded text-xs">
+                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs" style={{ backgroundColor: 'rgba(148, 175, 50, 0.2)', color: '#94AF32' }}>
                           <CheckCircle className="w-3 h-3" />
                           Published
                         </span>
@@ -243,7 +243,8 @@ const AITrainingTab = () => {
                       {page.is_trained && !page.is_published && (
                         <button
                           onClick={() => handleTogglePublish(page.route, false)}
-                          className="p-1.5 rounded hover:bg-green-500/20 text-green-400"
+                          className="p-1.5 rounded"
+                          style={{ color: '#94AF32' }}
                           title="Publish training"
                         >
                           <Eye className="w-4 h-4" />

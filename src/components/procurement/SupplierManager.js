@@ -124,7 +124,7 @@ const SupplierManager = () => {
         </div>
         <div>
           <p className="text-xs text-gray-600 dark:text-gray-400">Ready (Complete)</p>
-          <p className="text-xl font-bold text-green-600 dark:text-green-400">
+          <p className="text-xl font-bold" style={{ color: '#94AF32' }}>
             {completeSuppliers.length}
           </p>
         </div>
@@ -169,11 +169,14 @@ const SupplierManager = () => {
             return (
               <div
                 key={supplier.id}
-                style={sectionStyles.card}
+                style={{
+                  ...sectionStyles.card,
+                  ...(needsSetup ? {} : { borderLeftColor: '#94AF32' })
+                }}
                 className={`border-l-4 ${
                   needsSetup
                     ? 'border-orange-500 bg-orange-50 dark:bg-orange-900/20'
-                    : 'border-green-500'
+                    : ''
                 }`}
               >
                 {/* Supplier Header */}
@@ -182,16 +185,22 @@ const SupplierManager = () => {
                     className="flex items-center gap-3 flex-1 cursor-pointer"
                     onClick={() => toggleExpansion(supplier.id)}
                   >
-                    <div className={`p-2 rounded-lg ${
-                      needsSetup
-                        ? 'bg-orange-100 dark:bg-orange-900/30'
-                        : 'bg-green-100 dark:bg-green-900/30'
-                    }`}>
-                      <Building2 className={`w-5 h-5 ${
+                    <div
+                      className={`p-2 rounded-lg ${
                         needsSetup
-                          ? 'text-orange-600 dark:text-orange-400'
-                          : 'text-green-600 dark:text-green-400'
-                      }`} />
+                          ? 'bg-orange-100 dark:bg-orange-900/30'
+                          : ''
+                      }`}
+                      style={!needsSetup ? { backgroundColor: 'rgba(148, 175, 50, 0.1)' } : {}}
+                    >
+                      <Building2
+                        className={`w-5 h-5 ${
+                          needsSetup
+                            ? 'text-orange-600 dark:text-orange-400'
+                            : ''
+                        }`}
+                        style={!needsSetup ? { color: '#94AF32' } : {}}
+                      />
                     </div>
                     <div className="flex-1">
                       <div className="flex items-center gap-2 flex-wrap">

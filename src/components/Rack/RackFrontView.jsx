@@ -285,7 +285,7 @@ const ShelfBlock = memo(({ shelf, top, height, totalU, shelfEquipment = [], maxI
         isDragging ? 'opacity-50' : ''
       } ${
         isDragOver
-          ? 'border-green-500 bg-green-900/40 shadow-lg shadow-green-500/20'
+          ? 'border-blue-500 bg-blue-900/40 shadow-lg shadow-blue-500/20'
           : 'border-blue-500 bg-transparent'
       }`}
       style={{
@@ -296,17 +296,17 @@ const ShelfBlock = memo(({ shelf, top, height, totalU, shelfEquipment = [], maxI
     >
       {/* Shelf header */}
       <div className={`flex items-center justify-between px-2 py-0.5 border-b transition-colors ${
-        isDragOver ? 'bg-green-900/50 border-green-700' : 'bg-blue-900/30 border-blue-700/50'
+        isDragOver ? 'bg-blue-900/50 border-blue-700' : 'bg-blue-900/30 border-blue-700/50'
       }`}>
         <div className="flex items-center gap-1">
-          <GripVertical size={12} className={isDragOver ? 'text-green-400' : 'text-blue-400'} />
-          <Layers size={12} className={isDragOver ? 'text-green-400' : 'text-blue-400'} />
-          <span className={`text-xs font-medium ${isDragOver ? 'text-green-200' : 'text-blue-200'}`}>
+          <GripVertical size={12} className="text-blue-400" />
+          <Layers size={12} className="text-blue-400" />
+          <span className={`text-xs font-medium ${isDragOver ? 'text-blue-100' : 'text-blue-200'}`}>
             {shelf.name || 'Shelf'}
           </span>
         </div>
         <div className="flex items-center gap-2">
-          <span className={`text-xs ${isDragOver ? 'text-green-400' : 'text-blue-400'}`}>
+          <span className="text-xs text-blue-400">
             {shelf.u_height}U @ U{shelf.rack_position_u}
           </span>
           {onDelete && (
@@ -333,7 +333,7 @@ const ShelfBlock = memo(({ shelf, top, height, totalU, shelfEquipment = [], maxI
             />
           ))
         ) : (
-          <span className={`text-xs italic ${isDragOver ? 'text-green-400' : 'text-blue-400/50'}`}>
+          <span className={`text-xs italic ${isDragOver ? 'text-blue-300' : 'text-blue-400/50'}`}>
             {isDragOver ? 'Drop here!' : 'Drop shelf items here'}
           </span>
         )}

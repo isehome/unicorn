@@ -265,7 +265,7 @@ const CachedSharePointImage = ({
       {process.env.NODE_ENV === 'development' && !loading && (
         <>
           {imageSrc?.startsWith('data:') && (
-            <div className="absolute top-1 right-1 bg-green-500 text-white text-xs px-1 rounded opacity-75">
+            <div className="absolute top-1 right-1 text-white text-xs px-1 rounded opacity-75" style={{ backgroundColor: '#94AF32' }}>
               Cached
             </div>
           )}

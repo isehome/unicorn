@@ -188,7 +188,7 @@ const ServiceAITest = () => {
 
   const getStatusColor = () => {
     switch (status) {
-      case 'connected': return 'bg-green-500';
+      case 'connected': return { backgroundColor: '#94AF32' };
       case 'connecting': return 'bg-yellow-500 animate-pulse';
       case 'error': return 'bg-red-500';
       default: return 'bg-zinc-400';
@@ -231,7 +231,10 @@ const ServiceAITest = () => {
         <div className="bg-white dark:bg-zinc-800 rounded-lg border border-zinc-200 dark:border-zinc-700 shadow-sm p-6">
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-3">
-              <div className={`w-3 h-3 rounded-full ${getStatusColor()}`} />
+              <div
+                className={`w-3 h-3 rounded-full ${typeof getStatusColor() === 'string' ? getStatusColor() : ''}`}
+                style={typeof getStatusColor() === 'object' ? getStatusColor() : undefined}
+              />
               <span className="font-medium">{getStatusText()}</span>
             </div>
             {callId && (
@@ -273,7 +276,8 @@ const ServiceAITest = () => {
               <button
                 onClick={startCall}
                 disabled={!sdkReady}
-                className="flex items-center gap-2 px-6 py-3 bg-green-600 hover:bg-green-700 disabled:bg-zinc-400 disabled:cursor-not-allowed text-white rounded-full font-medium shadow-lg transition-all hover:scale-105 disabled:hover:scale-100"
+                className="flex items-center gap-2 px-6 py-3 disabled:bg-zinc-400 disabled:cursor-not-allowed text-white rounded-full font-medium shadow-lg transition-all hover:scale-105 disabled:hover:scale-100"
+                style={{ backgroundColor: sdkReady ? '#94AF32' : undefined }}
               >
                 <Phone className="w-5 h-5" />
                 {sdkReady ? 'Start Call' : 'Loading...'}

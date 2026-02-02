@@ -76,7 +76,7 @@ const ActiveTimerBadge = () => {
     if (showAutoStopWarning) {
       return <AlertTriangle className="w-4 h-4 text-amber-500 animate-pulse" />;
     }
-    return <Clock className="w-4 h-4 text-green-500 animate-pulse" />;
+    return <Clock className="w-4 h-4 animate-pulse" style={{ color: '#94AF32' }} />;
   };
 
   const allTimers = [
@@ -101,11 +101,12 @@ const ActiveTimerBadge = () => {
         className={`
           bg-white dark:bg-zinc-800
           rounded-lg shadow-lg border
-          ${showAutoStopWarning ? 'border-amber-400' : 'border-green-400'}
+          ${showAutoStopWarning ? 'border-amber-400' : ''}
           overflow-hidden
           transition-all duration-200
           ${isExpanded ? 'w-72' : 'w-auto'}
         `}
+        style={showAutoStopWarning ? {} : { borderColor: 'rgba(148, 175, 50, 0.5)' }}
       >
         {/* Collapsed View */}
         <div

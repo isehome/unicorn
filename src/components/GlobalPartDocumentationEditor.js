@@ -243,19 +243,19 @@ const GlobalPartDocumentationEditor = ({ part, onSave, onCancel }) => {
 
         {/* Search Result */}
         {searchResult && (
-          <div className="mt-3 rounded-lg border border-green-200 bg-green-50 p-3 dark:border-green-800 dark:bg-green-900/20">
+          <div className="mt-3 rounded-lg p-3" style={{ borderWidth: '1px', borderStyle: 'solid', borderColor: 'rgba(148, 175, 50, 0.3)', backgroundColor: 'rgba(148, 175, 50, 0.1)' }}>
             <div className="flex items-start gap-2">
-              <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400 mt-0.5 shrink-0" />
+              <CheckCircle className="h-4 w-4 mt-0.5 shrink-0" style={{ color: '#94AF32' }} />
               <div className="flex-1">
-                <p className="text-sm font-medium text-green-700 dark:text-green-300">
+                <p className="text-sm font-medium" style={{ color: '#94AF32' }}>
                   Data found! Confidence: {Math.round((searchResult.confidence || 0) * 100)}%
                 </p>
                 {searchResult.notes && (
-                  <p className="mt-1 text-xs text-green-600 dark:text-green-400">
+                  <p className="mt-1 text-xs" style={{ color: '#94AF32' }}>
                     {searchResult.notes}
                   </p>
                 )}
-                <p className="mt-2 text-xs text-green-600 dark:text-green-400">
+                <p className="mt-2 text-xs" style={{ color: '#94AF32' }}>
                   Part is now ready for AI Review. Close this modal and click "Review AI" to see the data.
                 </p>
               </div>
@@ -271,7 +271,7 @@ const GlobalPartDocumentationEditor = ({ part, onSave, onCancel }) => {
       )}
 
       {success && (
-        <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700 dark:border-green-800 dark:bg-green-900/20 dark:text-green-400 flex items-center gap-2">
+        <div className="rounded-lg px-4 py-3 text-sm flex items-center gap-2" style={{ borderWidth: '1px', borderStyle: 'solid', borderColor: 'rgba(148, 175, 50, 0.3)', backgroundColor: 'rgba(148, 175, 50, 0.1)', color: '#94AF32' }}>
           <CheckCircle className="h-4 w-4" />
           Documentation saved successfully! Links are now active.
         </div>
@@ -384,7 +384,7 @@ const GlobalPartDocumentationEditor = ({ part, onSave, onCancel }) => {
       {/* Technical Manuals */}
       <div className="space-y-2">
         <label className="flex items-center gap-2 text-sm font-medium">
-          <Book className="h-4 w-4 text-green-500" />
+          <Book className="h-4 w-4" style={{ color: '#94AF32' }} />
           Technical Manuals & Datasheets
         </label>
         
@@ -406,7 +406,8 @@ const GlobalPartDocumentationEditor = ({ part, onSave, onCancel }) => {
                   href={url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="shrink-0 p-2 text-green-600 hover:text-green-700 dark:text-green-400 dark:hover:text-green-300 hover:bg-green-50 dark:hover:bg-green-900/20 rounded"
+                  className="shrink-0 p-2 rounded"
+                  style={{ color: '#94AF32' }}
                   title="Open link"
                 >
                   <LinkIcon className="h-4 w-4" />

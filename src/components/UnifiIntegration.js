@@ -84,7 +84,8 @@ const UnifiIntegration = ({ projectId }) => {
           <button
             onClick={handleSyncSites}
             disabled={loading}
-            className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
+            className="px-4 py-2 text-white rounded disabled:opacity-50"
+            style={{ backgroundColor: '#94AF32' }}
           >
             {loading ? 'Syncing...' : 'Sync Sites from UniFi'}
           </button>
@@ -132,8 +133,8 @@ const UnifiIntegration = ({ projectId }) => {
         )}
 
         {success && (
-          <div className="p-3 bg-green-50 border border-green-200 rounded-md">
-            <p className="text-sm text-green-600">{success}</p>
+          <div className="p-3 rounded-md" style={{ backgroundColor: 'rgba(148, 175, 50, 0.1)', borderWidth: '1px', borderStyle: 'solid', borderColor: 'rgba(148, 175, 50, 0.3)' }}>
+            <p className="text-sm" style={{ color: '#94AF32' }}>{success}</p>
           </div>
         )}
 

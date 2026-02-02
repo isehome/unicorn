@@ -1579,14 +1579,17 @@ const WeeklyPlanning = () => {
                     <div className="md:col-span-2">
                       <label className="text-xs text-zinc-400 block mb-1">Status</label>
                       <div className="flex items-center gap-2">
-                        <span className={`px-2 py-1 rounded text-xs font-medium ${
-                          ticketDetailModal.schedule.schedule_status === 'draft' ? 'bg-violet-500/20 text-violet-400' :
-                          ticketDetailModal.schedule.schedule_status === 'pending_tech' ? 'bg-amber-500/20 text-amber-400' :
-                          ticketDetailModal.schedule.schedule_status === 'tech_accepted' ? 'bg-blue-500/20 text-blue-400' :
-                          ticketDetailModal.schedule.schedule_status === 'pending_customer' ? 'bg-cyan-500/20 text-cyan-400' :
-                          ticketDetailModal.schedule.schedule_status === 'confirmed' ? 'bg-green-500/20 text-green-400' :
-                          'bg-zinc-500/20 text-zinc-400'
-                        }`}>
+                        <span
+                          className="px-2 py-1 rounded text-xs font-medium"
+                          style={
+                            ticketDetailModal.schedule.schedule_status === 'draft' ? { backgroundColor: 'rgba(139, 92, 246, 0.2)', color: '#A78BFA' } :
+                            ticketDetailModal.schedule.schedule_status === 'pending_tech' ? { backgroundColor: 'rgba(245, 158, 11, 0.2)', color: '#FBBF24' } :
+                            ticketDetailModal.schedule.schedule_status === 'tech_accepted' ? { backgroundColor: 'rgba(59, 130, 246, 0.2)', color: '#60A5FA' } :
+                            ticketDetailModal.schedule.schedule_status === 'pending_customer' ? { backgroundColor: 'rgba(6, 182, 212, 0.2)', color: '#22D3EE' } :
+                            ticketDetailModal.schedule.schedule_status === 'confirmed' ? { backgroundColor: 'rgba(148, 175, 50, 0.2)', color: '#94AF32' } :
+                            { backgroundColor: 'rgba(113, 113, 122, 0.2)', color: '#A1A1AA' }
+                          }
+                        >
                           {ticketDetailModal.schedule.schedule_status === 'draft' ? 'Draft' :
                            ticketDetailModal.schedule.schedule_status === 'pending_tech' ? 'Awaiting Tech' :
                            ticketDetailModal.schedule.schedule_status === 'tech_accepted' ? 'Tech Accepted' :

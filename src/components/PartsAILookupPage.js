@@ -509,8 +509,10 @@ const PartsAILookupPage = () => {
         <div className={`flex items-center gap-3 rounded-lg border px-4 py-3 ${
           resyncResult.error
             ? 'border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/20'
-            : 'border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-900/20'
-        }`}>
+            : ''
+        }`}
+        style={!resyncResult.error ? { backgroundColor: 'rgba(148, 175, 50, 0.1)', borderColor: 'rgba(148, 175, 50, 0.3)' } : {}}
+        >
           {resyncResult.error ? (
             <>
               <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
@@ -521,12 +523,12 @@ const PartsAILookupPage = () => {
             </>
           ) : (
             <>
-              <CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400" />
+              <CheckCircle className="h-5 w-5" style={{ color: '#94AF32' }} />
               <div>
-                <p className="font-medium text-green-800 dark:text-green-200">
+                <p className="font-medium" style={{ color: '#94AF32' }}>
                   Pull complete: {resyncResult.tasks_completed || 0} tasks processed
                 </p>
-                <p className="text-sm text-green-600 dark:text-green-400">
+                <p className="text-sm" style={{ color: '#94AF32' }}>
                   Checked: {resyncResult.tasks_checked || 0} |
                   Still running: {resyncResult.tasks_still_running || 0} |
                   Failed: {resyncResult.tasks_failed || 0}

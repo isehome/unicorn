@@ -53,13 +53,15 @@ const MyHRPage = () => {
   const [manager, setManager] = useState(null);
   const [directReports, setDirectReports] = useState([]);
   const [reportReviewStatus, setReportReviewStatus] = useState({});
+  const [allEmployees, setAllEmployees] = useState([]);
 
   // Loading states
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Check if user is a manager
-  const isManager = directReports.length > 0;
+  // Check if user is a manager (has direct reports or is admin/owner role)
+  const userRole = user?.role || 'employee';
+  const isManager = directReports.length > 0 || ['manager', 'director', 'admin', 'owner'].includes(userRole);
 
   // Load data
   const loadData = useCallback(async () => {
@@ -69,10 +71,11 @@ const MyHRPage = () => {
       setLoading(true);
       setError(null);
 
-      const [cyclesData, managerData, reportsData] = await Promise.all([
+      const [cyclesData, managerData, reportsData, employeesData] = await Promise.all([
         careerDevelopmentService.getAllCycles(),
         careerDevelopmentService.getMyManager(user.id),
-        careerDevelopmentService.getMyReports(user.id)
+        careerDevelopmentService.getMyReports(user.id),
+        hrService.getAllEmployees()
       ]);
 
       // Filter to relevant cycles
@@ -83,6 +86,7 @@ const MyHRPage = () => {
       setAllCycles(relevantCycles);
       setManager(managerData);
       setDirectReports(reportsData || []);
+      setAllEmployees(employeesData || []);
 
       if (relevantCycles.length > 0) {
         setCycle(relevantCycles[0]);
@@ -212,15 +216,27 @@ const MyHRPage = () => {
               </div>
             </div>
 
-            {manager && (
-              <div className="flex items-center gap-2 px-3 py-2 bg-zinc-100 dark:bg-zinc-800 rounded-xl">
-                <TechnicianAvatar name={manager.full_name} color={manager.avatar_color} size="sm" />
-                <div className="text-right">
-                  <p className="text-xs text-zinc-500 dark:text-zinc-400">Your Manager</p>
-                  <p className="text-sm font-medium text-zinc-900 dark:text-white">{manager.full_name}</p>
+            <div className="flex items-center gap-3">
+              {/* Quick Note Button */}
+              <QuickNoteButton
+                currentUserId={user?.id}
+                directReports={directReports}
+                allEmployees={allEmployees}
+                manager={manager}
+                floating={false}
+                userRole={userRole}
+              />
+
+              {manager && (
+                <div className="flex items-center gap-2 px-3 py-2 bg-zinc-100 dark:bg-zinc-800 rounded-xl">
+                  <TechnicianAvatar name={manager.full_name} color={manager.avatar_color} size="sm" />
+                  <div className="text-right">
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400">Your Manager</p>
+                    <p className="text-sm font-medium text-zinc-900 dark:text-white">{manager.full_name}</p>
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
 
           {/* Tabs */}
@@ -368,13 +384,6 @@ const MyHRPage = () => {
           <TimeOffSection />
         )}
       </div>
-
-      {/* Floating Quick Note Button */}
-      <QuickNoteButton
-        currentUserId={user?.id}
-        directReports={directReports}
-        manager={manager}
-      />
     </div>
   );
 };
@@ -395,42 +404,22 @@ const TeamDevelopmentSection = ({
 }) => {
   const [selectedEmployeeId, setSelectedEmployeeId] = useState(directReports[0]?.id || null);
   const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [employeeNotes, setEmployeeNotes] = useState([]);
-  const [notesLoading, setNotesLoading] = useState(false);
 
   const selectedEmployee = directReports.find(r => r.id === selectedEmployeeId);
   const status = reportReviewStatus[selectedEmployeeId] || {};
   const selfSubmitted = status.self_submitted;
   const managerSubmitted = status.manager_submitted;
 
-  // Load notes when employee changes
-  useEffect(() => {
-    const loadNotes = async () => {
-      if (!selectedEmployeeId) return;
-      setNotesLoading(true);
-      try {
-        const notes = await hrService.getNotesAboutEmployee(selectedEmployeeId);
-        setEmployeeNotes(notes || []);
-      } catch (err) {
-        console.error('[TeamDevelopment] Failed to load notes:', err);
-        setEmployeeNotes([]);
-      } finally {
-        setNotesLoading(false);
-      }
-    };
-    loadNotes();
-  }, [selectedEmployeeId]);
-
   // Status helper
   const getStatusInfo = (empId) => {
     const empStatus = reportReviewStatus[empId] || {};
     if (empStatus.manager_submitted) {
-      return { color: '#10B981', bg: 'bg-emerald-100 dark:bg-emerald-900/30', text: 'Complete', icon: CheckCircle };
+      return { color: '#94AF32', bg: '', bgStyle: { backgroundColor: 'rgba(148, 175, 50, 0.1)' }, text: 'Complete', icon: CheckCircle };
     }
     if (empStatus.self_submitted) {
-      return { color: '#F59E0B', bg: 'bg-amber-100 dark:bg-amber-900/30', text: 'Ready', icon: Clock };
+      return { color: '#F59E0B', bg: 'bg-amber-100 dark:bg-amber-900/30', bgStyle: {}, text: 'Ready', icon: Clock };
     }
-    return { color: '#64748B', bg: 'bg-zinc-100 dark:bg-zinc-800', text: 'Pending', icon: Clock };
+    return { color: '#64748B', bg: 'bg-zinc-100 dark:bg-zinc-800', bgStyle: {}, text: 'Pending', icon: Clock };
   };
 
   const selectedStatus = getStatusInfo(selectedEmployeeId);
@@ -507,7 +496,7 @@ const TeamDevelopmentSection = ({
               )}
               <div className="flex items-center gap-2">
                 <span className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${selectedStatus.bg}`}
-                  style={{ color: selectedStatus.color }}>
+                  style={{ color: selectedStatus.color, ...selectedStatus.bgStyle }}>
                   <SelectedStatusIcon size={12} />
                   {selectedStatus.text}
                 </span>
@@ -554,7 +543,7 @@ const TeamDevelopmentSection = ({
                         </div>
                       </div>
                       <span className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${reportStatusInfo.bg}`}
-                        style={{ color: reportStatusInfo.color }}>
+                        style={{ color: reportStatusInfo.color, ...reportStatusInfo.bgStyle }}>
                         <ReportStatusIcon size={12} />
                         {reportStatusInfo.text}
                       </span>
@@ -621,17 +610,11 @@ const TeamDevelopmentSection = ({
             </div>
 
             <div className="p-4 max-h-[600px] overflow-y-auto">
-              {notesLoading ? (
-                <div className="flex items-center justify-center py-8">
-                  <Loader2 className="animate-spin text-violet-500" size={24} />
-                </div>
-              ) : (
-                <EmployeeNotesList
-                  notes={employeeNotes}
-                  employeeName={selectedEmployee.full_name}
-                  showAddToReview={!managerSubmitted && cycle.status !== 'completed'}
-                />
-              )}
+              <EmployeeNotesList
+                employeeId={selectedEmployee.id}
+                reviewCycleId={cycle?.id}
+                showIncorporated={true}
+              />
             </div>
           </div>
         </div>

@@ -248,9 +248,12 @@ const EquipmentEditModal = memo(({
                 <span className="text-sm font-medium text-zinc-200">Network Device</span>
               </div>
               {isLinked && (
-                <span className={`text-xs px-2 py-0.5 rounded-full ${
-                  networkInfo?.isOnline ? 'bg-green-900/50 text-green-400' : 'bg-red-900/50 text-red-400'
-                }`}>
+                <span
+                  className="text-xs px-2 py-0.5 rounded-full"
+                  style={networkInfo?.isOnline
+                    ? { backgroundColor: 'rgba(148, 175, 50, 0.2)', color: '#94AF32' }
+                    : { backgroundColor: 'rgba(239, 68, 68, 0.2)', color: '#EF4444' }}
+                >
                   {networkInfo?.isOnline ? 'Online' : 'Offline'}
                 </span>
               )}

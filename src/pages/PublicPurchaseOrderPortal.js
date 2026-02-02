@@ -111,11 +111,11 @@ const PublicPurchaseOrderPortal = () => {
   };
 
   const statusBadge = useMemo(() => {
-    if (!purchaseOrder?.status) return { label: 'Open', className: 'bg-blue-100 text-blue-700' };
+    if (!purchaseOrder?.status) return { label: 'Open', className: 'bg-blue-100 text-blue-700', style: {} };
     const normalized = purchaseOrder.status.toLowerCase();
-    if (normalized === 'received') return { label: 'Received', className: 'bg-green-100 text-green-700' };
-    if (normalized === 'partially_received') return { label: 'Partially Received', className: 'bg-amber-100 text-amber-700' };
-    return { label: purchaseOrder.status, className: 'bg-blue-100 text-blue-700' };
+    if (normalized === 'received') return { label: 'Received', className: '', style: { backgroundColor: 'rgba(148, 175, 50, 0.1)', color: '#94AF32' } };
+    if (normalized === 'partially_received') return { label: 'Partially Received', className: 'bg-amber-100 text-amber-700', style: {} };
+    return { label: purchaseOrder.status, className: 'bg-blue-100 text-blue-700', style: {} };
   }, [purchaseOrder?.status]);
 
   if (loading) {
@@ -173,7 +173,7 @@ const PublicPurchaseOrderPortal = () => {
                 <p className="text-xs text-gray-500">Purchase Order</p>
                 <h1 className="text-xl font-semibold text-gray-900 dark:text-white">{purchaseOrder.number}</h1>
               </div>
-              <span className={`text-xs font-semibold px-3 py-1 rounded-full ${statusBadge.className}`}>
+              <span className={`text-xs font-semibold px-3 py-1 rounded-full ${statusBadge.className}`} style={statusBadge.style}>
                 {statusBadge.label}
               </span>
             </div>

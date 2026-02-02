@@ -151,7 +151,7 @@ const UniFiClientSelector = ({
         <h4 className="text-lg font-semibold text-gray-900 dark:text-gray-100">UniFi Network Connection</h4>
         <div className="flex items-center gap-2">
           {refreshStatus === 'success' && (
-            <span className="flex items-center text-green-600 dark:text-green-400 text-sm">
+            <span className="flex items-center text-sm" style={{ color: '#94AF32' }}>
               <CheckCircle className="w-4 h-4 mr-1" />
               Updated
             </span>

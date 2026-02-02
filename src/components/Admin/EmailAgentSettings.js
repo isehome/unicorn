@@ -167,11 +167,11 @@ const EmailAgentSettings = ({ mode = 'light' }) => {
       {/* Message */}
       {message && (
         <div
-          className={`rounded-lg p-3 flex items-center gap-2 ${
-            message.type === 'success'
-              ? 'bg-green-500/10 text-green-600 dark:text-green-400'
-              : 'bg-red-500/10 text-red-600 dark:text-red-400'
-          }`}
+          className="rounded-lg p-3 flex items-center gap-2"
+          style={message.type === 'success'
+            ? { backgroundColor: 'rgba(148, 175, 50, 0.1)', color: '#94AF32' }
+            : { backgroundColor: 'rgba(239, 68, 68, 0.1)', color: '#EF4444' }
+          }
         >
           {message.type === 'success' ? (
             <CheckCircle className="w-4 h-4" />
@@ -399,15 +399,16 @@ const EmailAgentSettings = ({ mode = 'light' }) => {
                 </div>
                 <div className="flex items-center gap-3 ml-4">
                   <span
-                    className={`px-2 py-1 rounded-full text-xs font-medium ${
+                    className="px-2 py-1 rounded-full text-xs font-medium"
+                    style={
                       email.ai_classification === 'support'
-                        ? 'bg-blue-500/10 text-blue-600'
+                        ? { backgroundColor: 'rgba(59, 130, 246, 0.1)', color: '#3B82F6' }
                         : email.ai_classification === 'spam'
-                        ? 'bg-zinc-500/10 text-zinc-500'
+                        ? { backgroundColor: 'rgba(113, 113, 122, 0.1)', color: '#71717a' }
                         : email.ai_classification === 'sales'
-                        ? 'bg-green-500/10 text-green-600'
-                        : 'bg-amber-500/10 text-amber-600'
-                    }`}
+                        ? { backgroundColor: 'rgba(148, 175, 50, 0.1)', color: '#94AF32' }
+                        : { backgroundColor: 'rgba(245, 158, 11, 0.1)', color: '#F59E0B' }
+                    }
                   >
                     {email.ai_classification}
                   </span>

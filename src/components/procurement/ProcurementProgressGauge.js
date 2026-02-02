@@ -102,7 +102,7 @@ const ProcurementProgressGauge = ({ equipment = [], phaseName = null }) => {
       <div className="mt-4 grid grid-cols-2 gap-3">
         <div className="bg-white/60 dark:bg-zinc-900/30 rounded-lg p-3">
           <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">On Hand</p>
-          <p className="text-lg font-semibold text-green-600 dark:text-green-400">
+          <p className="text-lg font-semibold" style={{ color: '#94AF32' }}>
             {equipment.reduce((sum, item) => {
               const onHand = item.quantity_on_hand || 0;
               const required = item.quantity_required || item.planned_quantity || 0;

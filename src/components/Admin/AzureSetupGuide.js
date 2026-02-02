@@ -54,7 +54,7 @@ const AzureSetupGuide = ({ mode = 'light' }) => {
       title="Copy to clipboard"
     >
       {copiedText === label ? (
-        <Check className="w-3.5 h-3.5 text-green-500" />
+        <Check className="w-3.5 h-3.5" style={{ color: '#94AF32' }} />
       ) : (
         <Copy className="w-3.5 h-3.5" style={styles.text.secondary} />
       )}
@@ -82,7 +82,7 @@ const AzureSetupGuide = ({ mode = 'light' }) => {
       </td>
       <td className="py-2 text-center">
         {required ? (
-          <span className="text-green-500">✓</span>
+          <span style={{ color: '#94AF32' }}>✓</span>
         ) : (
           <span style={styles.text.secondary}>○</span>
         )}

@@ -77,15 +77,19 @@ const HRPreferencesManager = () => {
   // Default preferences (used when table doesn't exist or no data)
   const getDefaultPreferences = () => ({
     use_unified_pto: false,
+    use_hybrid_pto: false, // NEW: Vacation separate + Sick/Personal combined
     unified_pto_name: 'Personal Time Off',
     unified_pto_annual_hours: 120,
     vacation_annual_hours: 80,
     sick_annual_hours: 40,
     personal_annual_hours: 24,
+    sick_personal_annual_hours: 40, // NEW: Combined sick/personal bucket
+    sick_personal_name: 'Sick/Personal', // NEW: Name for combined bucket
     vacation_max_carryover_hours: 40,
     sick_max_carryover_hours: 40,
     personal_max_carryover_hours: 0,
     unified_max_carryover_hours: 40,
+    sick_personal_max_carryover_hours: 40, // NEW: Carryover for combined bucket
     pto_accrual_method: 'annual',
     fiscal_year_start_month: 1,
     observed_holidays: STANDARD_HOLIDAYS.filter(h => h.defaultObserved).map(h => h.name),
@@ -338,9 +342,9 @@ const HRPreferencesManager = () => {
       )}
 
       {success && (
-        <div className="p-3 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-xl flex items-center gap-2">
-          <CheckCircle size={16} className="text-emerald-500" />
-          <span className="text-sm text-emerald-700 dark:text-emerald-400">{success}</span>
+        <div className="p-3 rounded-xl flex items-center gap-2" style={{ backgroundColor: 'rgba(148, 175, 50, 0.1)', border: '1px solid rgba(148, 175, 50, 0.3)' }}>
+          <CheckCircle size={16} style={{ color: '#94AF32' }} />
+          <span className="text-sm" style={{ color: '#94AF32' }}>{success}</span>
         </div>
       )}
 
@@ -359,39 +363,80 @@ const HRPreferencesManager = () => {
 
         {expandedSections.ptoPolicy && (
           <div className="p-4 space-y-4 border-t border-zinc-200 dark:border-zinc-700">
-            {/* Unified PTO Toggle */}
-            <div className="flex items-start gap-4 p-4 rounded-xl bg-zinc-50 dark:bg-zinc-800/50">
+            {/* PTO Policy Type Selection - 2 Options */}
+            <div className="space-y-3">
+              <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                Choose your PTO structure:
+              </p>
+
+              {/* Option 1: Separate (Vacation, Sick, Personal) */}
               <button
-                onClick={() => updatePref('use_unified_pto', !preferences.use_unified_pto)}
-                className="mt-0.5"
+                onClick={() => {
+                  updatePref('use_hybrid_pto', false);
+                }}
+                className={`w-full flex items-start gap-4 p-4 rounded-xl border-2 transition-all ${
+                  !preferences.use_hybrid_pto
+                    ? 'border-violet-500 bg-violet-50 dark:bg-violet-900/20'
+                    : 'border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/50 hover:border-zinc-300 dark:hover:border-zinc-600'
+                }`}
               >
-                {preferences.use_unified_pto ? (
-                  <ToggleRight size={28} className="text-violet-500" />
-                ) : (
-                  <ToggleLeft size={28} className="text-zinc-400" />
-                )}
+                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center mt-0.5 ${
+                  !preferences.use_hybrid_pto
+                    ? 'border-violet-500 bg-violet-500'
+                    : 'border-zinc-300 dark:border-zinc-600'
+                }`}>
+                  {!preferences.use_hybrid_pto && (
+                    <div className="w-2 h-2 rounded-full bg-white" />
+                  )}
+                </div>
+                <div className="flex-1 text-left">
+                  <p className="font-medium text-zinc-900 dark:text-white">3 Separate Buckets</p>
+                  <p className="text-sm text-zinc-500 mt-1">
+                    Vacation, Sick Leave, and Personal days tracked separately
+                  </p>
+                </div>
               </button>
-              <div className="flex-1">
-                <p className="font-medium text-zinc-900 dark:text-white">Unified PTO</p>
-                <p className="text-sm text-zinc-500 mt-1">
-                  {preferences.use_unified_pto
-                    ? 'All time off comes from a single bucket (vacation, sick, personal combined)'
-                    : 'Separate buckets for vacation, sick leave, and personal days'}
-                </p>
-              </div>
+
+              {/* Option 2: Hybrid (Vacation separate, Sick/Personal combined) */}
+              <button
+                onClick={() => {
+                  updatePref('use_hybrid_pto', true);
+                }}
+                className={`w-full flex items-start gap-4 p-4 rounded-xl border-2 transition-all ${
+                  preferences.use_hybrid_pto
+                    ? 'border-violet-500 bg-violet-50 dark:bg-violet-900/20'
+                    : 'border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/50 hover:border-zinc-300 dark:hover:border-zinc-600'
+                }`}
+              >
+                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center mt-0.5 ${
+                  preferences.use_hybrid_pto
+                    ? 'border-violet-500 bg-violet-500'
+                    : 'border-zinc-300 dark:border-zinc-600'
+                }`}>
+                  {preferences.use_hybrid_pto && (
+                    <div className="w-2 h-2 rounded-full bg-white" />
+                  )}
+                </div>
+                <div className="flex-1 text-left">
+                  <p className="font-medium text-zinc-900 dark:text-white">2 Buckets (Vacation + Sick/Personal)</p>
+                  <p className="text-sm text-zinc-500 mt-1">
+                    Vacation tracked separately, Sick &amp; Personal combined into one bucket
+                  </p>
+                </div>
+              </button>
             </div>
 
-            {/* Unified PTO Name (if enabled) */}
-            {preferences.use_unified_pto && (
+            {/* Sick/Personal Bucket Name (if hybrid mode) */}
+            {preferences.use_hybrid_pto && (
               <div>
                 <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">
-                  What do you call this time off?
+                  What do you call the combined Sick/Personal bucket?
                 </label>
                 <input
                   type="text"
-                  value={preferences.unified_pto_name || ''}
-                  onChange={(e) => updatePref('unified_pto_name', e.target.value)}
-                  placeholder="e.g., Personal Time Off, PTO, Flexible Time"
+                  value={preferences.sick_personal_name || 'Sick/Personal'}
+                  onChange={(e) => updatePref('sick_personal_name', e.target.value)}
+                  placeholder="e.g., Sick/Personal, Health & Personal, Flexible Leave"
                   className="w-full max-w-md px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white"
                 />
               </div>
@@ -432,7 +477,7 @@ const HRPreferencesManager = () => {
           className="w-full flex items-center justify-between p-4 bg-zinc-50 dark:bg-zinc-800/50 hover:bg-zinc-100 dark:hover:bg-zinc-800"
         >
           <div className="flex items-center gap-3">
-            <Clock size={18} className="text-emerald-500" />
+            <Clock size={18} style={{ color: '#94AF32' }} />
             <span className="font-medium text-zinc-900 dark:text-white">Annual Allowances</span>
           </div>
           {expandedSections.allowances ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
@@ -440,13 +485,14 @@ const HRPreferencesManager = () => {
 
         {expandedSections.allowances && (
           <div className="p-4 border-t border-zinc-200 dark:border-zinc-700">
-            {preferences.use_unified_pto ? (
-              /* Unified PTO Settings */
+            {preferences.use_hybrid_pto ? (
+              /* Hybrid PTO Settings: Vacation + Sick/Personal Combined */
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="p-4 rounded-xl bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800">
+                {/* Vacation */}
+                <div className="p-4 rounded-xl" style={{ backgroundColor: 'rgba(148, 175, 50, 0.1)', border: '1px solid rgba(148, 175, 50, 0.3)' }}>
                   <div className="flex items-center gap-2 mb-3">
-                    <Calendar size={18} className="text-violet-500" />
-                    <span className="font-medium text-violet-700 dark:text-violet-300">{preferences.unified_pto_name}</span>
+                    <Umbrella size={18} style={{ color: '#94AF32' }} />
+                    <span className="font-medium" style={{ color: '#94AF32' }}>Vacation</span>
                   </div>
                   <div className="space-y-3">
                     <div>
@@ -454,19 +500,50 @@ const HRPreferencesManager = () => {
                       <div className="flex items-center gap-2">
                         <input
                           type="number"
-                          value={preferences.unified_pto_annual_hours || 0}
-                          onChange={(e) => updatePref('unified_pto_annual_hours', parseFloat(e.target.value) || 0)}
+                          value={preferences.vacation_annual_hours || 0}
+                          onChange={(e) => updatePref('vacation_annual_hours', parseFloat(e.target.value) || 0)}
                           className="w-24 px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white"
                         />
-                        <span className="text-sm text-zinc-500">= {hoursToDays(preferences.unified_pto_annual_hours || 0)} days</span>
+                        <span className="text-sm text-zinc-500">= {hoursToDays(preferences.vacation_annual_hours || 0)} days</span>
                       </div>
                     </div>
                     <div>
                       <label className="block text-xs text-zinc-500 mb-1">Max Carryover Hours</label>
                       <input
                         type="number"
-                        value={preferences.unified_max_carryover_hours || 0}
-                        onChange={(e) => updatePref('unified_max_carryover_hours', parseFloat(e.target.value) || 0)}
+                        value={preferences.vacation_max_carryover_hours || 0}
+                        onChange={(e) => updatePref('vacation_max_carryover_hours', parseFloat(e.target.value) || 0)}
+                        className="w-24 px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Sick/Personal Combined */}
+                <div className="p-4 rounded-xl bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800">
+                  <div className="flex items-center gap-2 mb-3">
+                    <HeartPulse size={18} className="text-violet-500" />
+                    <span className="font-medium text-violet-700 dark:text-violet-300">{preferences.sick_personal_name || 'Sick/Personal'}</span>
+                  </div>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-xs text-zinc-500 mb-1">Annual Hours</label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          value={preferences.sick_personal_annual_hours || 0}
+                          onChange={(e) => updatePref('sick_personal_annual_hours', parseFloat(e.target.value) || 0)}
+                          className="w-24 px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white"
+                        />
+                        <span className="text-sm text-zinc-500">= {hoursToDays(preferences.sick_personal_annual_hours || 0)} days</span>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-zinc-500 mb-1">Max Carryover Hours</label>
+                      <input
+                        type="number"
+                        value={preferences.sick_personal_max_carryover_hours || 0}
+                        onChange={(e) => updatePref('sick_personal_max_carryover_hours', parseFloat(e.target.value) || 0)}
                         className="w-24 px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white"
                       />
                     </div>
@@ -474,13 +551,13 @@ const HRPreferencesManager = () => {
                 </div>
               </div>
             ) : (
-              /* Separate PTO Settings */
+              /* Separate PTO Settings: Vacation, Sick, Personal */
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {/* Vacation */}
-                <div className="p-4 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800">
+                <div className="p-4 rounded-xl" style={{ backgroundColor: 'rgba(148, 175, 50, 0.1)', border: '1px solid rgba(148, 175, 50, 0.3)' }}>
                   <div className="flex items-center gap-2 mb-3">
-                    <Umbrella size={18} className="text-emerald-500" />
-                    <span className="font-medium text-emerald-700 dark:text-emerald-300">Vacation</span>
+                    <Umbrella size={18} style={{ color: '#94AF32' }} />
+                    <span className="font-medium" style={{ color: '#94AF32' }}>Vacation</span>
                   </div>
                   <div className="space-y-3">
                     <div>
@@ -760,7 +837,7 @@ const HRPreferencesManager = () => {
           className="w-full flex items-center justify-between p-4 bg-zinc-50 dark:bg-zinc-800/50 hover:bg-zinc-100 dark:hover:bg-zinc-800"
         >
           <div className="flex items-center gap-3">
-            <TrendingUp size={18} className="text-emerald-500" />
+            <TrendingUp size={18} style={{ color: '#94AF32' }} />
             <span className="font-medium text-zinc-900 dark:text-white">Tenure-Based Increases</span>
           </div>
           {expandedSections.tenure ? <ChevronDown size={18} /> : <ChevronRight size={18} />}

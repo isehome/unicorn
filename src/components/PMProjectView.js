@@ -4119,12 +4119,14 @@ const PMProjectViewEnhanced = () => {
                     >
                       <div className="flex items-center justify-between">
                         <h4 className="font-medium text-zinc-900 dark:text-white">{issue.title}</h4>
-                        <span className={`text-xs px-2 py-0.5 rounded-full ${issue.status === 'resolved'
-                          ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
-                          : issue.status === 'blocked'
-                            ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
-                            : 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'
-                          }`}>
+                        <span
+                          className="text-xs px-2 py-0.5 rounded-full"
+                          style={issue.status === 'resolved'
+                            ? { backgroundColor: 'rgba(148, 175, 50, 0.2)', color: '#94AF32' }
+                            : issue.status === 'blocked'
+                              ? { backgroundColor: 'rgba(239, 68, 68, 0.2)', color: '#EF4444' }
+                              : { backgroundColor: 'rgba(245, 158, 11, 0.2)', color: '#F59E0B' }
+                          }>
                           {(issue.status || 'open').replace(/\b\w/g, (c) => c.toUpperCase())}
                         </span>
                       </div>

@@ -158,12 +158,12 @@ const ProjectEquipmentManager = ({
 
     if (uploadSummary) {
       return (
-        <div className="mt-3 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
+        <div className="mt-3 rounded-lg px-4 py-3 text-sm" style={{ backgroundColor: 'rgba(148, 175, 50, 0.1)', borderWidth: '1px', borderStyle: 'solid', borderColor: 'rgba(148, 175, 50, 0.3)', color: '#94AF32' }}>
           <div className="flex items-center gap-2 font-medium">
             <CheckCircle className="h-4 w-4" />
             Import complete
           </div>
-          <p className="mt-1 text-xs uppercase tracking-wide text-green-700">
+          <p className="mt-1 text-xs uppercase tracking-wide" style={{ color: '#7a9029' }}>
             Mode: {uploadSummary.mode === 'merge' ? 'Update' : uploadSummary.mode === 'append' ? 'Append' : 'Replace'}
           </p>
           <ul className="mt-2 space-y-1 text-xs">
@@ -230,8 +230,9 @@ const ProjectEquipmentManager = ({
                   className={`rounded-full px-2 py-0.5 text-xs ${
                     isHeadEnd
                       ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-200'
-                      : 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-200'
+                      : ''
                   }`}
+                  style={!isHeadEnd ? { backgroundColor: 'rgba(148, 175, 50, 0.1)', color: '#94AF32' } : undefined}
                 >
                   {isHeadEnd ? 'Head-end' : 'Room'}
                 </span>

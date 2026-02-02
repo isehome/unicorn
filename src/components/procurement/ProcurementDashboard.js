@@ -394,12 +394,13 @@ const ProcurementDashboard = ({ initialView, returnTo }) => {
                       className={`bg-gradient-to-br rounded-lg p-4 border cursor-pointer hover:shadow-lg transition-all transform hover:scale-105 ${
                         hasOpenIssues
                           ? 'from-red-50 to-red-100 dark:from-red-900/20 dark:to-red-800/20 border-red-300 dark:border-red-700'
-                          : 'from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 border-green-200 dark:border-green-700'
+                          : ''
                       }`}
+                      style={!hasOpenIssues ? { background: 'linear-gradient(to bottom right, rgba(148, 175, 50, 0.1), rgba(148, 175, 50, 0.15))', borderColor: 'rgba(148, 175, 50, 0.3)' } : {}}
                     >
                       <div className="flex items-center justify-between mb-2">
-                        <AlertTriangle className={`w-6 h-6 ${hasOpenIssues ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`} />
-                        <span className={`text-[10px] font-medium ${hasOpenIssues ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`}>
+                        <AlertTriangle className={`w-6 h-6 ${hasOpenIssues ? 'text-red-600 dark:text-red-400' : ''}`} style={!hasOpenIssues ? { color: '#94AF32' } : {}} />
+                        <span className={`text-[10px] font-medium ${hasOpenIssues ? 'text-red-600 dark:text-red-400' : ''}`} style={!hasOpenIssues ? { color: '#94AF32' } : {}}>
                           ISSUES
                         </span>
                       </div>
@@ -720,11 +721,14 @@ const ProcurementDashboard = ({ initialView, returnTo }) => {
                           <div className="flex items-start justify-between gap-3 mb-2">
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 mb-1">
-                                <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                                <span
+                                className={`px-2 py-0.5 rounded-full text-xs font-medium ${
                                   isOpen
                                     ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-                                    : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                                }`}>
+                                    : ''
+                                }`}
+                                style={!isOpen ? { backgroundColor: 'rgba(148, 175, 50, 0.1)', color: '#94AF32' } : {}}
+                              >
                                   {issue.status}
                                 </span>
                                 <span className="text-xs text-gray-500 dark:text-gray-400">
@@ -744,7 +748,8 @@ const ProcurementDashboard = ({ initialView, returnTo }) => {
                                   e.stopPropagation();
                                   handleResolveIssue(issue);
                                 }}
-                                className="px-2 py-1 text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 rounded hover:bg-green-200 dark:hover:bg-green-900/50 transition-colors"
+                                className="px-2 py-1 text-xs font-medium rounded transition-colors"
+                                style={{ backgroundColor: 'rgba(148, 175, 50, 0.1)', color: '#94AF32' }}
                               >
                                 Resolve
                               </button>

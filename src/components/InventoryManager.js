@@ -425,7 +425,7 @@ const InventoryManager = ({ projectId }) => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-500 dark:text-gray-400">In Stock</p>
-              <p className="mt-1 text-2xl font-semibold text-green-600 dark:text-green-400">
+              <p className="mt-1 text-2xl font-semibold" style={{ color: '#94AF32' }}>
                 {equipment.filter((item) => getInventoryStatus(item).hasStock).length}
               </p>
             </div>
@@ -478,7 +478,7 @@ const InventoryManager = ({ projectId }) => {
                             {item.name}
                           </h4>
                           {status.hasStock ? (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/40 dark:text-green-400">
+                            <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium" style={{ backgroundColor: 'rgba(148, 175, 50, 0.1)', color: '#94AF32' }}>
                               <CheckCircle className="h-3 w-3" />
                               In Stock
                             </span>

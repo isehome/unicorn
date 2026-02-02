@@ -300,7 +300,7 @@ const TechnicianFilterBar = ({
                   className="px-3 py-2 rounded-lg bg-zinc-700 hover:bg-zinc-600 transition-colors text-white flex items-center gap-1"
                   title="Copy URL"
                 >
-                  {copied ? <Check size={16} className="text-green-400" /> : <Copy size={16} />}
+                  {copied ? <Check size={16} style={{ color: '#94AF32' }} /> : <Copy size={16} />}
                 </button>
               </div>
             </div>
@@ -319,7 +319,7 @@ const TechnicianFilterBar = ({
                   onClick={handleCopyEmbed}
                   className="absolute top-2 right-2 px-2 py-1 rounded bg-zinc-600 hover:bg-zinc-500 transition-colors text-white text-xs flex items-center gap-1"
                 >
-                  {copied ? <Check size={12} className="text-green-400" /> : <Copy size={12} />}
+                  {copied ? <Check size={12} style={{ color: '#94AF32' }} /> : <Copy size={12} />}
                   {copied ? 'Copied!' : 'Copy'}
                 </button>
               </div>

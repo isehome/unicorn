@@ -157,11 +157,11 @@ const SystemAccountSettings = ({ mode = 'light' }) => {
       {/* Message */}
       {message && (
         <div
-          className={`rounded-lg p-3 flex items-center gap-2 ${
-            message.type === 'success'
-              ? 'bg-green-500/10 text-green-600 dark:text-green-400'
-              : 'bg-red-500/10 text-red-600 dark:text-red-400'
-          }`}
+          className="rounded-lg p-3 flex items-center gap-2"
+          style={message.type === 'success'
+            ? { backgroundColor: 'rgba(148, 175, 50, 0.1)', color: '#94AF32' }
+            : { backgroundColor: 'rgba(239, 68, 68, 0.1)', color: '#EF4444' }
+          }
         >
           {message.type === 'success' ? (
             <CheckCircle className="w-4 h-4" />

@@ -357,7 +357,8 @@ const NewTicketForm = () => {
                           setSearchResults([]);
                           setSearchQuery('');
                         }}
-                        className="w-full p-3 text-left hover:bg-emerald-600/20 transition-colors flex items-center gap-2 border-t border-zinc-600 text-emerald-400"
+                        className="w-full p-3 text-left transition-colors flex items-center gap-2 border-t border-zinc-600"
+                        style={{ color: '#94AF32' }}
                       >
                         <UserPlus size={18} />
                         <span>Create New Contact{searchQuery ? `: "${searchQuery}"` : ''}</span>
@@ -371,7 +372,7 @@ const NewTicketForm = () => {
                   <div className="mt-4 p-4 bg-zinc-700/50 rounded-lg border border-zinc-600">
                     <div className="flex items-center justify-between mb-3">
                       <h3 className="text-white font-medium flex items-center gap-2">
-                        <UserPlus size={18} className="text-emerald-400" />
+                        <UserPlus size={18} style={{ color: '#94AF32' }} />
                         Create New Contact
                       </h3>
                       <button
@@ -392,7 +393,8 @@ const NewTicketForm = () => {
                         placeholder="Name *"
                         value={newContactData.name}
                         onChange={(e) => setNewContactData(prev => ({ ...prev, name: e.target.value }))}
-                        className="w-full px-3 py-2 bg-zinc-600 border border-zinc-500 rounded-lg text-white placeholder-zinc-400 focus:outline-none focus:border-emerald-500"
+                        className="w-full px-3 py-2 bg-zinc-600 border border-zinc-500 rounded-lg text-white placeholder-zinc-400 focus:outline-none"
+                        style={{ '--focus-border-color': '#94AF32' }}
                         required
                       />
                       <div className="grid grid-cols-2 gap-3">
@@ -401,14 +403,14 @@ const NewTicketForm = () => {
                           placeholder="Phone"
                           value={newContactData.phone}
                           onChange={(e) => setNewContactData(prev => ({ ...prev, phone: e.target.value }))}
-                          className="w-full px-3 py-2 bg-zinc-600 border border-zinc-500 rounded-lg text-white placeholder-zinc-400 focus:outline-none focus:border-emerald-500"
+                          className="w-full px-3 py-2 bg-zinc-600 border border-zinc-500 rounded-lg text-white placeholder-zinc-400 focus:outline-none"
                         />
                         <input
                           type="email"
                           placeholder="Email"
                           value={newContactData.email}
                           onChange={(e) => setNewContactData(prev => ({ ...prev, email: e.target.value }))}
-                          className="w-full px-3 py-2 bg-zinc-600 border border-zinc-500 rounded-lg text-white placeholder-zinc-400 focus:outline-none focus:border-emerald-500"
+                          className="w-full px-3 py-2 bg-zinc-600 border border-zinc-500 rounded-lg text-white placeholder-zinc-400 focus:outline-none"
                         />
                       </div>
                       <input
@@ -416,14 +418,14 @@ const NewTicketForm = () => {
                         placeholder="Company"
                         value={newContactData.company}
                         onChange={(e) => setNewContactData(prev => ({ ...prev, company: e.target.value }))}
-                        className="w-full px-3 py-2 bg-zinc-600 border border-zinc-500 rounded-lg text-white placeholder-zinc-400 focus:outline-none focus:border-emerald-500"
+                        className="w-full px-3 py-2 bg-zinc-600 border border-zinc-500 rounded-lg text-white placeholder-zinc-400 focus:outline-none"
                       />
                       <input
                         type="text"
                         placeholder="Address"
                         value={newContactData.address}
                         onChange={(e) => setNewContactData(prev => ({ ...prev, address: e.target.value }))}
-                        className="w-full px-3 py-2 bg-zinc-600 border border-zinc-500 rounded-lg text-white placeholder-zinc-400 focus:outline-none focus:border-emerald-500"
+                        className="w-full px-3 py-2 bg-zinc-600 border border-zinc-500 rounded-lg text-white placeholder-zinc-400 focus:outline-none"
                       />
 
                       <div className="flex gap-2 pt-1">
@@ -431,7 +433,8 @@ const NewTicketForm = () => {
                           type="button"
                           onClick={handleCreateContact}
                           disabled={creatingContact || !newContactData.name.trim()}
-                          className="flex-1 px-3 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 rounded-lg text-white font-medium transition-colors flex items-center justify-center gap-2"
+                          className="flex-1 px-3 py-2 disabled:opacity-50 rounded-lg text-white font-medium transition-colors flex items-center justify-center gap-2"
+                          style={{ backgroundColor: '#94AF32' }}
                         >
                           {creatingContact ? (
                             <>
@@ -467,7 +470,8 @@ const NewTicketForm = () => {
                     <button
                       type="button"
                       onClick={() => setShowAddContactForm(true)}
-                      className="text-emerald-400 hover:text-emerald-300 underline"
+                      className="underline"
+                      style={{ color: '#94AF32' }}
                     >
                       create a new contact
                     </button>

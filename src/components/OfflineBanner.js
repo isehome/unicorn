@@ -41,19 +41,21 @@ export function OfflineBanner({ isOnline, pendingCount = 0, isSyncing = false, o
 
   const getBannerStyle = () => {
     if (!isOnline) {
-      return 'bg-amber-50 border-amber-200 dark:bg-amber-900/20 dark:border-amber-800';
+      return { className: 'bg-amber-50 border-amber-200 dark:bg-amber-900/20 dark:border-amber-800', style: {} };
     }
     if (isSyncing) {
-      return 'bg-blue-50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800';
+      return { className: 'bg-blue-50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800', style: {} };
     }
     if (showSuccess && pendingCount === 0) {
-      return 'bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-800';
+      return { className: '', style: { backgroundColor: 'rgba(148, 175, 50, 0.1)', borderColor: 'rgba(148, 175, 50, 0.3)' } };
     }
     if (pendingCount > 0) {
-      return 'bg-amber-50 border-amber-200 dark:bg-amber-900/20 dark:border-amber-800';
+      return { className: 'bg-amber-50 border-amber-200 dark:bg-amber-900/20 dark:border-amber-800', style: {} };
     }
-    return 'bg-gray-50 border-gray-200 dark:bg-zinc-900/20 dark:border-gray-800';
+    return { className: 'bg-gray-50 border-gray-200 dark:bg-zinc-900/20 dark:border-gray-800', style: {} };
   };
+
+  const bannerStyle = getBannerStyle();
 
   const getIcon = () => {
     if (!isOnline) {
@@ -91,7 +93,7 @@ export function OfflineBanner({ isOnline, pendingCount = 0, isSyncing = false, o
   };
 
   return (
-    <div className={`border-b ${getBannerStyle()}`}>
+    <div className={`border-b ${bannerStyle.className}`} style={bannerStyle.style}>
       <div className="container mx-auto px-4 py-3">
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">

@@ -535,8 +535,9 @@ const PeopleManager = () => {
                 className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors ${
                   employee.is_active
                     ? 'hover:bg-red-500/20 text-red-500'
-                    : 'hover:bg-green-500/20 text-green-500'
+                    : ''
                 }`}
+                style={!employee.is_active ? { color: '#94AF32' } : undefined}
                 title={employee.is_active ? 'Deactivate user' : 'Activate user'}
               >
                 {employee.is_active ? <UserX size={14} /> : <UserPlus size={14} />}
@@ -880,9 +881,9 @@ const PeopleManager = () => {
       )}
 
       {success && (
-        <div className="flex items-center gap-2 p-3 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800">
-          <CheckCircle size={16} className="text-green-500" />
-          <span className="text-sm text-green-700 dark:text-green-300">{success}</span>
+        <div className="flex items-center gap-2 p-3 rounded-lg" style={{ backgroundColor: 'rgba(148, 175, 50, 0.1)', border: '1px solid rgba(148, 175, 50, 0.3)' }}>
+          <CheckCircle size={16} style={{ color: '#94AF32' }} />
+          <span className="text-sm" style={{ color: '#94AF32' }}>{success}</span>
         </div>
       )}
 

@@ -178,7 +178,7 @@ const PMOrderEquipmentPage = () => {
     const received = item.received_quantity || 0;
 
     if (received >= planned && received > 0) {
-      return { label: 'Received', color: 'text-green-600 dark:text-green-400', icon: CheckCircle };
+      return { label: 'Received', color: '', icon: CheckCircle, useInlineStyle: true };
     }
     if (ordered >= planned && ordered > 0) {
       return { label: 'Ordered', color: 'text-blue-600 dark:text-blue-400', icon: ShoppingCart };
@@ -230,8 +230,8 @@ const PMOrderEquipmentPage = () => {
         )}
 
         {successMessage && (
-          <div className="mb-4 p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
-            <p className="text-sm text-green-800 dark:text-green-200">{successMessage}</p>
+          <div className="mb-4 p-4 rounded-lg" style={{ backgroundColor: 'rgba(148, 175, 50, 0.1)', border: '1px solid rgba(148, 175, 50, 0.3)' }}>
+            <p className="text-sm" style={{ color: '#94AF32' }}>{successMessage}</p>
           </div>
         )}
 
@@ -405,7 +405,8 @@ const PMOrderEquipmentPage = () => {
                             />
                             <button
                               onClick={() => handleSaveQuantity(item, 'ordered_quantity')}
-                              className="px-2 py-1 bg-green-600 text-white rounded text-xs"
+                              className="px-2 py-1 text-white rounded text-xs"
+                              style={{ backgroundColor: '#94AF32' }}
                               disabled={saving}
                             >
                               ✓

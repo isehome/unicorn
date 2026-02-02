@@ -106,22 +106,24 @@ const LucidIframeEmbed = ({
       </h3>
       
       {/* Embed Method Info */}
-      <div className={`mb-4 p-3 rounded-lg border ${
-        embedMethod === 'token' 
-          ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
+      <div
+        className="mb-4 p-3 rounded-lg border"
+        style={embedMethod === 'token'
+          ? { backgroundColor: 'rgba(148, 175, 50, 0.1)', borderColor: 'rgba(148, 175, 50, 0.3)' }
           : embedMethod === 'public'
-          ? 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800'
-          : 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800'
-      }`}>
+          ? { backgroundColor: 'rgba(245, 158, 11, 0.1)', borderColor: 'rgba(245, 158, 11, 0.3)' }
+          : { backgroundColor: 'rgba(59, 130, 246, 0.1)', borderColor: 'rgba(59, 130, 246, 0.3)' }
+        }
+      >
         <div className="flex items-start gap-2">
           <Info className="w-5 h-5 flex-shrink-0 mt-0.5" />
           <div className="text-sm">
             {embedMethod === 'token' ? (
               <>
-                <p className="font-medium text-green-800 dark:text-green-300">
+                <p className="font-medium" style={{ color: '#94AF32' }}>
                   Token-based Embed (No Public Share Required!)
                 </p>
-                <p className="text-green-700 dark:text-green-400 mt-1">
+                <p className="mt-1" style={{ color: '#94AF32' }}>
                   Using temporary access token. Viewers don't need Lucid accounts.
                   {activeToken && ' Token expires in 10 minutes.'}
                 </p>

@@ -251,9 +251,9 @@ const TeamPTOAllocations = () => {
       )}
 
       {success && (
-        <div className="p-3 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-xl flex items-center gap-2">
-          <CheckCircle size={16} className="text-emerald-500" />
-          <span className="text-sm text-emerald-700 dark:text-emerald-400">{success}</span>
+        <div className="p-3 rounded-xl flex items-center gap-2" style={{ backgroundColor: 'rgba(148, 175, 50, 0.1)', borderWidth: '1px', borderStyle: 'solid', borderColor: 'rgba(148, 175, 50, 0.3)' }}>
+          <CheckCircle size={16} style={{ color: '#94AF32' }} />
+          <span className="text-sm" style={{ color: '#94AF32' }}>{success}</span>
         </div>
       )}
 

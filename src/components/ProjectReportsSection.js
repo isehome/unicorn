@@ -392,7 +392,7 @@ const ProjectReportsSection = ({ projectId }) => {
                               title="Copy email for this stakeholder"
                             >
                               {isCopied ? (
-                                <Check className="w-4 h-4 text-green-600" />
+                                <Check className="w-4 h-4" style={{ color: '#94AF32' }} />
                               ) : (
                                 <Copy className="w-4 h-4" style={{ color: isExternal ? '#92400e' : '#1e40af' }} />
                               )}
@@ -476,7 +476,7 @@ const ProjectReportsSection = ({ projectId }) => {
                   )}
 
                   {reportData.summary?.totalOpen === 0 && (
-                    <div className="text-center py-8 text-green-600 dark:text-green-400">
+                    <div className="text-center py-8" style={{ color: '#94AF32' }}>
                       <Check className="w-12 h-12 mx-auto mb-2" />
                       <p className="font-medium">No open issues!</p>
                     </div>

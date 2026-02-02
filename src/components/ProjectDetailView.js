@@ -1954,12 +1954,15 @@ const ProjectDetailView = () => {
                             Comm
                           </span>
                         </div>
-                        <span className={`font-bold text-sm ${
-                          completion === 100 ? 'text-green-600 dark:text-green-400' :
-                          completion >= 67 ? 'text-blue-600 dark:text-blue-400' :
-                          completion >= 33 ? 'text-yellow-600 dark:text-yellow-400' :
-                          'text-gray-600 dark:text-gray-400'
-                        }`}>
+                        <span
+                          className={`font-bold text-sm ${
+                            completion === 100 ? '' :
+                            completion >= 67 ? 'text-blue-600 dark:text-blue-400' :
+                            completion >= 33 ? 'text-yellow-600 dark:text-yellow-400' :
+                            'text-gray-600 dark:text-gray-400'
+                          }`}
+                          style={completion === 100 ? { color: '#94AF32' } : {}}
+                        >
                           {completion}%
                         </span>
                       </div>

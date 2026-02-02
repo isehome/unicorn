@@ -513,8 +513,11 @@ const POGenerationModal = ({
                   />
                 </div>
               ) : shippingAddressId ? (
-                <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
-                  <div className="flex items-center gap-2 text-sm text-green-700 dark:text-green-300">
+                <div
+                  className="p-3 rounded-lg"
+                  style={{ backgroundColor: 'rgba(148, 175, 50, 0.1)', borderWidth: 1, borderStyle: 'solid', borderColor: 'rgba(148, 175, 50, 0.3)' }}
+                >
+                  <div className="flex items-center gap-2 text-sm" style={{ color: '#94AF32' }}>
                     <CheckCircle className="w-4 h-4" />
                     <span className="font-medium">
                       {projectDefaultShippingId === shippingAddressId
