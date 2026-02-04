@@ -259,14 +259,12 @@ export const DEFAULT_CONFIG = {
   // Primary provider - change this to switch providers
   provider: PROVIDERS.GEMINI,
 
-  // Primary model - change this to switch models
-  model: 'gemini-2.5-flash-native', // Key from MODELS
+  // Primary model - Gemini 3 Flash is now default (40-60% faster)
+  model: 'gemini-3-flash', // Key from MODELS
 
-  // Fallback chain - try these if primary fails
+  // Fallback chain - Gemini only (no OpenAI)
   fallbackChain: [
-    'gemini-3-flash',      // Try newer model
-    'gemini-2.0-flash-live', // Try older stable
-    'gpt-realtime',        // Try OpenAI
+    'gemini-2.5-flash-native', // Fallback to proven stable
   ],
 
   // Voice settings

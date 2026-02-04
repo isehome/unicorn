@@ -28,29 +28,23 @@ import { getAllRoutes, PAGE_REGISTRY } from '../../config/pageRegistry';
 const GEMINI_INPUT_SAMPLE_RATE = 16000;
 const GEMINI_OUTPUT_SAMPLE_RATE = 24000;
 
-// Available models - updated with Gemini 3 research
+// Available models - Gemini 3 is now the default
 const AVAILABLE_MODELS = [
   {
     id: 'gemini-3-flash-preview',
-    name: 'Gemini 3 Flash (Preview)',
-    description: 'Latest model - 40-60% faster, better reasoning',
+    name: 'Gemini 3 Flash',
+    description: 'Default - 40-60% faster latency, better reasoning',
     recommended: true,
-    status: 'preview'
+    status: 'default'
   },
   {
     id: 'gemini-2.5-flash-native-audio-preview-12-2025',
     name: 'Gemini 2.5 Flash Native Audio',
-    description: 'Current stable - excellent audio quality',
+    description: 'Fallback - excellent audio quality, proven stable',
     recommended: false,
     status: 'stable'
-  },
-  {
-    id: 'gemini-2.0-flash-live-001',
-    name: 'Gemini 2.0 Flash Live',
-    description: '⚠️ DEPRECATED - Retiring March 3, 2026',
-    recommended: false,
-    status: 'deprecated'
   }
+  // Note: gemini-2.0-flash-live-001 removed - deprecated, retiring March 3, 2026
 ];
 
 // VAD sensitivity options - ONLY HIGH and LOW work with Gemini

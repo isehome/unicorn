@@ -19,8 +19,9 @@ const GEMINI_OUTPUT_SAMPLE_RATE = 24000;
 const VERBOSE_LOGGING = true;
 
 // Default model - user can override in settings
-// Using gemini 2.5 native audio for better transcription support
-const DEFAULT_MODEL = 'gemini-2.5-flash-native-audio-preview-12-2025';
+// Upgraded to Gemini 3 Flash (40-60% faster latency, better reasoning)
+// Fallback: gemini-2.5-flash-native-audio-preview-12-2025
+const DEFAULT_MODEL = 'gemini-3-flash-preview';
 
 const AIBrainContext = createContext(null);
 

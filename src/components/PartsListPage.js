@@ -605,9 +605,9 @@ const PartsListPage = () => {
 
     // Normal mode: clickable card - CLEANED UP VERSION
     // Status indicators use small dots instead of text badges
-    // Only show AI enriched if status is completed AND there's actual enrichment data
+    // Only show AI enriched if status is completed AND there are actual documentation URLs
+    // Note: ai_enrichment_data can contain just notes without useful docs, so we check for actual URLs
     const hasAIDocs = part.ai_enrichment_status === 'completed' && (
-      part.ai_enrichment_data ||
       part.install_manual_urls?.length > 0 ||
       part.technical_manual_urls?.length > 0 ||
       part.user_guide_urls?.length > 0

@@ -8630,3 +8630,67 @@ Add to Vercel: Settings → Environment Variables
 
 ---
 
+## 2026-02-04
+
+### AI Enrichment Icon Bug Fix - Only Show When Actual Docs Exist
+
+Fixed a bug where parts were showing the AI enrichment indicator (purple dot) even when the Manus enrichment process completed but didn't return actual documentation URLs.
+
+#### Problem
+
+The `hasAIDocs` boolean was only checking if `ai_enrichment_status === 'completed'`, but Manus can complete successfully while:
+1. Running out of API credits mid-research
+2. Finding no documentation for the product
+3. Returning only notes without actual URLs
+
+In these cases, `ai_enrichment_data` may contain just notes like `{"notes":"An int..."}` but the actual URL arrays (`install_manual_urls`, `technical_manual_urls`, `user_guide_urls`) remain empty.
+
+#### Example: OP-2ESH-POE
+
+Database state showing the issue:
+- `ai_enrichment_status`: `completed` ✓
+- `ai_enrichment_data`: `{"notes":"An int..."}` (just notes, no docs!)
+- `install_manual_urls`: `[]` (empty)
+- `technical_manual_urls`: `[]` (empty)
+- `user_guide_urls`: `NULL`
+- `needs_review`: `true`
+
+The part was showing as "AI enriched" with the purple dot, but had no actual documentation.
+
+#### Fix
+
+Changed `hasAIDocs` logic to only return true if status is completed AND actual documentation URLs exist:
+
+**Before (incorrect):**
+```javascript
+const hasAIDocs = part.ai_enrichment_status === 'completed';
+```
+
+**After (correct):**
+```javascript
+// Only show AI enriched if status is completed AND there are actual documentation URLs
+// Note: ai_enrichment_data can contain just notes without useful docs, so we check for actual URLs
+const hasAIDocs = part.ai_enrichment_status === 'completed' && (
+  part.install_manual_urls?.length > 0 ||
+  part.technical_manual_urls?.length > 0 ||
+  part.user_guide_urls?.length > 0
+);
+```
+
+#### Files Modified
+
+| File | Changes |
+|------|---------|
+| `src/components/PartsListPage.js` | Updated `hasAIDocs` logic (lines 606-615) to check for actual URL arrays |
+| `src/components/GlobalPartsManager.js` | Updated `hasAIDocs` logic (lines 503-512) to check for actual URL arrays |
+
+#### Icon Reference
+
+The parts list shows multiple indicators:
+- **Left side purple dot**: AI enrichment complete with actual docs (`hasAIDocs = true`)
+- **Left side amber dot**: Needs review (`needs_review = true`)
+- **Right side CheckCircle (amber)**: Action button to "Mark as reviewed"
+- **Right side FileText**: Action button to "Edit documentation"
+
+---
+

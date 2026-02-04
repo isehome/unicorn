@@ -115,18 +115,19 @@ const PartsAILookupPage = () => {
   const getPartStatus = useCallback((part) => {
     const status = part.ai_enrichment_status;
 
-    // Check if has documents/enrichment data (completed successfully)
-    const hasDocuments = part.documentation_url ||
-      part.spec_sheet_url ||
-      (part.resource_links && part.resource_links.length > 0) ||
-      status === 'completed' ||
-      status === 'enriched';
+    // Check for actual documentation URLs (not just status or ai_enrichment_data which may only contain notes)
+    // This matches the logic in PartsListPage.js and GlobalPartsManager.js
+    const hasActualDocs = status === 'completed' && (
+      part.install_manual_urls?.length > 0 ||
+      part.technical_manual_urls?.length > 0 ||
+      part.user_guide_urls?.length > 0
+    );
 
-    if (hasDocuments) return 'completed';
+    if (hasActualDocs) return 'completed';
     if (localProcessingParts.has(part.id) || status === 'processing') return 'processing';
     if (status === 'error' || errorParts.has(part.id)) return 'error';
 
-    // Not submitted yet (null, undefined, pending, or any other status without docs)
+    // Not submitted yet (null, undefined, pending, or completed-but-no-docs)
     return 'not_submitted';
   }, [localProcessingParts, errorParts]);
 
@@ -342,41 +343,39 @@ const PartsAILookupPage = () => {
   });
 
   // Render AI status icon for a part
+  // Uses dots to match PartsListPage.js for consistency
   // Brand colors: success=#94AF32, violet=#8B5CF6
   const renderAIStatusIcon = (part) => {
     const status = getPartStatus(part);
 
     if (status === 'completed') {
       return (
-        <div className="flex items-center gap-1.5" title="AI enriched with documents">
-          <Bot className="h-5 w-5" style={{ color: '#94AF32' }} />
-          <FileText className="h-3 w-3" style={{ color: '#94AF32' }} />
+        <div className="flex items-center justify-center" title="AI enriched with documents">
+          <span className="w-3 h-3 rounded-full" style={{ backgroundColor: '#8B5CF6' }} />
         </div>
       );
     }
 
     if (status === 'processing') {
       return (
-        <div className="flex items-center gap-1.5" title="Processing - awaiting Manus results">
-          <Bot className="h-5 w-5" style={{ color: '#8B5CF6' }} />
-          <Loader2 className="h-3 w-3 animate-spin" style={{ color: '#8B5CF6' }} />
+        <div className="flex items-center justify-center" title="Processing - awaiting Manus results">
+          <span className="w-3 h-3 rounded-full animate-pulse" style={{ backgroundColor: '#8B5CF6' }} />
         </div>
       );
     }
 
     if (status === 'error') {
       return (
-        <div className="flex items-center gap-1.5" title={errorParts.get(part.id) || 'Error during enrichment'}>
-          <Bot className="h-5 w-5 text-red-500" />
-          <AlertCircle className="h-3 w-3 text-red-500" />
+        <div className="flex items-center justify-center" title={errorParts.get(part.id) || 'Error during enrichment'}>
+          <span className="w-3 h-3 rounded-full bg-red-500" />
         </div>
       );
     }
 
     // Not submitted
     return (
-      <div className="flex items-center gap-1.5" title="Not submitted for AI lookup">
-        <Bot className="h-5 w-5 text-zinc-400" />
+      <div className="flex items-center justify-center" title="Not submitted for AI lookup">
+        <span className="w-3 h-3 rounded-full bg-zinc-300 dark:bg-zinc-600" />
       </div>
     );
   };
@@ -875,9 +874,10 @@ const PartsAILookupPage = () => {
       <div className="text-xs text-zinc-500 dark:text-zinc-400 space-y-1">
         <p>
           <strong>AI Status:</strong>{' '}
-          <span style={{ color: '#94AF32' }}>●</span> Enriched (has documents){' '}
-          <span style={{ color: '#8B5CF6' }}>●</span> Processing (awaiting results){' '}
-          <span className="text-zinc-400">●</span> Not submitted
+          <span style={{ color: '#8B5CF6' }}>●</span> Enriched (has actual docs){' '}
+          <span style={{ color: '#8B5CF6' }}>◐</span> Processing (awaiting results){' '}
+          <span className="text-zinc-400">●</span> Not submitted{' '}
+          <span className="text-red-500">●</span> Error
         </p>
         <p>
           Prewire items (wires, cables, brackets, etc.) are automatically excluded.
