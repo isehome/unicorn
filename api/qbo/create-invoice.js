@@ -244,18 +244,35 @@ export default async function handler(req, res) {
     // Build invoice line items
     const lineItems = [];
 
-    // Labor line
-    if (totalHours > 0) {
-      lineItems.push({
-        DetailType: 'SalesItemLineDetail',
-        Amount: Math.round(totalHours * hourlyRate * 100) / 100,
-        Description: `Service Labor - ${ticket.title}`,
-        SalesItemLineDetail: {
-          Qty: totalHours,
-          UnitPrice: hourlyRate
-        }
-      });
-    }
+    // Labor lines - one per time entry for detailed customer invoicing
+    (timeLogs || []).forEach(log => {
+      const logMinutes = Math.round((new Date(log.check_out) - new Date(log.check_in)) / 60000);
+      const logHours = Math.round(logMinutes / 60 * 100) / 100;
+
+      if (logHours > 0) {
+        // Format the date for display
+        const visitDate = new Date(log.check_in).toLocaleDateString('en-US', {
+          weekday: 'short',
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric'
+        });
+
+        // Build description with technician and date
+        const techName = log.technician_name || log.technician_email || 'Technician';
+        const description = `Service Visit - ${visitDate} - ${techName} (${logHours}hrs)`;
+
+        lineItems.push({
+          DetailType: 'SalesItemLineDetail',
+          Amount: Math.round(logHours * hourlyRate * 100) / 100,
+          Description: description,
+          SalesItemLineDetail: {
+            Qty: logHours,
+            UnitPrice: hourlyRate
+          }
+        });
+      }
+    });
 
     // Parts lines
     (parts || []).forEach(part => {
