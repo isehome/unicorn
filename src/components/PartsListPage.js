@@ -605,7 +605,13 @@ const PartsListPage = () => {
 
     // Normal mode: clickable card - CLEANED UP VERSION
     // Status indicators use small dots instead of text badges
-    const hasAIDocs = part.ai_enrichment_status === 'completed';
+    // Only show AI enriched if status is completed AND there's actual enrichment data
+    const hasAIDocs = part.ai_enrichment_status === 'completed' && (
+      part.ai_enrichment_data ||
+      part.install_manual_urls?.length > 0 ||
+      part.technical_manual_urls?.length > 0 ||
+      part.user_guide_urls?.length > 0
+    );
 
     return (
       <button

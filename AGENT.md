@@ -2765,7 +2765,7 @@ Before any feature is complete, test on a real phone:
 
 # PART 3: AI & VOICE COPILOT ARCHITECTURE
 
-**Last Updated:** 2025-12-20
+**Last Updated:** 2026-02-04
 
 ## Overview
 
@@ -2773,7 +2773,120 @@ The AI integration in Unicorn follows the **"Copilot" Architecture**.
 - **Goal**: A "Field Partner" that assists via voice commands.
 - **Rule**: The AI acts as a **Power User**, using "Tools" to navigate, click buttons, and save data. It DOES NOT access the database directly.
 - **Safety**: App logic (validations, state) remains the source of truth.
-- **Platform**: Gemini Live API via WebSocket (real-time audio streaming).
+- **Platform**: Provider-agnostic - supports Gemini, OpenAI, and future providers.
+
+## NEW: Provider-Agnostic Architecture (2026-02-04)
+
+### Design Principles
+
+1. **Configuration-Driven Switching**: Change providers via config, not code
+2. **Automatic Fallback**: If primary fails, try backup providers
+3. **Unified Tool Definitions**: Define tools once, use with any provider
+4. **Future-Proof**: When Gemini 4 launches, add it to config
+
+### Architecture Diagram
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                    VoiceAgentOrchestrator                        │
+│  - Provider selection & fallback                                 │
+│  - Audio I/O management                                          │
+│  - Tool execution                                                │
+│  - Metrics tracking                                              │
+└────────────────────────────┬─────────────────────────────────────┘
+                             │
+              ┌──────────────┴──────────────┐
+              │     VoiceProvider           │
+              │  (Abstract Interface)       │
+              └──────────────┬──────────────┘
+                             │
+        ┌────────────────────┼────────────────────┐
+        │                    │                    │
+┌───────▼───────┐   ┌───────▼───────┐   ┌───────▼───────┐
+│ GeminiAdapter │   │ OpenAIAdapter │   │ FutureAdapter │
+│ - Gemini 3    │   │ - gpt-realtime│   │ - Gemini 4    │
+│ - Gemini 2.5  │   │ - gpt-4o      │   │ - Claude RT   │
+└───────────────┘   └───────────────┘   └───────────────┘
+```
+
+### Module Structure
+
+```
+src/voice-ai/
+├── index.js                    # Main exports
+├── VoiceAgentOrchestrator.js   # Main orchestrator
+├── config/
+│   └── voiceConfig.js          # Provider & model config
+├── providers/
+│   ├── VoiceProvider.js        # Abstract interface
+│   ├── GeminiAdapter.js        # Gemini implementation
+│   └── OpenAIAdapter.js        # OpenAI implementation
+└── tools/
+    └── ToolRegistry.js         # Unified tool definitions
+```
+
+### Switching Providers
+
+```javascript
+// In voiceConfig.js - just change these values:
+export const DEFAULT_CONFIG = {
+  provider: 'gemini',           // or 'openai'
+  model: 'gemini-3-flash',      // or 'gpt-realtime'
+  fallbackChain: [
+    'gemini-2.5-flash-native',  // Fallback 1
+    'gpt-realtime',             // Fallback 2
+  ],
+};
+```
+
+### Adding a New Provider (e.g., Gemini 4)
+
+1. Add model definition to `voiceConfig.js`:
+```javascript
+'gemini-4-flash': {
+  provider: PROVIDERS.GEMINI,
+  id: 'gemini-4-flash',
+  name: 'Gemini 4 Flash',
+  // ... capabilities, audio settings, etc.
+}
+```
+
+2. Update adapter if API changes (usually not needed for same provider)
+
+3. Set as default:
+```javascript
+model: 'gemini-4-flash'
+```
+
+### Local Testing
+
+Voice AI can be tested locally! The WebSocket connects directly from browser to provider APIs.
+
+```bash
+# 1. Set up environment
+cp .env.example .env.local
+# Add: REACT_APP_GEMINI_API_KEY=your-key
+
+# 2. Run dev server
+npm start
+
+# 3. Go to Admin > AI Agent tab > Start Test
+```
+
+**What requires Vercel (server-side):**
+- Azure AI Search (knowledge base)
+- Database operations
+
+### Available Models (2026)
+
+| Key | Provider | Status | Latency | Recommended |
+|-----|----------|--------|---------|-------------|
+| `gemini-3-flash` | Google | Preview | ~250ms | ⭐ Yes |
+| `gemini-2.5-flash-native` | Google | Stable | ~320ms | Current default |
+| `gpt-realtime` | OpenAI | Stable | ~232ms | For lowest latency |
+| `gemini-2.0-flash-live` | Google | ⚠️ Deprecated | ~400ms | Retiring Mar 2026 |
+
+---
 
 ## Gemini Live API Configuration
 
@@ -3817,6 +3930,51 @@ The application needs a proper user capabilities/roles system to control access 
 ---
 
 # PART 6: CHANGELOG
+
+## 2026-02-04
+
+### Fix AI Enrichment Status Display Bug in Parts List Views
+
+**What:** Fixed bug where parts were showing the purple "AI Enriched" dot even when no actual enrichment data was found.
+
+**Why:** The enrichment status check only verified `ai_enrichment_status === 'completed'`, but didn't check if actual data was populated. Manus AI sets the status to "completed" when the research task finishes, even if no useful documentation was found. This caused parts to appear enriched when they had no real data.
+
+**Fix:** Updated the `hasAIDocs` check to require BOTH a completed status AND actual enrichment data (either `ai_enrichment_data`, `install_manual_urls`, `technical_manual_urls`, or `user_guide_urls`).
+
+**Files:**
+- `src/components/GlobalPartsManager.js` (line 505)
+- `src/components/PartsListPage.js` (line 608)
+
+**Database:** No changes
+
+**AI Note:** The detail page (`PartDetailPage.js`) still shows the status as "Completed" which is correct - it indicates the research ran, even if no docs were found. The fix only affects list views where the purple dot was misleading.
+
+---
+
+### AI Agent Control Center - Unified Voice AI Management
+
+**What:** Created new consolidated AI Agent page in admin section that combines voice control interface, AI copilot settings, and brain training into one unified control center.
+
+**Why:** Provide administrators with a single location to test, configure, and monitor the Voice AI system. Previously, AI settings were scattered across User Settings (copilot settings) and Admin (training). The new page enables real-time voice testing with metrics, model selection (including new Gemini 3 Flash info), and full control over VAD parameters.
+
+**Features:**
+- **Voice Control Interface**: Real-time test sessions with live metrics (latency, connection time, audio chunks, turns)
+- **Model Selection**: Dropdown with Gemini 3 Flash (preview, recommended), Gemini 2.5 Flash (stable), and deprecated 2.0 warning
+- **VAD Configuration**: Start/End sensitivity, silence duration, prefix padding with quick presets (Snappy, Balanced, Patient, Interview)
+- **Reconnect Button**: Apply settings changes without leaving the page
+- **AI Copilot Settings**: Persona selection, voice preference, custom instructions, conversation transcript (collapsible)
+- **AI Brain Training**: Page training status, progress tracking, publish controls (collapsible)
+- **Model Information**: Gemini 3 highlights and comparison
+
+**Files:**
+- `src/components/Admin/AIAgentTab.js` (NEW - 1100+ lines)
+- `src/pages/AdminPage.js` (Updated imports and tab references)
+
+**Database:** No changes
+
+**AI Note:** The Voice AI now uses `gemini-2.5-flash-native-audio-preview-12-2025` as default. Gemini 3 Flash is available as preview with 40-60% faster latency. The old `gemini-2.0-flash-live-001` is deprecated and retiring March 3, 2026. Migration recommended. VAD only supports HIGH and LOW sensitivity (no MEDIUM - causes WebSocket errors).
+
+---
 
 ## 2026-02-02
 

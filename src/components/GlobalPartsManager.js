@@ -502,7 +502,13 @@ const GlobalPartsManager = () => {
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {filteredParts.map((part) => {
           const docStatus = getDocumentationStatus(part);
-          const hasAIDocs = part.ai_enrichment_status === 'completed';
+          // Only show AI enriched if status is completed AND there's actual enrichment data
+          const hasAIDocs = part.ai_enrichment_status === 'completed' && (
+            part.ai_enrichment_data ||
+            part.install_manual_urls?.length > 0 ||
+            part.technical_manual_urls?.length > 0 ||
+            part.user_guide_urls?.length > 0
+          );
           return (
             <div
               key={part.id}
