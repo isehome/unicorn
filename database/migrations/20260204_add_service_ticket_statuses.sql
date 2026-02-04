@@ -1,7 +1,13 @@
--- Add new service ticket statuses: work_complete_needs_invoice and problem
+-- Update service ticket statuses - replace 'resolved' with 'work_complete_needs_invoice'
+-- Add 'problem' status for escalation
 -- 2026-02-04
 
--- First, drop any existing constraint on status column
+-- First, update any existing 'resolved' tickets to 'work_complete_needs_invoice'
+UPDATE service_tickets
+SET status = 'work_complete_needs_invoice'
+WHERE status = 'resolved';
+
+-- Drop any existing constraint on status column
 DO $$
 BEGIN
     IF EXISTS (
@@ -12,14 +18,17 @@ BEGIN
     END IF;
 END $$;
 
--- Add updated constraint with all valid statuses
--- Statuses workflow:
---   open -> triaged -> scheduled -> in_progress
---   in_progress -> waiting_parts, waiting_customer, resolved, problem
---   waiting_parts -> in_progress, resolved
---   waiting_customer -> in_progress, resolved, closed
---   resolved -> work_complete_needs_invoice -> closed
---   problem -> (escalation, can go back to in_progress or closed)
+-- Add updated constraint with final statuses (no 'resolved')
+-- Statuses:
+--   open - New ticket, not yet reviewed
+--   triaged - Reviewed, estimated hours set
+--   scheduled - Visit scheduled
+--   in_progress - Work in progress
+--   waiting_parts - Blocked waiting for parts
+--   waiting_customer - Waiting for customer response
+--   work_complete_needs_invoice - Work done, needs QuickBooks invoice
+--   problem - Escalation needed, ticket stuck
+--   closed - Ticket closed (invoiced or no charge)
 ALTER TABLE service_tickets
 ADD CONSTRAINT service_tickets_status_check CHECK (
     status IN (
@@ -29,7 +38,6 @@ ADD CONSTRAINT service_tickets_status_check CHECK (
         'in_progress',
         'waiting_parts',
         'waiting_customer',
-        'resolved',
         'work_complete_needs_invoice',
         'problem',
         'closed'
@@ -47,6 +55,6 @@ WHERE status = 'problem';
 
 -- Add comment for documentation
 COMMENT ON COLUMN service_tickets.status IS
-'Ticket status: open, triaged, scheduled, in_progress, waiting_parts, waiting_customer, resolved, work_complete_needs_invoice, problem, closed.
+'Ticket status: open, triaged, scheduled, in_progress, waiting_parts, waiting_customer, work_complete_needs_invoice, problem, closed.
 work_complete_needs_invoice = Work done, needs QuickBooks invoice creation.
 problem = Escalation needed, ticket stuck and needs manager attention.';

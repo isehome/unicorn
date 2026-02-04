@@ -8795,42 +8795,61 @@ The parts list shows multiple indicators:
 
 ---
 
-## 2026-02-04 - Service Ticket Status Updates & QuickBooks Documentation
+## 2026-02-04 - Service Ticket Status Overhaul & QuickBooks Invoice Button
 
-### New Service Ticket Statuses
+### Status System Redesign
 
-Added two new status categories to the service ticket workflow:
+**Major Changes:**
+1. **Removed `resolved` status** - replaced with `work_complete_needs_invoice`
+2. **Added `problem` status** - for escalation when tickets are stuck
+3. **Dropdown shows ALL statuses** - no longer restricted to "valid next steps"
+
+#### Final Status List
 
 | Status | Purpose | Styling |
 |--------|---------|---------|
-| `work_complete_needs_invoice` | Work is done, ticket needs QuickBooks invoice creation before closing | Cyan (`bg-cyan-500/20`) |
-| `problem` | Escalation needed - ticket is stuck and requires manager attention | Red (`bg-red-500/20`) |
+| `open` | New ticket, not yet reviewed | Yellow |
+| `triaged` | Reviewed, estimated hours set | Orange |
+| `scheduled` | Visit scheduled | Blue |
+| `in_progress` | Work in progress | Purple |
+| `waiting_parts` | Blocked waiting for parts | Amber |
+| `waiting_customer` | Waiting for customer response | Amber |
+| `work_complete_needs_invoice` | Work done, needs QuickBooks invoice | **Green** (brand success) |
+| `problem` | Escalation needed, ticket stuck | Red |
+| `closed` | Ticket closed | Gray |
 
-#### Updated Workflow
+#### UX Changes
 
-```
-Previous:
-  resolved → closed
+- Status dropdown now shows ALL statuses (user can pick any status freely)
+- Removed workflow restrictions that limited status transitions
+- Added QuickBooks "Send to Invoice" button on tickets with `work_complete_needs_invoice` status
 
-New:
-  resolved → work_complete_needs_invoice → closed
-  (any active status) → problem → (back to in_progress or closed)
-```
+### QuickBooks Invoice Integration
+
+Added "Send to QuickBooks" button that appears when ticket status is `work_complete_needs_invoice`:
+
+- Shows connection status
+- Creates invoice in QuickBooks from ticket time logs and parts
+- Displays invoice number and link after successful creation
+- Shows error messages if creation fails
 
 #### Files Modified
 
 | File | Changes |
 |------|---------|
-| `database/migrations/20260204_add_service_ticket_statuses.sql` | New migration to update CHECK constraint with new statuses |
-| `src/components/Service/ServiceTicketDetail.js` | Updated STATUS_WORKFLOW and getStatusStyles() |
+| `database/migrations/20260204_add_service_ticket_statuses.sql` | Migration removes 'resolved', adds new statuses, updates existing tickets |
+| `src/components/Service/ServiceTicketDetail.js` | ALL_STATUSES array, removed workflow restrictions, added QBO invoice button |
 | `src/components/Service/ServiceDashboard.js` | Updated STATUSES array and getStatusStyles() |
 | `src/components/Service/ServiceTicketList.js` | Updated getStatusStyles() |
+| `docs/QUICKBOOKS_INTEGRATION.md` | Comprehensive QBO integration documentation |
 
 #### Database Migration
 
-Run this migration in Supabase to enable the new statuses:
+Run this migration in Supabase:
 
 ```sql
+-- Updates existing 'resolved' tickets to 'work_complete_needs_invoice'
+-- Removes 'resolved' from valid statuses
 -- See: database/migrations/20260204_add_service_ticket_statuses.sql
 ```
 

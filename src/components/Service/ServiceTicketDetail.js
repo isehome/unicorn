@@ -40,6 +40,7 @@ import {
   servicePartsService,
   servicePOService
 } from '../../services/serviceTicketService';
+import { quickbooksService } from '../../services/quickbooksService';
 import { weeklyPlanningService } from '../../services/weeklyPlanningService';
 import ServiceTriageForm from './ServiceTriageForm';
 import ServicePartsManager from './ServicePartsManager';
@@ -66,18 +67,18 @@ const categoryIcons = {
   general: Wrench
 };
 
-const STATUS_WORKFLOW = {
-  open: ['triaged', 'scheduled', 'closed'],
-  triaged: ['scheduled', 'in_progress', 'closed'],
-  scheduled: ['in_progress', 'waiting_customer', 'problem', 'closed'],
-  in_progress: ['waiting_parts', 'waiting_customer', 'resolved', 'problem'],
-  waiting_parts: ['in_progress', 'resolved', 'problem'],
-  waiting_customer: ['in_progress', 'resolved', 'problem', 'closed'],
-  resolved: ['work_complete_needs_invoice', 'closed', 'open'],
-  work_complete_needs_invoice: ['closed', 'resolved'],
-  problem: ['in_progress', 'scheduled', 'closed'],
-  closed: ['open']
-};
+// All available statuses - dropdown shows all, user can pick any
+const ALL_STATUSES = [
+  { value: 'open', label: 'Open' },
+  { value: 'triaged', label: 'Triaged' },
+  { value: 'scheduled', label: 'Scheduled' },
+  { value: 'in_progress', label: 'In Progress' },
+  { value: 'waiting_parts', label: 'Waiting Parts' },
+  { value: 'waiting_customer', label: 'Waiting Customer' },
+  { value: 'work_complete_needs_invoice', label: 'Work Complete - Needs Invoice' },
+  { value: 'problem', label: 'Problem (Escalation)' },
+  { value: 'closed', label: 'Closed' }
+];
 
 const ServiceTicketDetail = () => {
   const { id } = useParams();
@@ -139,6 +140,11 @@ const ServiceTicketDetail = () => {
   const [partsNeededCount, setPartsNeededCount] = useState(0);
   const [posCount, setPosCount] = useState(0);
 
+  // QuickBooks state
+  const [qboConnected, setQboConnected] = useState(false);
+  const [qboSending, setQboSending] = useState(false);
+  const [qboError, setQboError] = useState(null);
+
   // Edit mode state
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState({});
@@ -179,6 +185,50 @@ const ServiceTicketDetail = () => {
     };
     loadCategories();
   }, []);
+
+  // Check QuickBooks connection status
+  useEffect(() => {
+    const checkQboConnection = async () => {
+      try {
+        const status = await quickbooksService.getConnectionStatus();
+        setQboConnected(status.connected && !status.isTokenExpired);
+      } catch (err) {
+        console.log('[ServiceTicketDetail] QBO connection check failed:', err);
+        setQboConnected(false);
+      }
+    };
+    checkQboConnection();
+  }, []);
+
+  // Handle sending to QuickBooks
+  const handleSendToQuickBooks = async () => {
+    if (!ticket?.id || qboSending) return;
+
+    setQboSending(true);
+    setQboError(null);
+
+    try {
+      const result = await quickbooksService.createInvoiceFromTicket(ticket.id);
+
+      if (result.success) {
+        // Refresh ticket to get updated QBO fields
+        const updated = await serviceTicketService.getById(ticket.id);
+        setTicket(updated);
+
+        // Add note about invoice creation
+        await serviceTicketService.addNote(ticket.id, {
+          note_type: 'internal',
+          content: `QuickBooks invoice #${result.invoiceNumber} created successfully`,
+          author_name: user?.name || 'System'
+        });
+      }
+    } catch (err) {
+      console.error('[ServiceTicketDetail] QBO invoice creation failed:', err);
+      setQboError(err.message || 'Failed to create invoice');
+    } finally {
+      setQboSending(false);
+    }
+  };
 
   // Initialize edit data when entering edit mode
   const handleStartEdit = () => {
@@ -789,14 +839,13 @@ const ServiceTicketDetail = () => {
       case 'waiting_parts':
       case 'waiting_customer':
         return 'bg-amber-500/20 text-amber-500 border-amber-500/50';
-      case 'resolved':
+      case 'work_complete_needs_invoice':
+        // Green = work complete, ready for billing
         return {
           backgroundColor: 'rgba(148, 175, 50, 0.2)',
           color: brandColors.success,
           borderColor: 'rgba(148, 175, 50, 0.5)'
         };
-      case 'work_complete_needs_invoice':
-        return 'bg-cyan-500/20 text-cyan-400 border-cyan-500/50';
       case 'problem':
         return 'bg-red-500/20 text-red-500 border-red-500/50';
       case 'closed':
@@ -870,7 +919,8 @@ const ServiceTicketDetail = () => {
 
   const CategoryIcon = categoryIcons[ticket.category] || Wrench;
   const statusStyle = getStatusStyles(ticket.status);
-  const nextStatuses = STATUS_WORKFLOW[ticket.status] || [];
+  // Get all statuses except the current one for the dropdown
+  const availableStatuses = ALL_STATUSES.filter(s => s.value !== ticket.status);
 
   return (
     <div className="min-h-screen bg-zinc-900 p-4 md:p-6 pb-20">
@@ -1376,34 +1426,100 @@ const ServiceTicketDetail = () => {
             {/* Status Workflow */}
             <div className="bg-zinc-800 rounded-lg p-4">
               <h2 className="font-semibold text-white mb-3">Update Status</h2>
-              {nextStatuses.length > 0 ? (
-                <div className="flex items-center gap-3">
-                  <select
-                    value=""
-                    onChange={(e) => {
-                      if (e.target.value) {
-                        handleStatusChange(e.target.value);
-                        e.target.value = ''; // Reset after selection
-                      }
-                    }}
-                    disabled={saving}
-                    className="flex-1 px-3 py-2 bg-zinc-700 border border-zinc-600 rounded-lg text-white focus:outline-none focus:border-zinc-500 disabled:opacity-50"
-                  >
-                    <option value="">Select new status...</option>
-                    {nextStatuses.map(status => (
-                      <option key={status} value={status}>
-                        {status.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
-                      </option>
-                    ))}
-                  </select>
-                  {saving && (
-                    <div className="animate-spin rounded-full h-5 w-5 border-b-2" style={{ borderColor: brandColors.success }} />
-                  )}
-                </div>
-              ) : (
-                <p className="text-zinc-500 text-sm">No status transitions available</p>
-              )}
+              <div className="flex items-center gap-3">
+                <select
+                  value=""
+                  onChange={(e) => {
+                    if (e.target.value) {
+                      handleStatusChange(e.target.value);
+                      e.target.value = ''; // Reset after selection
+                    }
+                  }}
+                  disabled={saving}
+                  className="flex-1 px-3 py-2 bg-zinc-700 border border-zinc-600 rounded-lg text-white focus:outline-none focus:border-zinc-500 disabled:opacity-50"
+                >
+                  <option value="">Select new status...</option>
+                  {availableStatuses.map(status => (
+                    <option key={status.value} value={status.value}>
+                      {status.label}
+                    </option>
+                  ))}
+                </select>
+                {saving && (
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2" style={{ borderColor: brandColors.success }} />
+                )}
+              </div>
             </div>
+
+            {/* QuickBooks Invoice - Show when status is work_complete_needs_invoice */}
+            {ticket.status === 'work_complete_needs_invoice' && (
+              <div className="bg-zinc-800 rounded-lg p-4 border border-[#94AF32]/30">
+                <h2 className="font-semibold text-white mb-3 flex items-center gap-2">
+                  <Send size={18} style={{ color: brandColors.success }} />
+                  QuickBooks Invoice
+                </h2>
+
+                {/* Already sent to QuickBooks */}
+                {ticket.qbo_invoice_id ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 text-sm">
+                      <CheckCircle size={16} style={{ color: brandColors.success }} />
+                      <span style={{ color: brandColors.success }}>
+                        Invoice #{ticket.qbo_invoice_number || ticket.qbo_invoice_id} sent to QuickBooks
+                      </span>
+                    </div>
+                    {ticket.qbo_synced_at && (
+                      <p className="text-xs text-zinc-500">
+                        Synced: {new Date(ticket.qbo_synced_at).toLocaleString()}
+                      </p>
+                    )}
+                    <a
+                      href={`https://${process.env.REACT_APP_QBO_ENVIRONMENT === 'production' ? 'qbo' : 'sandbox.qbo'}.intuit.com/app/invoice?txnId=${ticket.qbo_invoice_id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 px-3 py-2 text-sm rounded-lg border border-zinc-600 text-zinc-300 hover:bg-zinc-700"
+                    >
+                      <ExternalLink size={14} />
+                      View in QuickBooks
+                    </a>
+                  </div>
+                ) : qboConnected ? (
+                  <div className="space-y-3">
+                    <p className="text-sm text-zinc-400">
+                      Ready to create invoice from this service ticket.
+                    </p>
+                    {qboError && (
+                      <div className="p-2 bg-red-500/20 border border-red-500/50 rounded text-sm text-red-400">
+                        {qboError}
+                      </div>
+                    )}
+                    <button
+                      onClick={handleSendToQuickBooks}
+                      disabled={qboSending}
+                      className="flex items-center gap-2 px-4 py-2 rounded-lg text-black font-medium disabled:opacity-50"
+                      style={{ backgroundColor: brandColors.success }}
+                    >
+                      {qboSending ? (
+                        <>
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-black" />
+                          Creating Invoice...
+                        </>
+                      ) : (
+                        <>
+                          <Send size={16} />
+                          Send to QuickBooks
+                        </>
+                      )}
+                    </button>
+                  </div>
+                ) : (
+                  <div className="text-sm text-amber-400">
+                    <AlertTriangle size={16} className="inline mr-2" />
+                    QuickBooks is not connected. Connect in Admin → Integrations.
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Schedules */}
             {ticket.schedules && ticket.schedules.length > 0 && (
