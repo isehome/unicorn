@@ -21,8 +21,8 @@ export const PHOTO_CATEGORIES = {
 export const servicePhotoService = {
   /**
    * Get the SharePoint root URL for service photos
-   * Uses company_sharepoint_root_url from company_settings + /Service
-   * Folder structure: {root}/Service/{CustomerName}/{TicketNumber}/{category}/
+   * Uses company_sharepoint_root_url from company_settings (Knowledge folder)
+   * Service folder will be created as subfolder: Service/{CustomerName}/{TicketNumber}/{category}/
    */
   async getServiceSharePointRoot() {
     const { data: settings, error } = await supabase
@@ -40,8 +40,8 @@ export const servicePhotoService = {
       throw new Error('Company SharePoint URL not configured. Please set it in Admin → Company Settings.');
     }
 
-    // Append /Service to create service folder root
-    return `${settings.company_sharepoint_root_url.replace(/\/+$/, '')}/Service`;
+    // Return the root URL - Service folder will be created via subPath
+    return settings.company_sharepoint_root_url.replace(/\/+$/, '');
   },
 
   /**
@@ -118,7 +118,7 @@ export const servicePhotoService = {
     const sanitizedCustomer = this.sanitizeForFileName(customerName || 'Unknown');
     const sanitizedTicket = this.sanitizeForFileName(ticketNumber || 'Unknown');
 
-    let path = `${sanitizedCustomer}/${sanitizedTicket}`;
+    let path = `Service/${sanitizedCustomer}/${sanitizedTicket}`;
     if (category) {
       path += `/${category}`;
     }
@@ -168,8 +168,9 @@ export const servicePhotoService = {
     const rootUrl = await this.getServiceSharePointRoot();
 
     // Build folder path: Service/{CustomerName}/{TicketNumber-Description}/{category}
+    // Note: Service folder is included in subPath since root is Knowledge folder
     const customerFolder = sanitizeForFolder(customerName);
-    const photoFolder = `${customerFolder}/${folderName}`;
+    const photoFolder = `Service/${customerFolder}/${folderName}`;
     const folderPath = category ? `${photoFolder}/${category}` : photoFolder;
 
     // Compress the image
