@@ -3933,6 +3933,47 @@ The application needs a proper user capabilities/roles system to control access 
 
 ## 2026-02-04
 
+### Dynamic AI Context System (Self-Aware Agent)
+
+**What:** Replaced hardcoded AI system prompt with dynamic context loading. The AI agent now builds its awareness from the database and config files, not hardcoded strings.
+
+**Why:** As the app evolves, the AI needs to automatically know about new features, pages, and data types without code changes. The goal is an agent "as useful as handing the app to a person."
+
+**Architecture:**
+
+| Component | Before | After |
+|-----------|--------|-------|
+| App description | Hardcoded in AIBrainContext | Loaded from `ai_app_context` table |
+| Data model | Hardcoded list | Dynamic from `aiContextService.getKnownSchema()` |
+| Page count | Not shown | Injected from `PAGE_REGISTRY` |
+| Trained pages | Not shown | Counted from `page_ai_context` table |
+| Query types | Hardcoded | Defined in service, shown in prompt |
+
+**New Files:**
+- `src/services/aiContextService.js` - Builds dynamic context from DB + config
+- `database/migrations/2026-02-04_ai_app_context.sql` - Editable app knowledge table
+
+**Database Table: ai_app_context**
+```sql
+-- Editable business knowledge for the AI
+INSERT INTO ai_app_context (category, key, value) VALUES
+('company', 'name', 'ISE'),
+('company', 'services', 'Shades, automation, networking...'),
+('workflow', 'stages', 'Prewire → Trim-out → Commissioning → Service'),
+('terminology', 'shades', 'Also called: blinds, window treatments...');
+```
+
+**How to Update AI Knowledge:**
+1. Edit rows in `ai_app_context` table via Supabase dashboard
+2. AI will use new values on next session (cached 5 minutes)
+3. No code deployment needed!
+
+**Files Modified:**
+- `src/contexts/AIBrainContext.js` - Uses aiContextService for dynamic prompt
+- Added `dynamicContextRef` and context loading on mount
+
+---
+
 ### AI Agent Database Query Capability (query_data tool)
 
 **What:** Added a new `query_data` tool that gives the Voice AI agent full database awareness. The agent can now answer questions like "Does Bill Thomas have any Apple TVs?" by querying contacts, projects, and equipment.

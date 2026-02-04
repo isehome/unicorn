@@ -8,8 +8,9 @@ import { useNavigate } from 'react-router-dom';
 import { useAppState } from './AppStateContext';
 import { supabase } from '../lib/supabase';
 import { pageContextService } from '../services/pageContextService';
-import { getPatternRoute } from '../config/pageRegistry';
+import { getPatternRoute, PAGE_REGISTRY } from '../config/pageRegistry';
 import { companySettingsService } from '../services/companySettingsService';
+import aiContextService from '../services/aiContextService';
 
 // Audio settings - Gemini expects 16kHz input, sends 24kHz output
 const GEMINI_INPUT_SAMPLE_RATE = 16000;
@@ -61,6 +62,9 @@ export const AIBrainProvider = ({ children }) => {
     // Screen Wake Lock to prevent phone from sleeping during conversation
     const wakeLock = useRef(null);
 
+    // Dynamic AI context - loaded from database/config for self-awareness
+    const dynamicContextRef = useRef(null);
+
     // Debug counters
     const [audioChunksSent, setAudioChunksSent] = useState(0);
     const [audioChunksReceived, setAudioChunksReceived] = useState(0);
@@ -82,6 +86,26 @@ export const AIBrainProvider = ({ children }) => {
     useEffect(() => {
         const apiKey = process.env.REACT_APP_GEMINI_API_KEY;
         setIsConfigured(!!apiKey && apiKey.length > 10);
+    }, []);
+
+    // Load dynamic AI context on mount (for self-awareness)
+    useEffect(() => {
+        const loadDynamicContext = async () => {
+            try {
+                const ctx = await aiContextService.buildAIContext();
+                dynamicContextRef.current = ctx;
+                console.log('[AIBrain] Dynamic context loaded:', Object.keys(ctx));
+            } catch (e) {
+                console.warn('[AIBrain] Failed to load dynamic context:', e);
+                // Use fallback from service
+                dynamicContextRef.current = {
+                    app: aiContextService.buildQuickContext(),
+                    schema: {},
+                    pages: { total: Object.keys(PAGE_REGISTRY).length },
+                };
+            }
+        };
+        loadDynamicContext();
     }, []);
 
     // Re-acquire wake lock when app becomes visible again during active session
@@ -187,39 +211,53 @@ Begin by greeting them and asking your first question based on the session type.
 
         const settings = getSettings();
         const state = getState();
+        const ctx = dynamicContextRef.current; // Dynamic context from database/config
+
         const persona = settings.persona === 'brief'
             ? `You are a concise field assistant. Keep responses short. Confirm with "Got it" or "Done".`
             : `You are a helpful teaching assistant. Explain your actions.`;
 
-        return `# UNICORN Field Assistant
+        // Build dynamic app description from context (or use defaults)
+        const appName = ctx?.app?.app?.name || 'Unicorn';
+        const companyName = ctx?.app?.company?.name || 'ISE';
+        const companyDesc = ctx?.app?.company?.description || 'Low-voltage and smart home installation company';
+        const services = ctx?.app?.company?.services || 'Shades, automation, networking, A/V, cabling';
+        const workflowStages = ctx?.app?.workflow?.stages || 'Prewire → Trim-out → Commissioning → Service';
+
+        // Build dynamic data model description from schema
+        const schemaDesc = ctx?.schema
+            ? Object.entries(ctx.schema).map(([table, info]) => `- **${table}**: ${info.description}`).join('\n')
+            : `- **contacts**: Clients/homeowners
+- **projects**: Jobs at client homes
+- **equipment**: Devices deployed (Apple TV, Sonos, etc.)
+- **shades**: Window treatments with measurements
+- **service_tickets**: Support requests`;
+
+        // Build page count from registry
+        const pageCount = ctx?.pages?.total || Object.keys(PAGE_REGISTRY).length;
+        const trainedCount = ctx?.training?.trained || 0;
+
+        return `# ${appName} Field Assistant
 
 ${persona}
 
-## What is UNICORN?
-Unicorn is a project management app for low-voltage/smart home installations. ISE (the company) installs:
-- Motorized shades and window treatments
-- Home automation systems (Control4, Lutron)
-- Networking equipment (Ubiquiti UniFi)
-- Audio/video systems (Sonos, Apple TV, TVs)
-- Prewire and structured cabling
+## About ${appName}
+${companyName}: ${companyDesc}
+Services: ${services}
+Workflow: ${workflowStages}
 
-## Data You Can Query
-Use the query_data tool to search the database:
-- **Contacts/Clients**: Homeowners and their info
-- **Projects**: Jobs at client homes (linked to contacts)
-- **Equipment**: Devices deployed at each project (Apple TV, Sonos, switches, etc.)
-- **Shades**: Window treatments with measurements
-- **Service Tickets**: Support requests
+## Data You Can Query (query_data tool)
+${schemaDesc}
 
 Example: "Does Bill Thomas have any Apple TVs?" → query_data(contact_equipment, "Bill Thomas", {equipmentSearch: "Apple TV"})
 
 ## Your Capabilities
-1. **Database Queries** - Find clients, their projects, equipment deployed
-2. **Knowledge Base** - Lutron, Ubiquiti, Control4, Sonos docs (Azure AI Search)
-3. **App Navigation** - Move to any page, project, or section
-4. **Execute Actions** - Interact with current view (fill forms, save data)
-5. **Create Items** - Todos, issues, tickets, contacts, notes
-6. **Page Training** - Teach users about pages using trained context
+1. **Database Queries** - Find clients, projects, equipment (query_data)
+2. **Knowledge Base** - Product docs via Azure AI Search (search_knowledge)
+3. **App Navigation** - ${pageCount} pages available (navigate)
+4. **Execute Actions** - Interact with current view (execute_action)
+5. **Create Items** - Todos, issues, tickets, contacts (quick_create)
+6. **Page Training** - ${trainedCount} pages have detailed training (get_page_training)
 
 ## Tool Priority
 1. For client/equipment questions → query_data (FIRST)

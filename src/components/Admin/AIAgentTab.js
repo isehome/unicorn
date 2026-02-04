@@ -113,8 +113,9 @@ const AIAgentTab = () => {
   const [silenceDuration, setSilenceDuration] = useState(() => parseInt(localStorage.getItem('ai_silence_duration') || '500', 10));
   const [prefixPadding, setPrefixPadding] = useState(() => parseInt(localStorage.getItem('ai_prefix_padding') || '200', 10));
 
-  // Test session state
-  const [testStatus, setTestStatus] = useState('idle');
+  // Test session state - use voiceStatus from AIBrainContext
+  // Map voiceStatus to testStatus for backwards compatibility
+  const testStatus = voiceStatus; // 'idle', 'connecting', 'connected', 'speaking', etc.
   const [testMetrics, setTestMetrics] = useState({
     connectionTime: null,
     responseLatency: null,
@@ -123,7 +124,7 @@ const AIAgentTab = () => {
     serverTurnCount: 0
   });
   const [testEvents, setTestEvents] = useState([]);
-  const [testAudioLevel, setTestAudioLevel] = useState(0);
+  const testAudioLevel = audioLevel; // Use real audio level from AIBrainContext
   const [pendingReconnect, setPendingReconnect] = useState(false);
 
   // Training status
@@ -397,15 +398,17 @@ const AIAgentTab = () => {
     audioContext.current = null;
   }, []);
 
-  // Start test session
+  // ══════════════════════════════════════════════════════════════
+  // USE REAL AIBRAIN CONTEXT - Full tools, system prompt, database access
+  // ══════════════════════════════════════════════════════════════
+
+  // Start test session using REAL AIBrainContext (has all tools + dynamic context)
   const startTestSession = useCallback(async () => {
-    const apiKey = process.env.REACT_APP_GEMINI_API_KEY;
-    if (!apiKey) {
-      addTestEvent('ERROR: No Gemini API key found', 'error');
+    if (!startSession) {
+      addTestEvent('ERROR: AIBrainContext not available', 'error');
       return;
     }
 
-    setTestStatus('connecting');
     setTestEvents([]);
     setTestMetrics({
       connectionTime: null,
@@ -416,86 +419,25 @@ const AIAgentTab = () => {
     });
 
     connectionStartTime.current = performance.now();
-    addTestEvent('🚀 Starting connection...', 'info');
-
-    const wsUrl = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${apiKey}`;
+    addTestEvent('🚀 Starting FULL AI Agent session (with tools + app awareness)...', 'info');
+    addTestEvent('Tools: get_context, query_data, search_knowledge, navigate, quick_create, web_search', 'info');
 
     try {
-      ws.current = new WebSocket(wsUrl);
-
-      ws.current.onopen = () => {
-        addTestEvent('WebSocket connected, sending setup...', 'info');
-
-        const getStartSensitivity = (val) => val === 1 ? 'START_SENSITIVITY_HIGH' : 'START_SENSITIVITY_LOW';
-        const getEndSensitivity = (val) => val === 1 ? 'END_SENSITIVITY_HIGH' : 'END_SENSITIVITY_LOW';
-
-        const setupConfig = {
-          setup: {
-            model: `models/${selectedModel}`,
-            generationConfig: {
-              responseModalities: ['AUDIO'],
-              speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } }
-            },
-            systemInstruction: {
-              parts: [{
-                text: `You are a voice assistant test. Current settings:
-- Model: ${selectedModel}
-- Voice: ${voice}
-- Persona: ${persona}
-- Start Sensitivity: ${vadStart === 1 ? 'HIGH' : 'LOW'}
-- End Sensitivity: ${vadEnd === 1 ? 'HIGH' : 'LOW'}
-- Silence Duration: ${silenceDuration}ms
-
-Greet the user and let them test the voice response. Keep responses short.`
-              }]
-            },
-            realtimeInputConfig: {
-              automaticActivityDetection: {
-                disabled: false,
-                startOfSpeechSensitivity: getStartSensitivity(vadStart),
-                endOfSpeechSensitivity: getEndSensitivity(vadEnd),
-                prefixPaddingMs: prefixPadding,
-                silenceDurationMs: silenceDuration
-              }
-            }
-          }
-        };
-
-        ws.current.send(JSON.stringify(setupConfig));
-        setTestStatus('connected');
-        startAudioCapture();
-      };
-
-      ws.current.onmessage = handleMessage;
-
-      ws.current.onerror = (err) => {
-        addTestEvent('WebSocket error', 'error');
-        setTestStatus('error');
-      };
-
-      ws.current.onclose = (e) => {
-        addTestEvent(`WebSocket closed: ${e.code}`, 'info');
-        if (!isPlaying.current && audioQueue.current.length === 0) {
-          setTestStatus('idle');
-        }
-        stopAudioCapture();
-      };
+      // Use the REAL AIBrainContext session - this has full tools and system prompt
+      await startSession();
+      addTestEvent('✅ Connected with full AI capabilities', 'success');
     } catch (err) {
       addTestEvent(`Error: ${err.message}`, 'error');
-      setTestStatus('error');
     }
-  }, [selectedModel, voice, persona, vadStart, vadEnd, silenceDuration, prefixPadding, addTestEvent, startAudioCapture, handleMessage, stopAudioCapture]);
+  }, [startSession, addTestEvent]);
 
-  // End test session
+  // End test session using REAL AIBrainContext
   const endTestSession = useCallback(() => {
-    stopAudioCapture();
-    ws.current?.close();
-    ws.current = null;
-    audioQueue.current = [];
-    isPlaying.current = false;
-    setTestStatus('idle');
+    if (endSession) {
+      endSession();
+    }
     addTestEvent('Session ended', 'info');
-  }, [stopAudioCapture, addTestEvent]);
+  }, [endSession, addTestEvent]);
 
   // Reconnect with new settings
   const reconnectSession = useCallback(() => {
@@ -787,7 +729,7 @@ Greet the user and let them test the voice response. Keep responses short.`
                   <span className={`text-xs ${textSecondary}`}>Audio Chunks</span>
                 </div>
                 <span className={`text-xl font-bold ${textPrimary}`}>
-                  {testMetrics.audioChunksSent} / {testMetrics.audioChunksReceived}
+                  {audioChunksSent} / {audioChunksReceived}
                 </span>
               </div>
 
