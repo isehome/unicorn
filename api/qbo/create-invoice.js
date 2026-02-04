@@ -92,7 +92,10 @@ async function getOrCreateQBOCustomer(supabase, client, realmId, ticket, contact
     headers: { 'Accept': 'application/json' }
   });
 
-  const searchResult = searchResponse.getJson();
+  // Handle response - makeApiCall returns response differently than refresh()
+  const searchResult = typeof searchResponse.getJson === 'function'
+    ? searchResponse.getJson()
+    : (searchResponse.json || searchResponse.body || searchResponse);
   if (searchResult.QueryResponse?.Customer?.length > 0) {
     const qboCustomer = searchResult.QueryResponse.Customer[0];
     console.log('[QBO] Found existing customer:', qboCustomer.Id);
@@ -133,7 +136,11 @@ async function getOrCreateQBOCustomer(supabase, client, realmId, ticket, contact
     body: JSON.stringify(newCustomer)
   });
 
-  const createdCustomer = createResponse.getJson().Customer;
+  // Handle response - makeApiCall returns response differently than refresh()
+  const createResult = typeof createResponse.getJson === 'function'
+    ? createResponse.getJson()
+    : (createResponse.json || createResponse.body || createResponse);
+  const createdCustomer = createResult.Customer;
   console.log('[QBO] Created customer:', createdCustomer.Id);
 
   // Store mapping
@@ -285,7 +292,11 @@ export default async function handler(req, res) {
       body: JSON.stringify(invoice)
     });
 
-    const createdInvoice = invoiceResponse.getJson().Invoice;
+    // Handle response - makeApiCall returns response differently than refresh()
+    const invoiceResult = typeof invoiceResponse.getJson === 'function'
+      ? invoiceResponse.getJson()
+      : (invoiceResponse.json || invoiceResponse.body || invoiceResponse);
+    const createdInvoice = invoiceResult.Invoice;
     console.log('[QBO] Invoice created:', createdInvoice.Id, createdInvoice.DocNumber);
 
     // Build invoice URL
