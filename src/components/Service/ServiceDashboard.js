@@ -55,6 +55,8 @@ const STATUSES = [
   { value: 'waiting_parts', label: 'Waiting Parts' },
   { value: 'waiting_customer', label: 'Waiting Customer' },
   { value: 'resolved', label: 'Resolved' },
+  { value: 'work_complete_needs_invoice', label: 'Needs Invoice' },
+  { value: 'problem', label: 'Problem' },
   { value: 'closed', label: 'Closed' }
 ];
 
@@ -342,6 +344,10 @@ const ServiceDashboard = () => {
         return 'bg-amber-500/20 text-amber-500';
       case 'resolved':
         return { backgroundColor: 'rgba(148, 175, 50, 0.2)', color: brandColors.success };
+      case 'work_complete_needs_invoice':
+        return 'bg-cyan-500/20 text-cyan-400';
+      case 'problem':
+        return 'bg-red-500/20 text-red-500';
       case 'closed':
         return 'bg-zinc-500/20 text-zinc-400';
       default:

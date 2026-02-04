@@ -8795,3 +8795,72 @@ The parts list shows multiple indicators:
 
 ---
 
+## 2026-02-04 - Service Ticket Status Updates & QuickBooks Documentation
+
+### New Service Ticket Statuses
+
+Added two new status categories to the service ticket workflow:
+
+| Status | Purpose | Styling |
+|--------|---------|---------|
+| `work_complete_needs_invoice` | Work is done, ticket needs QuickBooks invoice creation before closing | Cyan (`bg-cyan-500/20`) |
+| `problem` | Escalation needed - ticket is stuck and requires manager attention | Red (`bg-red-500/20`) |
+
+#### Updated Workflow
+
+```
+Previous:
+  resolved → closed
+
+New:
+  resolved → work_complete_needs_invoice → closed
+  (any active status) → problem → (back to in_progress or closed)
+```
+
+#### Files Modified
+
+| File | Changes |
+|------|---------|
+| `database/migrations/20260204_add_service_ticket_statuses.sql` | New migration to update CHECK constraint with new statuses |
+| `src/components/Service/ServiceTicketDetail.js` | Updated STATUS_WORKFLOW and getStatusStyles() |
+| `src/components/Service/ServiceDashboard.js` | Updated STATUSES array and getStatusStyles() |
+| `src/components/Service/ServiceTicketList.js` | Updated getStatusStyles() |
+
+#### Database Migration
+
+Run this migration in Supabase to enable the new statuses:
+
+```sql
+-- See: database/migrations/20260204_add_service_ticket_statuses.sql
+```
+
+### QuickBooks Integration Documentation
+
+Created comprehensive documentation for the QuickBooks Online integration:
+
+- **File:** `docs/QUICKBOOKS_INTEGRATION.md`
+- Testing workflow with sandbox
+- Production cutover checklist
+- Troubleshooting guide
+- API endpoint reference
+- Database schema documentation
+
+#### Key Testing Steps
+
+1. Verify QBO connection in Admin → Integrations
+2. Create test ticket with time logs
+3. Move to `work_complete_needs_invoice` status
+4. Create invoice via QBO integration
+5. Verify in QuickBooks sandbox
+
+#### Production Cutover
+
+1. Update Vercel env vars: `QBO_ENVIRONMENT=production`
+2. Update QBO credentials to production values
+3. Disconnect sandbox, connect production
+4. Test with minimal invoice, then go live
+
+**AI Note:** The new `work_complete_needs_invoice` status is the trigger point for QuickBooks invoice creation. When a ticket reaches this status, the "Create QuickBooks Invoice" action becomes available.
+
+---
+

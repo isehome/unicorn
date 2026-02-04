@@ -69,11 +69,13 @@ const categoryIcons = {
 const STATUS_WORKFLOW = {
   open: ['triaged', 'scheduled', 'closed'],
   triaged: ['scheduled', 'in_progress', 'closed'],
-  scheduled: ['in_progress', 'waiting_customer', 'closed'],
-  in_progress: ['waiting_parts', 'waiting_customer', 'resolved'],
-  waiting_parts: ['in_progress', 'resolved'],
-  waiting_customer: ['in_progress', 'resolved', 'closed'],
-  resolved: ['closed', 'open'],
+  scheduled: ['in_progress', 'waiting_customer', 'problem', 'closed'],
+  in_progress: ['waiting_parts', 'waiting_customer', 'resolved', 'problem'],
+  waiting_parts: ['in_progress', 'resolved', 'problem'],
+  waiting_customer: ['in_progress', 'resolved', 'problem', 'closed'],
+  resolved: ['work_complete_needs_invoice', 'closed', 'open'],
+  work_complete_needs_invoice: ['closed', 'resolved'],
+  problem: ['in_progress', 'scheduled', 'closed'],
   closed: ['open']
 };
 
@@ -793,6 +795,10 @@ const ServiceTicketDetail = () => {
           color: brandColors.success,
           borderColor: 'rgba(148, 175, 50, 0.5)'
         };
+      case 'work_complete_needs_invoice':
+        return 'bg-cyan-500/20 text-cyan-400 border-cyan-500/50';
+      case 'problem':
+        return 'bg-red-500/20 text-red-500 border-red-500/50';
       case 'closed':
         return 'bg-zinc-500/20 text-zinc-400 border-zinc-500/50';
       default:
