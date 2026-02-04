@@ -224,15 +224,22 @@ export default async function handler(req, res) {
       .select('*')
       .eq('ticket_id', ticketId);
 
+    // Debug: Log fetched data
+    console.log('[QBO] Time logs fetched:', JSON.stringify(timeLogs, null, 2));
+    console.log('[QBO] Parts fetched:', JSON.stringify(parts, null, 2));
+
     // Get or create QBO customer
     const qboCustomerId = await getOrCreateQBOCustomer(supabase, client, realmId, ticket, ticket.contact);
 
     // Calculate totals
     const hourlyRate = ticket.hourly_rate || 150;
     const totalMinutes = (timeLogs || []).reduce((sum, log) => {
-      return sum + Math.round((new Date(log.check_out) - new Date(log.check_in)) / 60000);
+      const minutes = Math.round((new Date(log.check_out) - new Date(log.check_in)) / 60000);
+      console.log(`[QBO] Time log: ${log.check_in} to ${log.check_out} = ${minutes} minutes`);
+      return sum + minutes;
     }, 0);
     const totalHours = Math.round(totalMinutes / 60 * 100) / 100;
+    console.log(`[QBO] Total: ${totalMinutes} minutes = ${totalHours} hours @ $${hourlyRate}/hr`);
 
     // Build invoice line items
     const lineItems = [];
@@ -252,18 +259,23 @@ export default async function handler(req, res) {
 
     // Parts lines
     (parts || []).forEach(part => {
+      console.log(`[QBO] Part: ${part.name}, qty=${part.quantity_needed}, cost=${part.unit_cost}`);
       if (part.quantity_needed > 0 && part.unit_cost > 0) {
         lineItems.push({
           DetailType: 'SalesItemLineDetail',
           Amount: Math.round(part.quantity_needed * part.unit_cost * 100) / 100,
-          Description: part.part_name || 'Parts',
+          Description: part.name || 'Parts',
           SalesItemLineDetail: {
             Qty: part.quantity_needed,
             UnitPrice: part.unit_cost
           }
         });
+      } else {
+        console.log(`[QBO] Part skipped: qty=${part.quantity_needed}, cost=${part.unit_cost}`);
       }
     });
+
+    console.log(`[QBO] Total line items: ${lineItems.length}`, JSON.stringify(lineItems, null, 2));
 
     if (lineItems.length === 0) {
       return res.status(400).json({
