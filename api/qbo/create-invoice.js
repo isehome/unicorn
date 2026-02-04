@@ -187,7 +187,7 @@ export default async function handler(req, res) {
       .from('service_tickets')
       .select(`
         *,
-        contact:contacts!service_tickets_customer_id_fkey(*)
+        contact:contacts(id, full_name, phone, email, company)
       `)
       .eq('id', ticketId)
       .single();
