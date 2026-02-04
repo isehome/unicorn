@@ -1,13 +1,57 @@
 # AGENT.md - Unicorn Project Guidelines
 
-**⚠️ AI ASSISTANT: Read this ENTIRE file before writing any code.**
+> **This is the SINGLE SOURCE OF TRUTH for the Unicorn application.**
+> For AI agents, voice copilots, and any system that needs to understand this app completely.
 
-**📁 FILE MANAGEMENT RULES:**
-- **NEVER create duplicate agent files** (no AGENT 2.md, AGENT 3.md, agent-copy.md, etc.)
-- **ALWAYS update THIS file** (AGENT.md) directly when documentation changes are needed
+---
+
+## 📖 TABLE OF CONTENTS (Quick Navigation)
+
+| Section | Lines | What's There |
+|---------|-------|--------------|
+| **PART 1: What This App Is** | 50-1500 | Business overview, features, workflows |
+| → App Overview & User Roles | 50-100 | What Unicorn does, who uses it |
+| → Wire Drops | 100-400 | 3-stage workflow, completion logic |
+| → Equipment System | 400-700 | 3-tier architecture, CSV import |
+| → Milestones/Progress | 700-1000 | 8 gauges, SSOT calculation |
+| → Procurement | 1000-1300 | PO workflow, receiving |
+| → Shades | 1300-1500 | Shade measuring, ordering |
+| **PART 2: How To Work On This App** | 1533-2700 | Dev patterns, styling, code standards |
+| → Brand Colors | 1604-1700 | **CRITICAL** - `#94AF32` olive green rule |
+| → Styling System | 1700-1900 | Theme, zinc not gray, dark mode |
+| → Mobile UX | 1900-2000 | iOS zoom prevention, touch targets |
+| → Database Rules | 2000-2400 | MSAL auth, RLS, timestamps |
+| → Code Standards | 2400-2700 | Service layer, React patterns |
+| **PART 3: AI & Voice Copilot** | 2722-3100 | Gemini, AppStateContext, 5 meta-tools |
+| **PART 4: External Portals** | 3139-3280 | Public pages, standalone pattern |
+| **PART 5: TODO / Known Issues** | 3283-3700 | Current bugs, planned work |
+| **PART 6: Changelog** | 3740+ | All changes (ADD NEW ENTRIES HERE) |
+
+---
+
+## 📁 FILE MANAGEMENT RULES
+
+- **NEVER create duplicate agent files** (no AGENT 2.md, AGENT 3.md, etc.)
+- **ALWAYS update THIS file** directly when documentation changes are needed
 - **APPEND new sections** to the appropriate part of this file
-- If this file gets too long, discuss with the user before restructuring
-- The only documentation files should be: `AGENT.md` (primary) and topic-specific files in `/docs/`
+- Topic-specific deep-dives live in `/docs/` but THIS file is the master reference
+- **After ANY code change, update the CHANGELOG section (PART 6)**
+
+---
+
+## 🎨 BRAND COLORS - QUICK REFERENCE
+
+| Purpose | Hex | Usage |
+|---------|-----|-------|
+| Primary | `#8B5CF6` | `violet-500` Tailwind class |
+| **Success** | `#94AF32` | **INLINE ONLY** - `style={{ color: '#94AF32' }}` |
+| Warning | `#F59E0B` | `amber-500` Tailwind class |
+| Danger | `#EF4444` | `red-500` Tailwind class |
+
+**NEVER use `green-*`, `emerald-*`, or `gray-*` Tailwind classes!**
+**ALWAYS use `zinc-*` (not gray) with `dark:` variants.**
+
+See PART 2, lines 1604-1700 for complete styling guide.
 
 ---
 
@@ -2721,7 +2765,7 @@ Before any feature is complete, test on a real phone:
 
 # PART 3: AI & VOICE COPILOT ARCHITECTURE
 
-**Last Updated:** 2025-12-20
+**Last Updated:** 2026-02-04
 
 ## Overview
 
@@ -2729,7 +2773,120 @@ The AI integration in Unicorn follows the **"Copilot" Architecture**.
 - **Goal**: A "Field Partner" that assists via voice commands.
 - **Rule**: The AI acts as a **Power User**, using "Tools" to navigate, click buttons, and save data. It DOES NOT access the database directly.
 - **Safety**: App logic (validations, state) remains the source of truth.
-- **Platform**: Gemini Live API via WebSocket (real-time audio streaming).
+- **Platform**: Provider-agnostic - supports Gemini, OpenAI, and future providers.
+
+## NEW: Provider-Agnostic Architecture (2026-02-04)
+
+### Design Principles
+
+1. **Configuration-Driven Switching**: Change providers via config, not code
+2. **Automatic Fallback**: If primary fails, try backup providers
+3. **Unified Tool Definitions**: Define tools once, use with any provider
+4. **Future-Proof**: When Gemini 4 launches, add it to config
+
+### Architecture Diagram
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                    VoiceAgentOrchestrator                        │
+│  - Provider selection & fallback                                 │
+│  - Audio I/O management                                          │
+│  - Tool execution                                                │
+│  - Metrics tracking                                              │
+└────────────────────────────┬─────────────────────────────────────┘
+                             │
+              ┌──────────────┴──────────────┐
+              │     VoiceProvider           │
+              │  (Abstract Interface)       │
+              └──────────────┬──────────────┘
+                             │
+        ┌────────────────────┼────────────────────┐
+        │                    │                    │
+┌───────▼───────┐   ┌───────▼───────┐   ┌───────▼───────┐
+│ GeminiAdapter │   │ OpenAIAdapter │   │ FutureAdapter │
+│ - Gemini 3    │   │ - gpt-realtime│   │ - Gemini 4    │
+│ - Gemini 2.5  │   │ - gpt-4o      │   │ - Claude RT   │
+└───────────────┘   └───────────────┘   └───────────────┘
+```
+
+### Module Structure
+
+```
+src/voice-ai/
+├── index.js                    # Main exports
+├── VoiceAgentOrchestrator.js   # Main orchestrator
+├── config/
+│   └── voiceConfig.js          # Provider & model config
+├── providers/
+│   ├── VoiceProvider.js        # Abstract interface
+│   ├── GeminiAdapter.js        # Gemini implementation
+│   └── OpenAIAdapter.js        # OpenAI implementation
+└── tools/
+    └── ToolRegistry.js         # Unified tool definitions
+```
+
+### Switching Providers
+
+```javascript
+// In voiceConfig.js - just change these values:
+export const DEFAULT_CONFIG = {
+  provider: 'gemini',           // or 'openai'
+  model: 'gemini-3-flash',      // or 'gpt-realtime'
+  fallbackChain: [
+    'gemini-2.5-flash-native',  // Fallback 1
+    'gpt-realtime',             // Fallback 2
+  ],
+};
+```
+
+### Adding a New Provider (e.g., Gemini 4)
+
+1. Add model definition to `voiceConfig.js`:
+```javascript
+'gemini-4-flash': {
+  provider: PROVIDERS.GEMINI,
+  id: 'gemini-4-flash',
+  name: 'Gemini 4 Flash',
+  // ... capabilities, audio settings, etc.
+}
+```
+
+2. Update adapter if API changes (usually not needed for same provider)
+
+3. Set as default:
+```javascript
+model: 'gemini-4-flash'
+```
+
+### Local Testing
+
+Voice AI can be tested locally! The WebSocket connects directly from browser to provider APIs.
+
+```bash
+# 1. Set up environment
+cp .env.example .env.local
+# Add: REACT_APP_GEMINI_API_KEY=your-key
+
+# 2. Run dev server
+npm start
+
+# 3. Go to Admin > AI Agent tab > Start Test
+```
+
+**What requires Vercel (server-side):**
+- Azure AI Search (knowledge base)
+- Database operations
+
+### Available Models (2026)
+
+| Key | Provider | Status | Latency | Recommended |
+|-----|----------|--------|---------|-------------|
+| `gemini-3-flash` | Google | Preview | ~250ms | ⭐ Yes |
+| `gemini-2.5-flash-native` | Google | Stable | ~320ms | Current default |
+| `gpt-realtime` | OpenAI | Stable | ~232ms | For lowest latency |
+| `gemini-2.0-flash-live` | Google | ⚠️ Deprecated | ~400ms | Retiring Mar 2026 |
+
+---
 
 ## Gemini Live API Configuration
 
@@ -3282,6 +3439,41 @@ CREATE TABLE shade_comments (
 
 # PART 5: TODO / KNOWN ISSUES
 
+## Brand Color Violations (RESOLVED 2026-01-30) ✅
+
+**Status:** COMPLETE - All ~200 violations fixed
+
+**What was fixed:** All Tailwind `green-*` and `emerald-*` classes replaced with inline styles using brand olive `#94AF32`.
+
+**50+ files fixed across all modules:**
+- Admin, Procurement, HR, Settings, Service, Equipment, Pages, Modules
+
+**Intentionally preserved (NOT violations):**
+- `VoiceCopilotOverlay.js` - Debug panel terminal aesthetic
+- `UnifiTestPage.js` - Debug console styling
+- `RackBackView.jsx`, `RackFrontView.jsx` - Network online/offline status (green=online, red=offline)
+- `PowerConnectionsView.jsx` - UPS battery backup indicators
+
+**Fix pattern (for future reference):**
+```jsx
+// Text color
+style={{ color: '#94AF32' }}
+
+// Background (light)
+style={{ backgroundColor: 'rgba(148, 175, 50, 0.1)' }}
+
+// Border
+style={{ borderColor: 'rgba(148, 175, 50, 0.3)' }}
+```
+
+**Verification script:**
+```bash
+# Should return only intentional exceptions (debug panels, network status, UPS)
+grep -rn "text-green-\|bg-green-\|text-emerald-\|bg-emerald-\|border-green-" src --include="*.js" --include="*.jsx" | grep -v "VoiceCopilotOverlay\|UnifiTestPage\|RackBackView\|RackFrontView\|PowerConnectionsView\|UnifiDebug\|styleSystem"
+```
+
+---
+
 ## Supabase Security Linter Issues (Logged 2025-12-10)
 
 **Status:** Deferred - needs careful review to avoid breaking production
@@ -3738,6 +3930,261 @@ The application needs a proper user capabilities/roles system to control access 
 ---
 
 # PART 6: CHANGELOG
+
+## 2026-02-04
+
+### Dynamic AI Context System (Self-Aware Agent)
+
+**What:** Replaced hardcoded AI system prompt with dynamic context loading. The AI agent now builds its awareness from the database and config files, not hardcoded strings.
+
+**Why:** As the app evolves, the AI needs to automatically know about new features, pages, and data types without code changes. The goal is an agent "as useful as handing the app to a person."
+
+**Architecture:**
+
+| Component | Before | After |
+|-----------|--------|-------|
+| App description | Hardcoded in AIBrainContext | Loaded from `ai_app_context` table |
+| Data model | Hardcoded list | Dynamic from `aiContextService.getKnownSchema()` |
+| Page count | Not shown | Injected from `PAGE_REGISTRY` |
+| Trained pages | Not shown | Counted from `page_ai_context` table |
+| Query types | Hardcoded | Defined in service, shown in prompt |
+
+**New Files:**
+- `src/services/aiContextService.js` - Builds dynamic context from DB + config
+- `database/migrations/2026-02-04_ai_app_context.sql` - Editable app knowledge table
+
+**Database Table: ai_app_context**
+```sql
+-- Editable business knowledge for the AI
+INSERT INTO ai_app_context (category, key, value) VALUES
+('company', 'name', 'ISE'),
+('company', 'services', 'Shades, automation, networking...'),
+('workflow', 'stages', 'Prewire → Trim-out → Commissioning → Service'),
+('terminology', 'shades', 'Also called: blinds, window treatments...');
+```
+
+**How to Update AI Knowledge:**
+1. Edit rows in `ai_app_context` table via Supabase dashboard
+2. AI will use new values on next session (cached 5 minutes)
+3. No code deployment needed!
+
+**Files Modified:**
+- `src/contexts/AIBrainContext.js` - Uses aiContextService for dynamic prompt
+- Added `dynamicContextRef` and context loading on mount
+
+---
+
+### AI Agent Database Query Capability (query_data tool)
+
+**What:** Added a new `query_data` tool that gives the Voice AI agent full database awareness. The agent can now answer questions like "Does Bill Thomas have any Apple TVs?" by querying contacts, projects, and equipment.
+
+**Why:** Previously, the AI agent could only see the current view state (what's on screen). Now it can query the entire Unicorn database to answer questions about clients, their projects, and deployed equipment.
+
+**New Tool: query_data**
+Query types supported:
+- `contact` - Search contacts by name, email, or company
+- `project` - Search projects by name or get projects for a contact
+- `equipment` - Search equipment by name, manufacturer, or model
+- `contact_equipment` - **KEY**: Get ALL equipment for a client across all their projects
+- `shades` - Search window treatments
+- `tickets` - Search service tickets
+
+**Example Usage:**
+```
+User: "Does Bill Thomas have any Apple TVs?"
+AI: query_data(contact_equipment, "Bill Thomas", {equipmentSearch: "Apple TV"})
+→ Returns: contact info, all projects, all matching equipment with project names
+```
+
+**System Prompt Updates:**
+- Added "What is UNICORN?" section explaining the business
+- Added "Data You Can Query" section listing queryable entities
+- Added tool priority guidance (query_data FIRST for client/equipment questions)
+
+**Files:**
+- `src/contexts/AIBrainContext.js` - Added queryData function, tool declaration, and handler
+
+**Database:** No changes (reads existing tables: contacts, projects, equipment, shades, service_tickets)
+
+**AI Note:** The agent now has 6 meta-tools: get_context, execute_action, search_knowledge, **query_data**, navigate, quick_create (plus training tools). Tool priority: query_data for client data, search_knowledge for product docs, get_context for current view.
+
+---
+
+### Gemini 3 Flash Default + AI Settings Consolidation
+
+**What:** Upgraded the AI Agent to use Gemini 3 Flash as the default model and removed the AI Copilot settings from the user Settings page (now consolidated in Admin > AI Agent).
+
+**Why:** Gemini 3 Flash offers 40-60% faster latency and better reasoning. Consolidating AI settings in Admin provides a single location for all AI configuration, testing, and monitoring.
+
+**Changes:**
+1. **Default Model**: Changed from `gemini-2.5-flash-native-audio-preview-12-2025` → `gemini-3-flash-preview`
+2. **Removed Deprecated Model**: Removed `gemini-2.0-flash-live-001` from selection (retiring March 2026)
+3. **Fallback Chain**: Now Gemini-only: `gemini-3-flash → gemini-2.5-flash-native` (no OpenAI)
+4. **Settings Page**: Removed AI Copilot section (redirects to Admin > AI Agent)
+
+**Files:**
+- `src/contexts/AIBrainContext.js` - Updated DEFAULT_MODEL to gemini-3-flash-preview
+- `src/components/Admin/AIAgentTab.js` - Cleaned up model list, marked Gemini 3 as default
+- `src/voice-ai/config/voiceConfig.js` - Updated default config and fallback chain
+- `src/components/SettingsPage.js` - Removed AISettings import and section
+
+**Database:** No changes
+
+**AI Note:** Unicorn uses Gemini exclusively - no OpenAI models. The provider-agnostic architecture in `src/voice-ai/` supports OpenAI for future flexibility but is not used. Azure AI Search (SharePoint RAG) remains connected via the `search_knowledge` tool.
+
+---
+
+### Fix AI Enrichment Status Display Bug in Parts List Views
+
+**What:** Fixed bug where parts were showing the purple "AI Enriched" dot even when no actual enrichment data was found.
+
+**Why:** The enrichment status check only verified `ai_enrichment_status === 'completed'`, but didn't check if actual data was populated. Manus AI sets the status to "completed" when the research task finishes, even if no useful documentation was found. This caused parts to appear enriched when they had no real data.
+
+**Fix:** Updated the `hasAIDocs` check to require BOTH a completed status AND actual enrichment data (either `ai_enrichment_data`, `install_manual_urls`, `technical_manual_urls`, or `user_guide_urls`).
+
+**Files:**
+- `src/components/GlobalPartsManager.js` (line 505)
+- `src/components/PartsListPage.js` (line 608)
+
+**Database:** No changes
+
+**AI Note:** The detail page (`PartDetailPage.js`) still shows the status as "Completed" which is correct - it indicates the research ran, even if no docs were found. The fix only affects list views where the purple dot was misleading.
+
+---
+
+### AI Agent Control Center - Unified Voice AI Management
+
+**What:** Created new consolidated AI Agent page in admin section that combines voice control interface, AI copilot settings, and brain training into one unified control center.
+
+**Why:** Provide administrators with a single location to test, configure, and monitor the Voice AI system. Previously, AI settings were scattered across User Settings (copilot settings) and Admin (training). The new page enables real-time voice testing with metrics, model selection (including new Gemini 3 Flash info), and full control over VAD parameters.
+
+**Features:**
+- **Voice Control Interface**: Real-time test sessions with live metrics (latency, connection time, audio chunks, turns)
+- **Model Selection**: Dropdown with Gemini 3 Flash (preview, recommended), Gemini 2.5 Flash (stable), and deprecated 2.0 warning
+- **VAD Configuration**: Start/End sensitivity, silence duration, prefix padding with quick presets (Snappy, Balanced, Patient, Interview)
+- **Reconnect Button**: Apply settings changes without leaving the page
+- **AI Copilot Settings**: Persona selection, voice preference, custom instructions, conversation transcript (collapsible)
+- **AI Brain Training**: Page training status, progress tracking, publish controls (collapsible)
+- **Model Information**: Gemini 3 highlights and comparison
+
+**Files:**
+- `src/components/Admin/AIAgentTab.js` (NEW - 1100+ lines)
+- `src/pages/AdminPage.js` (Updated imports and tab references)
+
+**Database:** No changes
+
+**AI Note:** The Voice AI now uses `gemini-2.5-flash-native-audio-preview-12-2025` as default. Gemini 3 Flash is available as preview with 40-60% faster latency. The old `gemini-2.0-flash-live-001` is deprecated and retiring March 3, 2026. Migration recommended. VAD only supports HIGH and LOW sensitivity (no MEDIUM - causes WebSocket errors).
+
+---
+
+## 2026-02-02
+
+### Service Weekly Planning: Fix Unschedule Ticket Bug
+
+**What:** Added missing `getById()` method to `serviceScheduleService` to fix the "cannot move tickets off schedule" error.
+
+**Why:** Users could not drag service tickets from the weekly planning calendar back to the unscheduled panel. The error `ge.AD.getById is not a function` appeared in the console because `serviceScheduleService.getById()` was being called but didn't exist.
+
+**Root Cause:** The `handleUnschedule` function in `WeeklyPlanning.js` (line 1129) calls `serviceScheduleService.getById(scheduleId)` to fetch the schedule before deletion (needed to get calendar_event_id for cancellation emails). However, this method was never implemented in `serviceScheduleService`.
+
+**Fix Applied:**
+- Added `getById(id)` method to `serviceScheduleService` in `serviceTicketService.js`
+- Method fetches a single schedule by ID with related ticket data
+- Follows same pattern as `getByDateRange()` query structure
+
+**Files:** `src/services/serviceTicketService.js`
+
+**AI Note:** The service layer pattern requires all CRUD operations to be in services. When calling `serviceXxxService.getById()`, ensure the method exists - this was a missing method that went unnoticed until runtime.
+
+---
+
+## 2026-01-30
+
+### HR System: Quick Notes & Team Development Fixes
+
+**What:** Fixed Quick Notes save functionality and Team Development notes display in the HR system. Also enhanced Quick Notes to allow managers to write notes about ANY employee, not just direct reports.
+
+**Why:**
+1. Quick Notes were failing with 401 Unauthorized due to RLS policies checking `auth.uid()` which is always NULL with MSAL authentication.
+2. Managers need to document observations about any employee, not just their direct reports (e.g., cross-team collaboration, observed behaviors).
+
+**Root Cause:** Supabase RLS policies use `auth.uid()` which only works with Supabase Auth. Since Unicorn uses MSAL (Microsoft authentication), `auth.uid()` always returns NULL, causing all INSERT operations to be denied.
+
+**Fixes Applied:**
+1. Disabled RLS on `employee_notes` table (app handles auth via MSAL)
+2. Fixed `EmployeeNotesList` props in `TeamDevelopmentSection` - was passing wrong props (`notes`, `employeeName`) instead of expected props (`employeeId`, `reviewCycleId`)
+3. Removed redundant manual notes loading in `TeamDevelopmentSection` (component handles its own data fetching)
+4. Added "Other Employees" expandable section in Quick Notes for managers
+5. Added search functionality to find employees by name or email
+6. Added `getAllEmployees()` function to hrService
+
+**Files:**
+- `database/migrations/2026-01-30_disable_employee_notes_rls.sql` - Disables RLS for MSAL compatibility
+- `src/pages/MyHRPage.js` - Fixed EmployeeNotesList props, added allEmployees state, passes userRole to QuickNoteButton
+- `src/components/HR/QuickNoteButton.js` - Added "Other Employees" section with search for managers
+- `src/services/hrService.js` - Added `getAllEmployees()` function, `.maybeSingle()` fix for PTO balance checks
+- `src/services/careerDevelopmentService.js` - Changed `.single()` to `.maybeSingle()` for queries that may return no rows (fixes 406 errors)
+
+**Database:** No new tables. RLS disabled on `employee_notes` table.
+
+**AI Note:** For MSAL-authenticated apps, RLS policies using `auth.uid()` will always fail. Either disable RLS or use service role key. The app handles authorization at the application layer instead. Quick Notes now supports writing about any employee for users with manager/director/admin/owner roles.
+
+---
+
+### 🎨 MAJOR: Brand Color Compliance Overhaul (Complete)
+
+**What:** Fixed ALL ~200 green/emerald Tailwind color violations across the codebase, replacing them with the brand olive color `#94AF32` using inline styles.
+
+**Why:** Enforcing brand consistency - success/positive colors must use olive `#94AF32`, not Tailwind `green-*` or `emerald-*` classes.
+
+**Scope:** 50+ files modified across all modules:
+- Admin components (AdminPage.js, BugTodosTab.js, AITrainingTab.js, SkillsManager.js, etc.)
+- Procurement (ProcurementDashboard.js, SupplierManager.js, POLineItemsEditor.js, etc.)
+- HR components (TimeOffSection.js, HRPreferencesManager.js, TeamPTOAllocations.js, etc.)
+- Settings (SettingsPage.js, AISettings.js, UserSkillsSection.js)
+- Service (NewTicketForm.js, TechnicianFilterBar.jsx, ServicePhotosManager.js)
+- Equipment (ProjectEquipmentManager.js, PartDetailPage.js, GlobalPartsManager.js)
+- Pages (AdminPage.js, ServiceReports.js, WeeklyPlanning.js, MyHRPage.js, etc.)
+- Modules (wire-drops, issues, wire-drop-commissioning)
+
+**Intentionally Preserved (NOT violations):**
+- `VoiceCopilotOverlay.js` - Debug panel terminal aesthetic (green-on-black)
+- `UnifiTestPage.js` - Debug console styling
+- `RackBackView.jsx` - Network online/offline status indicators
+- `RackFrontView.jsx` - Network status dots (green=online, red=offline)
+- `PowerConnectionsView.jsx` - UPS battery backup indicators
+
+**Pattern Applied:**
+```jsx
+// Text color
+style={{ color: '#94AF32' }}
+
+// Background (light)
+style={{ backgroundColor: 'rgba(148, 175, 50, 0.1)' }}
+
+// Solid background (buttons)
+style={{ backgroundColor: '#94AF32' }}
+
+// Border
+style={{ borderColor: 'rgba(148, 175, 50, 0.3)' }}
+```
+
+**AI Note:** The codebase is now brand-compliant. ALWAYS use inline styles with `#94AF32` for success states. The only exceptions are: (1) terminal/debug aesthetics, (2) network online/offline status, (3) UPS power indicators.
+
+---
+
+### Documentation Architecture Overhaul
+**What:** Restructured documentation to make AGENT.md the single source of truth
+**Why:** Prevent doc fragmentation and ensure AI agents always have complete context
+**Files:** `AGENT.md`, `.claude/skills/unicorn/SKILL.md`
+**Changes:**
+- Added comprehensive Table of Contents with line number references to AGENT.md
+- Updated unicorn skill to be a "loader" that guides selective AGENT.md reading
+- Archived redundant docs (QUICKSTART.md, CORE.md, CLAUDE.md, START-SESSION.md)
+- AGENT.md is now THE source - no more duplicate docs to maintain
+**AI Note:** When working on Unicorn, invoke `/unicorn` skill which provides line-number guide for reading AGENT.md sections efficiently without loading all 300KB
+
+---
 
 ## 2026-01-29
 
@@ -8071,6 +8518,280 @@ The Rack Layout page has **3 tabs** (not a separate "back" view):
 - **Front tab** → `RackFrontView.jsx` (physical grid layout)
 - **Power tab** → `RackBackView.jsx` with `connectionTab="power"`
 - **Network tab** → `RackBackView.jsx` with `connectionTab="network"`
+
+---
+
+## 2026-01-30
+
+### Manus AI Knowledge Base Builder - Complete System Documentation
+
+Major overhaul of the Parts AI documentation system to properly capture manufacturer URLs and build a comprehensive knowledge base for field technicians.
+
+#### System Overview
+
+The Parts AI Lookup system uses **Manus AI** (a browser-based research agent) to find and capture verified manufacturer documentation URLs. The system has three key flows:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         PARTS AI LOOKUP FLOW                                 │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  1. USER INTERFACE (/parts/ai-lookup)                                        │
+│     └─> Select parts → Click "Run AI Lookup"                                │
+│                                                                              │
+│  2. BATCH ENDPOINT (/api/enrich-parts-batch-manus.js)                       │
+│     └─> Creates Manus task with comprehensive prompt                        │
+│     └─> Registers webhook for async completion                              │
+│                                                                              │
+│  3. MANUS AI RESEARCH (external)                                            │
+│     └─> Browses manufacturer website                                        │
+│     └─> Finds product page, support page, PDF downloads                     │
+│     └─> Creates JSON results file + markdown backup files                   │
+│     └─> Calls webhook when complete                                         │
+│                                                                              │
+│  4. WEBHOOK HANDLER (/api/manus-webhook.js)                                 │
+│     └─> Parses JSON attachment for manufacturer URLs                        │
+│     └─> Downloads PDFs to Supabase storage                                  │
+│     └─> Uploads to SharePoint                                               │
+│     └─> Saves both manufacturer (green) and SharePoint (purple) URLs        │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+#### The Manus Prompt (Critical for Quality Results)
+
+The prompt in `/api/enrich-parts-batch-manus.js` is structured in **3 phases** to guide Manus through comprehensive research:
+
+**PHASE 1: Manufacturer Source Discovery**
+- Navigate to manufacturer's official website
+- Find the OFFICIAL product page URL (critical - this becomes `product_page_url`)
+- Locate support/downloads pages
+- Find actual PDF download URLs (not just that they exist)
+- Check FCC database and verified third-party sources if needed
+
+**PHASE 2: Create Backup Documentation Files**
+- `{part_number}-installation-guide.md` - with source URL at top
+- `{part_number}-specifications.md` - with source URL at top
+- `{part_number}-quick-reference.md` - with source URL at top
+
+**PHASE 3: JSON Results File**
+Manus creates a structured JSON file with:
+```json
+{
+  "manufacturer_website": "https://www.apple.com",
+  "product_page_url": "https://www.apple.com/shop/buy-tv/apple-tv-4k/128gb",
+  "support_page_url": "https://support.apple.com/apple-tv-4k",
+  "documents": [
+    {
+      "type": "user_guide",
+      "title": "Apple TV 4K User Guide",
+      "url": "https://support.apple.com/guide/tv/welcome/tvos",
+      "format": "web",
+      "found": true
+    },
+    {
+      "type": "install_guide",
+      "title": "Setup Guide PDF",
+      "url": "https://cdsassets.apple.com/..../setup.pdf",
+      "format": "pdf",
+      "found": true
+    }
+  ],
+  "specifications": { ... }
+}
+```
+
+#### Document URL Types (Green vs Purple Dots)
+
+The UI shows two types of documentation links with color-coded indicators:
+
+| Color | Meaning | Source | Example |
+|-------|---------|--------|---------|
+| 🟢 Green | Manufacturer Source | Original URLs from manufacturer website | `https://apple.com/support/...` |
+| 🟣 Purple | AI Compiled (SharePoint) | PDFs/markdown uploaded to company SharePoint | `https://isehome.sharepoint.com/...` |
+
+**Database Fields:**
+- `manufacturer_website` - Company website (green)
+- `product_page_url` - Direct product page (green)
+- `install_manual_urls[]` - Original manufacturer install guide URLs (green)
+- `technical_manual_urls[]` - Original manufacturer tech doc URLs (green)
+- `install_manual_sharepoint_url` - SharePoint copy of install guide (purple)
+- `user_guide_sharepoint_url` - SharePoint copy of user guide (purple)
+- `technical_manual_sharepoint_urls[]` - SharePoint copies of tech docs (purple)
+- `parts_folder_sharepoint_url` - Link to SharePoint folder with all docs
+
+#### Webhook Processing Flow
+
+When Manus completes, it calls `/api/manus-webhook.js` which:
+
+1. **Parses JSON Attachment** (CRITICAL FIX 2026-01-30)
+   - Looks for `.json` file in attachments
+   - Fetches and parses to extract `manufacturer_website`, `product_page_url`, `documents[]`
+   - This is where the green dot URLs come from!
+
+2. **Categorizes Document URLs by Type**
+   - `user_guide` / `user_manual` / `install` → `install_manual_urls`
+   - `tech_specs` / `datasheet` / `product_info` → `technical_manual_urls`
+
+3. **Two-Stage Document Processing**
+   - Stage 1: Download PDFs from manufacturer to Supabase storage
+   - Stage 2: Upload from Supabase to SharePoint
+   - Returns SharePoint URLs separately (doesn't overwrite manufacturer URLs)
+
+4. **Saves via RPC**
+   - Calls `save_parts_enrichment()` with all URLs preserved
+
+#### Key Files
+
+| File | Purpose |
+|------|---------|
+| `/api/enrich-parts-batch-manus.js` | Creates Manus tasks with the prompt |
+| `/api/manus-webhook.js` | Processes completed tasks, extracts URLs, sanitizes data types |
+| `/api/replay-manus-enrichment.js` | Re-process stored results without re-running Manus |
+| `/src/components/PartsAILookupPage.js` | UI for batch part selection |
+| `/src/components/PartDetailPage.js` | Shows documentation with green/purple dots |
+| `database/migrations/20260127_add_parts_folder_url.sql` | RPC function for saving |
+
+#### Common Issues & Fixes
+
+**Issue: Manufacturer URLs not showing (only SharePoint markdown files)**
+- **Cause:** JSON attachment wasn't being fetched/parsed
+- **Fix:** Added code to download and parse `.json` attachment from Manus
+- **Commit:** `e3ea80a` (2026-01-30)
+
+**Issue: Document type not recognized (user_guide vs user_manual)**
+- **Cause:** Type matching was too narrow
+- **Fix:** Added `user_guide`, `install`, `product_info` to type matching
+- **Commit:** `af07e23` (2026-01-30)
+
+**Issue: Parts stuck in "processing" status**
+- **Cause:** Manus task failed or timed out without calling webhook
+- **Fix:** Created `/api/admin/clear-stale-statuses.js` endpoint to reset stuck parts
+- **Usage:** POST to endpoint to clear parts stuck >1 hour
+
+**Issue: Enrichment data not saving - Type mismatch on numeric fields (CRITICAL FIX 2026-01-30)**
+- **Cause:** Manus returns descriptive strings for numeric fields (e.g., `u_height: "2U for two Amps, 3U for four Amps"`) which fail PostgreSQL integer parsing
+- **Error:** `invalid input syntax for type integer: "2U for two Amps, 3U for four Amps"`
+- **Fix:** Added safe parsing helper functions to `/api/manus-webhook.js`:
+  ```javascript
+  function safeParseInt(value) {
+    if (value === null || value === undefined) return null;
+    if (typeof value === 'number') return Number.isInteger(value) ? value : null;
+    if (typeof value !== 'string') return null;
+    const match = value.match(/^(\d+)/);  // Extract leading digits
+    return match ? parseInt(match[1], 10) : null;
+  }
+  ```
+- **Fields sanitized:**
+  - Integer: `u_height`, `power_watts`, `num_channels`
+  - Float: `width_inches`, `height_inches`, `depth_inches`, `weight_lbs`, `msrp`, `confidence`
+  - Boolean: `poe_powered`, `rack_mountable`
+
+#### Replay Manus Enrichment Endpoint
+
+**Purpose:** Re-process stored Manus task results without re-running Manus (saves credits).
+
+**Endpoint:** `POST /api/replay-manus-enrichment`
+
+**Request Body:**
+```json
+{ "partId": "uuid-of-part" }
+// OR
+{ "taskId": "manus-task-id" }
+```
+
+**Use Cases:**
+- Fixing data that failed to save due to type mismatches
+- Re-applying improved parsing logic to existing data
+- Recovering enrichment data after webhook errors
+
+**How It Works:**
+1. Finds the most recent completed Manus task for the part
+2. Retrieves stored result from `manus_tasks.result`
+3. Applies `sanitizeEnrichmentData()` to fix type issues
+4. Saves via `save_parts_enrichment()` RPC
+5. Marks task as replayed with `_replayed_at` timestamp
+
+**Important Limitation:** Only works if the full enrichment data was stored in `manus_tasks.result`. Some older tasks may only have `notes` stored, requiring manual data entry or re-running Manus.
+
+**File:** `/api/replay-manus-enrichment.js`
+
+#### Brand Colors
+
+- **Manufacturer Source (Green):** `#94AF32`
+- **SharePoint/AI Compiled (Purple):** `#8B5CF6`
+
+#### Environment Variables
+
+```
+MANUS_API_KEY=your-manus-api-key
+```
+
+Add to Vercel: Settings → Environment Variables
+
+---
+
+## 2026-02-04
+
+### AI Enrichment Icon Bug Fix - Only Show When Actual Docs Exist
+
+Fixed a bug where parts were showing the AI enrichment indicator (purple dot) even when the Manus enrichment process completed but didn't return actual documentation URLs.
+
+#### Problem
+
+The `hasAIDocs` boolean was only checking if `ai_enrichment_status === 'completed'`, but Manus can complete successfully while:
+1. Running out of API credits mid-research
+2. Finding no documentation for the product
+3. Returning only notes without actual URLs
+
+In these cases, `ai_enrichment_data` may contain just notes like `{"notes":"An int..."}` but the actual URL arrays (`install_manual_urls`, `technical_manual_urls`, `user_guide_urls`) remain empty.
+
+#### Example: OP-2ESH-POE
+
+Database state showing the issue:
+- `ai_enrichment_status`: `completed` ✓
+- `ai_enrichment_data`: `{"notes":"An int..."}` (just notes, no docs!)
+- `install_manual_urls`: `[]` (empty)
+- `technical_manual_urls`: `[]` (empty)
+- `user_guide_urls`: `NULL`
+- `needs_review`: `true`
+
+The part was showing as "AI enriched" with the purple dot, but had no actual documentation.
+
+#### Fix
+
+Changed `hasAIDocs` logic to only return true if status is completed AND actual documentation URLs exist:
+
+**Before (incorrect):**
+```javascript
+const hasAIDocs = part.ai_enrichment_status === 'completed';
+```
+
+**After (correct):**
+```javascript
+// Only show AI enriched if status is completed AND there are actual documentation URLs
+// Note: ai_enrichment_data can contain just notes without useful docs, so we check for actual URLs
+const hasAIDocs = part.ai_enrichment_status === 'completed' && (
+  part.install_manual_urls?.length > 0 ||
+  part.technical_manual_urls?.length > 0 ||
+  part.user_guide_urls?.length > 0
+);
+```
+
+#### Files Modified
+
+| File | Changes |
+|------|---------|
+| `src/components/PartsListPage.js` | Updated `hasAIDocs` logic (lines 606-615) to check for actual URL arrays |
+| `src/components/GlobalPartsManager.js` | Updated `hasAIDocs` logic (lines 503-512) to check for actual URL arrays |
+
+#### Icon Reference
+
+The parts list shows multiple indicators:
+- **Left side purple dot**: AI enrichment complete with actual docs (`hasAIDocs = true`)
+- **Left side amber dot**: Needs review (`needs_review = true`)
+- **Right side CheckCircle (amber)**: Action button to "Mark as reviewed"
+- **Right side FileText**: Action button to "Edit documentation"
 
 ---
 

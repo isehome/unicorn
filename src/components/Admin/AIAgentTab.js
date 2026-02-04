@@ -148,16 +148,8 @@ const AIAgentTab = () => {
   const [copied, setCopied] = useState(false);
   const transcriptEndRef = useRef(null);
 
-  // Test session refs
-  const ws = useRef(null);
-  const audioContext = useRef(null);
-  const mediaStream = useRef(null);
-  const processorNode = useRef(null);
-  const sourceNode = useRef(null);
-  const audioQueue = useRef([]);
-  const isPlaying = useRef(false);
-  const connectionStartTime = useRef(null);
-  const speechEndTime = useRef(null);
+  // Test session refs (legacy - most now handled by AIBrainContext)
+  const connectionStartTime = useRef(null); // Still used for tracking
 
   // Styles
   const textPrimary = mode === 'dark' ? 'text-white' : 'text-zinc-900';
@@ -252,151 +244,12 @@ const AIAgentTab = () => {
     setTestEvents(prev => [...prev.slice(-100), { time, message, type }]);
   }, []);
 
-  // Play audio chunk
-  const playNextChunk = useCallback(() => {
-    if (audioQueue.current.length === 0) {
-      isPlaying.current = false;
-      setTestStatus(prev => prev === 'speaking' ? 'connected' : prev);
-      return;
-    }
-    isPlaying.current = true;
-    const chunk = audioQueue.current.shift();
-    if (!audioContext.current || audioContext.current.state === 'closed') return;
+  // NOTE: Audio playback is now handled by AIBrainContext internally
+  // The playNextChunk function is no longer needed
 
-    const buffer = audioContext.current.createBuffer(1, chunk.length, GEMINI_OUTPUT_SAMPLE_RATE);
-    buffer.getChannelData(0).set(chunk);
-    const source = audioContext.current.createBufferSource();
-    source.buffer = buffer;
-    source.connect(audioContext.current.destination);
-    source.onended = playNextChunk;
-    source.start();
-  }, []);
-
-  // Handle incoming WebSocket messages
-  const handleMessage = useCallback(async (event) => {
-    try {
-      let messageData = event.data;
-      if (event.data instanceof Blob) {
-        messageData = await event.data.text();
-      }
-      const data = JSON.parse(messageData);
-
-      // Track server events
-      if (data.serverContent) {
-        const sc = data.serverContent;
-
-        if (sc.turnComplete === false) {
-          const now = performance.now();
-          const latency = speechEndTime.current ? (now - speechEndTime.current).toFixed(0) : null;
-          if (latency) {
-            setTestMetrics(prev => ({
-              ...prev,
-              responseLatency: latency,
-              serverTurnCount: prev.serverTurnCount + 1
-            }));
-            addTestEvent(`🎯 AI response started - Latency: ${latency}ms`, 'success');
-          }
-          setTestStatus('speaking');
-        }
-
-        if (sc.turnComplete === true) {
-          addTestEvent('✅ AI turn complete', 'info');
-          setTestStatus('connected');
-        }
-
-        if (sc.interrupted) {
-          addTestEvent('⚡ Turn interrupted by user', 'warn');
-        }
-
-        // Audio data
-        if (sc.modelTurn?.parts) {
-          for (const part of sc.modelTurn.parts) {
-            if (part.inlineData?.mimeType?.includes('audio')) {
-              const audioData = atob(part.inlineData.data);
-              const pcm16 = new Int16Array(audioData.length / 2);
-              for (let i = 0; i < pcm16.length; i++) {
-                pcm16[i] = (audioData.charCodeAt(i * 2) | (audioData.charCodeAt(i * 2 + 1) << 8));
-              }
-              const float32 = new Float32Array(pcm16.length);
-              for (let i = 0; i < pcm16.length; i++) {
-                float32[i] = pcm16[i] / 32768;
-              }
-              audioQueue.current.push(float32);
-              setTestMetrics(prev => ({ ...prev, audioChunksReceived: prev.audioChunksReceived + 1 }));
-              if (!isPlaying.current) playNextChunk();
-            }
-          }
-        }
-      }
-
-      if (data.setupComplete) {
-        const connectionTime = (performance.now() - connectionStartTime.current).toFixed(0);
-        setTestMetrics(prev => ({ ...prev, connectionTime }));
-        addTestEvent(`🔗 Setup complete in ${connectionTime}ms`, 'success');
-      }
-
-      if (data.serverContent?.inputTranscription?.text) {
-        addTestEvent(`🎤 User: "${data.serverContent.inputTranscription.text}"`, 'user');
-      }
-
-      if (data.serverContent?.outputTranscription?.text) {
-        addTestEvent(`🤖 AI: "${data.serverContent.outputTranscription.text}"`, 'ai');
-      }
-    } catch (err) {
-      console.error('[AIAgentTab] Parse error:', err.message);
-    }
-  }, [addTestEvent, playNextChunk]);
-
-  // Start audio capture
-  const startAudioCapture = useCallback(async () => {
-    try {
-      mediaStream.current = await navigator.mediaDevices.getUserMedia({
-        audio: { sampleRate: GEMINI_INPUT_SAMPLE_RATE, channelCount: 1, echoCancellation: true, noiseSuppression: true }
-      });
-
-      audioContext.current = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: GEMINI_INPUT_SAMPLE_RATE });
-      sourceNode.current = audioContext.current.createMediaStreamSource(mediaStream.current);
-      processorNode.current = audioContext.current.createScriptProcessor(4096, 1, 1);
-
-      processorNode.current.onaudioprocess = (e) => {
-        const input = e.inputBuffer.getChannelData(0);
-        let sum = 0;
-        for (let i = 0; i < input.length; i++) sum += Math.abs(input[i]);
-        setTestAudioLevel(Math.min(1, (sum / input.length) * 10));
-
-        if (ws.current?.readyState === WebSocket.OPEN) {
-          const pcm16 = new Int16Array(input.length);
-          for (let i = 0; i < input.length; i++) {
-            pcm16[i] = Math.max(-32768, Math.min(32767, input[i] * 32768));
-          }
-          const base64 = btoa(String.fromCharCode(...new Uint8Array(pcm16.buffer)));
-          ws.current.send(JSON.stringify({
-            realtimeInput: { mediaChunks: [{ mimeType: 'audio/pcm;rate=16000', data: base64 }] }
-          }));
-          setTestMetrics(prev => ({ ...prev, audioChunksSent: prev.audioChunksSent + 1 }));
-        }
-      };
-
-      sourceNode.current.connect(processorNode.current);
-      processorNode.current.connect(audioContext.current.destination);
-      addTestEvent('🎙️ Audio capture started', 'info');
-      setTestStatus('listening');
-    } catch (err) {
-      addTestEvent(`Mic error: ${err.message}`, 'error');
-    }
-  }, [addTestEvent]);
-
-  // Stop audio capture
-  const stopAudioCapture = useCallback(() => {
-    processorNode.current?.disconnect();
-    sourceNode.current?.disconnect();
-    mediaStream.current?.getTracks().forEach(t => t.stop());
-    audioContext.current?.close();
-    processorNode.current = null;
-    sourceNode.current = null;
-    mediaStream.current = null;
-    audioContext.current = null;
-  }, []);
+  // NOTE: All audio capture and WebSocket handling is now done by AIBrainContext
+  // The old custom functions (handleMessage, startAudioCapture, stopAudioCapture) have been removed
+  // because we now use the real startSession/endSession from AIBrainContext which has full tools
 
   // ══════════════════════════════════════════════════════════════
   // USE REAL AIBRAIN CONTEXT - Full tools, system prompt, database access
@@ -507,20 +360,7 @@ const AIAgentTab = () => {
     localStorage.removeItem('ai_transcript');
   };
 
-  // Track when user stops speaking
-  useEffect(() => {
-    if (testAudioLevel < 0.02 && testStatus === 'listening') {
-      speechEndTime.current = performance.now();
-    }
-  }, [testAudioLevel, testStatus]);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      stopAudioCapture();
-      ws.current?.close();
-    };
-  }, [stopAudioCapture]);
+  // NOTE: Speech tracking and cleanup are now handled by AIBrainContext internally
 
   const trainedCount = trainingStatus.trained;
   const progressPercent = trainingStatus.total > 0 ? Math.round((trainedCount / trainingStatus.total) * 100) : 0;
