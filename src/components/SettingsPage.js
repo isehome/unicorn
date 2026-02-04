@@ -12,7 +12,7 @@ import TechnicianAvatar from './TechnicianAvatar';
 import { Printer, CheckCircle, WifiOff, AlertCircle, Smartphone, LogOut, ChevronRight, Loader2, X, Shield, Briefcase } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
-import AISettings from './UserSettings/AISettings';
+// AI Settings moved to Admin > AI Agent tab (consolidated)
 
 
 const SettingsPage = () => {
@@ -181,7 +181,7 @@ const SettingsPage = () => {
         email,
         hasAdminAccess
       },
-      hint: 'Settings page. Can toggle theme, change default workspace, open AI settings, open admin panel (if authorized), or sign out.'
+      hint: 'Settings page. Can toggle theme, change default workspace, open admin panel (if authorized), or sign out. AI settings are in Admin > AI Agent.'
     });
   }, [publishState, mode, defaultWorkspace, connected, connecting, supported, isIOSSafari, displayName, email, hasAdminAccess, showAvatarModal]);
 
@@ -202,13 +202,12 @@ const SettingsPage = () => {
         return { success: false, error: 'Invalid workspace. Use: technician or pm' };
       },
       open_ai_settings: async () => {
-        // AI Settings is rendered inline on this page
-        // Scroll to it for visibility
-        const aiSection = document.querySelector('[data-section="ai-settings"]');
-        if (aiSection) {
-          aiSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        // AI Settings moved to Admin > AI Agent tab
+        if (hasAdminAccess) {
+          navigate('/admin?tab=ai-agent');
+          return { success: true, message: 'Navigating to AI Agent settings in Admin' };
         }
-        return { success: true, message: 'AI Settings section is visible on this page' };
+        return { success: false, error: 'AI settings are now in Admin panel (requires director+ role)' };
       },
       open_profile: async () => {
         setShowAvatarModal(true);
@@ -410,8 +409,7 @@ const SettingsPage = () => {
         )}
       </section>
 
-      {/* AI Copilot Settings */}
-      <AISettings />
+      {/* AI Copilot Settings moved to Admin > AI Agent tab */}
 
       {/* My HR Section - replaces My Skills and Career Development */}
       <section className="rounded-2xl border p-4" style={sectionStyles.card}>

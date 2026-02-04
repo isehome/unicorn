@@ -3933,6 +3933,66 @@ The application needs a proper user capabilities/roles system to control access 
 
 ## 2026-02-04
 
+### AI Agent Database Query Capability (query_data tool)
+
+**What:** Added a new `query_data` tool that gives the Voice AI agent full database awareness. The agent can now answer questions like "Does Bill Thomas have any Apple TVs?" by querying contacts, projects, and equipment.
+
+**Why:** Previously, the AI agent could only see the current view state (what's on screen). Now it can query the entire Unicorn database to answer questions about clients, their projects, and deployed equipment.
+
+**New Tool: query_data**
+Query types supported:
+- `contact` - Search contacts by name, email, or company
+- `project` - Search projects by name or get projects for a contact
+- `equipment` - Search equipment by name, manufacturer, or model
+- `contact_equipment` - **KEY**: Get ALL equipment for a client across all their projects
+- `shades` - Search window treatments
+- `tickets` - Search service tickets
+
+**Example Usage:**
+```
+User: "Does Bill Thomas have any Apple TVs?"
+AI: query_data(contact_equipment, "Bill Thomas", {equipmentSearch: "Apple TV"})
+→ Returns: contact info, all projects, all matching equipment with project names
+```
+
+**System Prompt Updates:**
+- Added "What is UNICORN?" section explaining the business
+- Added "Data You Can Query" section listing queryable entities
+- Added tool priority guidance (query_data FIRST for client/equipment questions)
+
+**Files:**
+- `src/contexts/AIBrainContext.js` - Added queryData function, tool declaration, and handler
+
+**Database:** No changes (reads existing tables: contacts, projects, equipment, shades, service_tickets)
+
+**AI Note:** The agent now has 6 meta-tools: get_context, execute_action, search_knowledge, **query_data**, navigate, quick_create (plus training tools). Tool priority: query_data for client data, search_knowledge for product docs, get_context for current view.
+
+---
+
+### Gemini 3 Flash Default + AI Settings Consolidation
+
+**What:** Upgraded the AI Agent to use Gemini 3 Flash as the default model and removed the AI Copilot settings from the user Settings page (now consolidated in Admin > AI Agent).
+
+**Why:** Gemini 3 Flash offers 40-60% faster latency and better reasoning. Consolidating AI settings in Admin provides a single location for all AI configuration, testing, and monitoring.
+
+**Changes:**
+1. **Default Model**: Changed from `gemini-2.5-flash-native-audio-preview-12-2025` → `gemini-3-flash-preview`
+2. **Removed Deprecated Model**: Removed `gemini-2.0-flash-live-001` from selection (retiring March 2026)
+3. **Fallback Chain**: Now Gemini-only: `gemini-3-flash → gemini-2.5-flash-native` (no OpenAI)
+4. **Settings Page**: Removed AI Copilot section (redirects to Admin > AI Agent)
+
+**Files:**
+- `src/contexts/AIBrainContext.js` - Updated DEFAULT_MODEL to gemini-3-flash-preview
+- `src/components/Admin/AIAgentTab.js` - Cleaned up model list, marked Gemini 3 as default
+- `src/voice-ai/config/voiceConfig.js` - Updated default config and fallback chain
+- `src/components/SettingsPage.js` - Removed AISettings import and section
+
+**Database:** No changes
+
+**AI Note:** Unicorn uses Gemini exclusively - no OpenAI models. The provider-agnostic architecture in `src/voice-ai/` supports OpenAI for future flexibility but is not used. Azure AI Search (SharePoint RAG) remains connected via the `search_knowledge` tool.
+
+---
+
 ### Fix AI Enrichment Status Display Bug in Parts List Views
 
 **What:** Fixed bug where parts were showing the purple "AI Enriched" dot even when no actual enrichment data was found.

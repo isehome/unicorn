@@ -111,23 +111,29 @@ const PartsAILookupPage = () => {
     return false;
   }, []);
 
-  // Helper to determine part status
+  // Helper to determine part status (based on Manus AI status AND actual docs)
+  // This is used for filtering and status badges
   const getPartStatus = useCallback((part) => {
     const status = part.ai_enrichment_status;
 
-    // Check for actual documentation URLs (not just status or ai_enrichment_data which may only contain notes)
-    // This matches the logic in PartsListPage.js and GlobalPartsManager.js
-    const hasActualDocs = status === 'completed' && (
+    // Check for actual documents
+    const hasDocuments = (
       part.install_manual_urls?.length > 0 ||
       part.technical_manual_urls?.length > 0 ||
       part.user_guide_urls?.length > 0
     );
 
-    if (hasActualDocs) return 'completed';
+    // Logic:
+    // - completed = Manus returned AND has actual documents
+    // - processing = Manus running
+    // - error = Manus failed OR completed without documents
+    // - not_submitted = never run
     if (localProcessingParts.has(part.id) || status === 'processing') return 'processing';
     if (status === 'error' || errorParts.has(part.id)) return 'error';
+    if (status === 'completed' && hasDocuments) return 'completed';
+    if (status === 'completed' && !hasDocuments) return 'error'; // Manus failed to return docs
 
-    // Not submitted yet (null, undefined, pending, or completed-but-no-docs)
+    // Not submitted yet (null, undefined, pending, or any other status)
     return 'not_submitted';
   }, [localProcessingParts, errorParts]);
 
@@ -342,46 +348,69 @@ const PartsAILookupPage = () => {
     },
   });
 
-  // Render AI status icon for a part
-  // Uses dots to match PartsListPage.js for consistency
-  // Brand colors: success=#94AF32, violet=#8B5CF6
-  const renderAIStatusIcon = (part) => {
-    const status = getPartStatus(part);
+  // Render status icons for a part
+  // Two separate indicators:
+  // 1. Bot icon = Manus AI status (gray=not run, amber=processing, green=success with docs, red=error/no docs)
+  // 2. FileText icon = Has actual documents attached (from Manus OR manually added)
+  // Brand colors: success=#94AF32, amber=#F59E0B
+  const renderStatusIcons = (part) => {
+    const aiStatus = part.ai_enrichment_status;
+    const isProcessing = localProcessingParts.has(part.id) || aiStatus === 'processing';
+    const hasExplicitError = aiStatus === 'error' || errorParts.has(part.id);
+    const statusSaysCompleted = aiStatus === 'completed';
 
-    if (status === 'completed') {
-      return (
-        <div className="flex items-center justify-center" title="AI enriched with documents">
-          <span className="w-3 h-3 rounded-full" style={{ backgroundColor: '#8B5CF6' }} />
-        </div>
-      );
+    // Check for actual documents (can be from Manus OR manually added)
+    const hasDocuments = (
+      part.install_manual_urls?.length > 0 ||
+      part.technical_manual_urls?.length > 0 ||
+      part.user_guide_urls?.length > 0
+    );
+
+    // Manus only truly succeeded if status=completed AND there are actual documents
+    // If status=completed but no docs, Manus failed to return proper results
+    const manusSucceeded = statusSaysCompleted && hasDocuments;
+    const manusFailed = hasExplicitError || (statusSaysCompleted && !hasDocuments);
+
+    // Determine Bot icon color based on Manus status
+    let botColor = '#A1A1AA'; // gray - not submitted
+    let botTitle = 'Not submitted for AI lookup';
+
+    if (isProcessing) {
+      botColor = '#F59E0B'; // amber - processing
+      botTitle = 'Processing - awaiting Manus results';
+    } else if (manusFailed) {
+      botColor = '#EF4444'; // red - error or completed without docs
+      botTitle = statusSaysCompleted && !hasDocuments
+        ? 'Manus completed but returned no documents'
+        : (errorParts.get(part.id) || 'Error during enrichment');
+    } else if (manusSucceeded) {
+      botColor = '#94AF32'; // green - success with docs
+      botTitle = 'Manus completed with documents';
     }
 
-    if (status === 'processing') {
-      return (
-        <div className="flex items-center justify-center" title="Processing - awaiting Manus results">
-          <span className="w-3 h-3 rounded-full animate-pulse" style={{ backgroundColor: '#8B5CF6' }} />
-        </div>
-      );
-    }
-
-    if (status === 'error') {
-      return (
-        <div className="flex items-center justify-center" title={errorParts.get(part.id) || 'Error during enrichment'}>
-          <span className="w-3 h-3 rounded-full bg-red-500" />
-        </div>
-      );
-    }
-
-    // Not submitted
     return (
-      <div className="flex items-center justify-center" title="Not submitted for AI lookup">
-        <span className="w-3 h-3 rounded-full bg-zinc-300 dark:bg-zinc-600" />
+      <div className="flex items-center gap-2">
+        {/* Bot icon - Manus AI status */}
+        <Bot
+          className={`h-5 w-5 ${isProcessing ? 'animate-pulse' : ''}`}
+          style={{ color: botColor }}
+          title={botTitle}
+        />
+
+        {/* FileText icon - Has documents (from any source) */}
+        {hasDocuments && (
+          <FileText
+            className="h-4 w-4"
+            style={{ color: '#94AF32' }}
+            title="Has documentation"
+          />
+        )}
       </div>
     );
   };
 
   // Render status badge text
-  // Brand colors: success=#94AF32, violet=#8B5CF6
+  // Brand colors: success=#94AF32, amber=#F59E0B
   const renderStatusBadge = (part) => {
     const status = getPartStatus(part);
 
@@ -392,7 +421,7 @@ const PartsAILookupPage = () => {
           style={{ backgroundColor: 'rgba(148, 175, 50, 0.15)', color: '#94AF32' }}
         >
           <CheckCircle className="h-3 w-3" />
-          Enriched
+          Manus Done
         </span>
       );
     }
@@ -401,7 +430,7 @@ const PartsAILookupPage = () => {
       return (
         <span
           className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium"
-          style={{ backgroundColor: 'rgba(139, 92, 246, 0.15)', color: '#8B5CF6' }}
+          style={{ backgroundColor: 'rgba(245, 158, 11, 0.15)', color: '#F59E0B' }}
         >
           <Loader2 className="h-3 w-3 animate-spin" />
           Processing
@@ -421,21 +450,20 @@ const PartsAILookupPage = () => {
     // Not submitted
     return (
       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">
-        <Bot className="h-3 w-3" />
         Not Submitted
       </span>
     );
   };
 
   // Filter tab button component
-  // Brand colors: success=#94AF32, violet=#8B5CF6
+  // Brand colors: success=#94AF32, amber=#F59E0B
   const FilterTab = ({ filter, label, count, color }) => {
     const isActive = activeFilter === filter;
 
-    // Use brand colors for processing (violet) and enriched (green)
+    // Use brand colors for processing (amber) and completed (green)
     const getActiveStyles = () => {
-      if (color === 'violet') {
-        return { borderColor: '#8B5CF6', backgroundColor: 'rgba(139, 92, 246, 0.15)', color: '#8B5CF6' };
+      if (color === 'amber') {
+        return { borderColor: '#F59E0B', backgroundColor: 'rgba(245, 158, 11, 0.15)', color: '#F59E0B' };
       }
       if (color === 'green') {
         return { borderColor: '#94AF32', backgroundColor: 'rgba(148, 175, 50, 0.15)', color: '#94AF32' };
@@ -460,7 +488,7 @@ const PartsAILookupPage = () => {
               ? 'border-transparent bg-transparent text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800'
               : ''
         }`}
-        style={isActive && (color === 'violet' || color === 'green') ? activeStyles : undefined}
+        style={isActive && (color === 'amber' || color === 'green') ? activeStyles : undefined}
       >
         {label} <span className="ml-1 opacity-70">({count})</span>
       </button>
@@ -583,16 +611,16 @@ const PartsAILookupPage = () => {
             activeFilter === FILTER_OPTIONS.PROCESSING ? 'ring-2' : ''
           }`}
           style={{
-            borderColor: 'rgba(139, 92, 246, 0.3)',
-            backgroundColor: 'rgba(139, 92, 246, 0.05)',
-            ...(activeFilter === FILTER_OPTIONS.PROCESSING ? { '--tw-ring-color': '#8B5CF6' } : {})
+            borderColor: 'rgba(245, 158, 11, 0.3)',
+            backgroundColor: 'rgba(245, 158, 11, 0.05)',
+            ...(activeFilter === FILTER_OPTIONS.PROCESSING ? { '--tw-ring-color': '#F59E0B' } : {})
           }}
         >
-          <div className="flex items-center gap-2 text-sm" style={{ color: '#8B5CF6' }}>
+          <div className="flex items-center gap-2 text-sm" style={{ color: '#F59E0B' }}>
             <Loader2 className={`h-4 w-4 ${stats.processing > 0 ? 'animate-spin' : ''}`} />
             Processing
           </div>
-          <p className="text-2xl font-bold mt-1" style={{ color: '#8B5CF6' }}>
+          <p className="text-2xl font-bold mt-1" style={{ color: '#F59E0B' }}>
             {stats.processing}
           </p>
         </button>
@@ -610,7 +638,7 @@ const PartsAILookupPage = () => {
         >
           <div className="flex items-center gap-2 text-sm" style={{ color: '#94AF32' }}>
             <CheckCircle className="h-4 w-4" />
-            Enriched
+            Manus Done
           </div>
           <p className="text-2xl font-bold mt-1" style={{ color: '#94AF32' }}>
             {stats.completed}
@@ -632,14 +660,14 @@ const PartsAILookupPage = () => {
       {stats.processing > 0 && (
         <div
           className="flex items-center gap-3 rounded-lg border px-4 py-3"
-          style={{ borderColor: 'rgba(139, 92, 246, 0.3)', backgroundColor: 'rgba(139, 92, 246, 0.08)' }}
+          style={{ borderColor: 'rgba(245, 158, 11, 0.3)', backgroundColor: 'rgba(245, 158, 11, 0.08)' }}
         >
-          <Loader2 className="h-5 w-5 animate-spin" style={{ color: '#8B5CF6' }} />
+          <Loader2 className="h-5 w-5 animate-spin" style={{ color: '#F59E0B' }} />
           <div className="flex-1">
-            <p className="font-medium" style={{ color: '#7C3AED' }}>
+            <p className="font-medium" style={{ color: '#D97706' }}>
               {stats.processing} part{stats.processing !== 1 ? 's' : ''} awaiting Manus results
             </p>
-            <p className="text-sm" style={{ color: '#8B5CF6' }}>
+            <p className="text-sm" style={{ color: '#F59E0B' }}>
               Use "Pull Manus Results" button above to check if they're complete.
             </p>
           </div>
@@ -666,8 +694,8 @@ const PartsAILookupPage = () => {
         <Filter className="h-4 w-4 text-zinc-400 mr-1" />
         <FilterTab filter={FILTER_OPTIONS.ALL} label="All" count={stats.total} color="zinc" />
         <FilterTab filter={FILTER_OPTIONS.NOT_SUBMITTED} label="Not Submitted" count={stats.notSubmitted} color="zinc" />
-        <FilterTab filter={FILTER_OPTIONS.PROCESSING} label="Processing" count={stats.processing} color="violet" />
-        <FilterTab filter={FILTER_OPTIONS.COMPLETED} label="Enriched" count={stats.completed} color="green" />
+        <FilterTab filter={FILTER_OPTIONS.PROCESSING} label="Processing" count={stats.processing} color="amber" />
+        <FilterTab filter={FILTER_OPTIONS.COMPLETED} label="Manus Done" count={stats.completed} color="green" />
         {stats.errors > 0 && (
           <FilterTab filter={FILTER_OPTIONS.ERROR} label="Errors" count={stats.errors} color="red" />
         )}
@@ -824,9 +852,9 @@ const PartsAILookupPage = () => {
                     </button>
                   </div>
 
-                  {/* AI Status Icon */}
+                  {/* Status Icons: Bot (AI status) + FileText (has docs) */}
                   <div className="flex items-center justify-center">
-                    {renderAIStatusIcon(part)}
+                    {renderStatusIcons(part)}
                   </div>
 
                   {/* Part Number / Name */}
@@ -873,11 +901,14 @@ const PartsAILookupPage = () => {
       {/* Footer Info */}
       <div className="text-xs text-zinc-500 dark:text-zinc-400 space-y-1">
         <p>
-          <strong>AI Status:</strong>{' '}
-          <span style={{ color: '#8B5CF6' }}>●</span> Enriched (has actual docs){' '}
-          <span style={{ color: '#8B5CF6' }}>◐</span> Processing (awaiting results){' '}
+          <strong>Bot:</strong>{' '}
           <span className="text-zinc-400">●</span> Not submitted{' '}
+          <span style={{ color: '#F59E0B' }}>●</span> Processing{' '}
+          <span style={{ color: '#94AF32' }}>●</span> Manus completed{' '}
           <span className="text-red-500">●</span> Error
+          {' | '}
+          <strong>Doc:</strong>{' '}
+          <span style={{ color: '#94AF32' }}>📄</span> Has documents
         </p>
         <p>
           Prewire items (wires, cables, brackets, etc.) are automatically excluded.

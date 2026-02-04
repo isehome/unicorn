@@ -604,14 +604,31 @@ const PartsListPage = () => {
     }
 
     // Normal mode: clickable card - CLEANED UP VERSION
-    // Status indicators use small dots instead of text badges
-    // Only show AI enriched if status is completed AND there are actual documentation URLs
-    // Note: ai_enrichment_data can contain just notes without useful docs, so we check for actual URLs
-    const hasAIDocs = part.ai_enrichment_status === 'completed' && (
+    // Status indicators: Bot icon for Manus status, FileText for documents
+    // Manus status: gray=not run, amber=processing, green=success with docs, red=error/no docs
+    const aiStatus = part.ai_enrichment_status;
+    const hasDocuments = (
       part.install_manual_urls?.length > 0 ||
       part.technical_manual_urls?.length > 0 ||
       part.user_guide_urls?.length > 0
     );
+    const manusSucceeded = aiStatus === 'completed' && hasDocuments;
+    const manusFailed = aiStatus === 'error' || (aiStatus === 'completed' && !hasDocuments);
+    const manusProcessing = aiStatus === 'processing';
+
+    // Determine Bot icon color
+    let botColor = '#A1A1AA'; // gray - not submitted
+    let botTitle = 'Not submitted for AI lookup';
+    if (manusProcessing) {
+      botColor = '#F59E0B'; // amber
+      botTitle = 'Processing - awaiting Manus results';
+    } else if (manusFailed) {
+      botColor = '#EF4444'; // red
+      botTitle = aiStatus === 'completed' ? 'Manus completed but returned no documents' : 'Error during enrichment';
+    } else if (manusSucceeded) {
+      botColor = '#94AF32'; // green
+      botTitle = 'Manus completed with documents';
+    }
 
     return (
       <button
@@ -624,18 +641,23 @@ const PartsListPage = () => {
           style={styles.card}
         >
           <div className="flex items-center justify-between gap-4">
-            {/* Left: Part info with status dots */}
+            {/* Left: Part info with status icons */}
             <div className="flex items-center gap-3 min-w-0 flex-1">
-              {/* Status indicator dots - compact, no text */}
-              <div className="flex flex-col gap-1 shrink-0">
-                {part.required_for_prewire && (
-                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500" title="Prewire Required" />
+              {/* Status indicators: Bot (Manus) + FileText (docs) + review dot */}
+              <div className="flex items-center gap-1.5 shrink-0">
+                {/* Bot icon - Manus AI status */}
+                <Bot
+                  className={`h-5 w-5 ${manusProcessing ? 'animate-pulse' : ''}`}
+                  style={{ color: botColor }}
+                  title={botTitle}
+                />
+                {/* FileText icon - Has documents */}
+                {hasDocuments && (
+                  <FileText className="h-4 w-4" style={{ color: '#94AF32' }} title="Has documentation" />
                 )}
+                {/* Review indicator */}
                 {part.needs_review && (
                   <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse" title="New - Needs Review" />
-                )}
-                {hasAIDocs && (
-                  <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#8B5CF6' }} title="AI Documentation Available" />
                 )}
               </div>
 

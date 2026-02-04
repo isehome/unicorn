@@ -195,24 +195,40 @@ Begin by greeting them and asking your first question based on the session type.
 
 ${persona}
 
-## Capabilities
-1. App Navigation - projects, shades, prewire, settings
-2. Shade Measuring - guide through window measurements
-3. Knowledge Base - Lutron, Ubiquiti, Control4, Sonos docs (Azure AI Search)
-4. Web Search - general information
-5. Execute Actions - interact with current view
+## What is UNICORN?
+Unicorn is a project management app for low-voltage/smart home installations. ISE (the company) installs:
+- Motorized shades and window treatments
+- Home automation systems (Control4, Lutron)
+- Networking equipment (Ubiquiti UniFi)
+- Audio/video systems (Sonos, Apple TV, TVs)
+- Prewire and structured cabling
 
-## Rules
-- ALWAYS call get_context FIRST
-- Use execute_action for app interactions
-- Use search_knowledge for product questions (PRIORITY)
-- Use web_search for general info
-- Use navigate to move around
+## Data You Can Query
+Use the query_data tool to search the database:
+- **Contacts/Clients**: Homeowners and their info
+- **Projects**: Jobs at client homes (linked to contacts)
+- **Equipment**: Devices deployed at each project (Apple TV, Sonos, switches, etc.)
+- **Shades**: Window treatments with measurements
+- **Service Tickets**: Support requests
 
-## Measurement Order
-1. Top Width -> 2. Middle Width -> 3. Bottom Width -> 4. Height -> 5. Mount Depth
+Example: "Does Bill Thomas have any Apple TVs?" → query_data(contact_equipment, "Bill Thomas", {equipmentSearch: "Apple TV"})
 
-For each: highlight_field first, ask for value, set_measurement, confirm, next field.
+## Your Capabilities
+1. **Database Queries** - Find clients, their projects, equipment deployed
+2. **Knowledge Base** - Lutron, Ubiquiti, Control4, Sonos docs (Azure AI Search)
+3. **App Navigation** - Move to any page, project, or section
+4. **Execute Actions** - Interact with current view (fill forms, save data)
+5. **Create Items** - Todos, issues, tickets, contacts, notes
+6. **Page Training** - Teach users about pages using trained context
+
+## Tool Priority
+1. For client/equipment questions → query_data (FIRST)
+2. For product/installation questions → search_knowledge
+3. For current view state → get_context
+4. For general info → web_search
+
+## Measurement Order (Shades)
+1. Top Width → 2. Middle Width → 3. Bottom Width → 4. Height → 5. Mount Depth
 
 ## Terminology
 Windows = Shades = Blinds = Window Treatments (same thing)
@@ -228,6 +244,7 @@ ${buildContextString(state)}`;
         { name: 'get_context', description: 'Get current app state. CALL THIS FIRST.', parameters: { type: 'object', properties: {} } },
         { name: 'execute_action', description: 'Execute action: highlight_field, set_measurement, save_measurements, open_shade, etc.', parameters: { type: 'object', properties: { action: { type: 'string' }, params: { type: 'object' } }, required: ['action'] } },
         { name: 'search_knowledge', description: 'Search knowledge base for product info (Lutron, Ubiquiti, etc). USE FIRST for product questions.', parameters: { type: 'object', properties: { query: { type: 'string' }, manufacturer: { type: 'string' } }, required: ['query'] } },
+        { name: 'query_data', description: 'Search Unicorn database for contacts, projects, equipment, shades, tickets. Use contact_equipment to find all equipment for a client (e.g., "Does Bill Thomas have any Apple TVs?").', parameters: { type: 'object', properties: { queryType: { type: 'string', enum: ['contact', 'project', 'equipment', 'contact_equipment', 'shades', 'tickets'], description: 'Type of data to query' }, searchTerm: { type: 'string', description: 'Name or keyword to search for' }, filters: { type: 'object', description: 'Optional filters: contactId, projectId, equipmentSearch' } }, required: ['queryType', 'searchTerm'] } },
         { name: 'navigate', description: 'Navigate anywhere: dashboard, home, prewire, service, tickets, todos, issues, people, vendors, parts, settings, admin, knowledge, weekly planning - OR project name with section (shades, equipment, procurement, receiving, inventory, floor plan, reports, secure data).', parameters: { type: 'object', properties: { destination: { type: 'string', description: 'Page name or project name' }, section: { type: 'string', description: 'For projects: shades, equipment, procurement, receiving, inventory, floor plan, reports, secure data' } }, required: ['destination'] } },
         { name: 'quick_create', description: 'Create new items: todo, issue, ticket, contact, note. Provide type and relevant fields.', parameters: { type: 'object', properties: { type: { type: 'string', enum: ['todo', 'issue', 'ticket', 'contact', 'note'], description: 'Type of item to create' }, title: { type: 'string', description: 'Title/name of item' }, description: { type: 'string', description: 'Description or details' }, priority: { type: 'string', enum: ['low', 'medium', 'high', 'urgent'], description: 'Priority level' }, projectId: { type: 'string', description: 'Project ID if applicable' }, dueDate: { type: 'string', description: 'Due date (YYYY-MM-DD)' } }, required: ['type', 'title'] } },
         { name: 'web_search', description: 'Search web for general info not in knowledge base.', parameters: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] } },
@@ -258,6 +275,169 @@ ${buildContextString(state)}`;
             if (!data.results?.length) return { found: false, message: `No results for "${query}".`, suggestion: 'Try web_search.' };
             return { found: true, answer: data.results[0].content?.substring(0, 500), source: data.results[0].documentTitle, resultCount: data.results.length };
         } catch (e) { return { found: false, error: e.message }; }
+    };
+
+    // ══════════════════════════════════════════════════════════════
+    // QUERY DATA - Database search for contacts, projects, equipment
+    // ══════════════════════════════════════════════════════════════
+    const queryData = async (queryType, searchTerm, filters = {}) => {
+        try {
+            console.log(`[AIBrain] queryData: ${queryType} - "${searchTerm}"`, filters);
+
+            switch (queryType) {
+                case 'contact':
+                case 'client':
+                case 'person': {
+                    // Search contacts by name
+                    const { data: contacts, error } = await supabase
+                        .from('contacts')
+                        .select('id, full_name, email, phone, company, contact_type, created_at')
+                        .or(`full_name.ilike.%${searchTerm}%,company.ilike.%${searchTerm}%,email.ilike.%${searchTerm}%`)
+                        .limit(10);
+                    if (error) throw error;
+                    if (!contacts?.length) return { found: false, message: `No contacts found matching "${searchTerm}"` };
+                    return { found: true, type: 'contacts', count: contacts.length, results: contacts };
+                }
+
+                case 'project':
+                case 'projects': {
+                    // Search projects by name or get projects for a contact
+                    let query = supabase
+                        .from('projects')
+                        .select('id, name, address, status, project_manager, created_at, customer_id, contacts!projects_customer_id_fkey(full_name)')
+                        .limit(10);
+
+                    if (filters.contactId) {
+                        query = query.eq('customer_id', filters.contactId);
+                    } else {
+                        query = query.or(`name.ilike.%${searchTerm}%,address.ilike.%${searchTerm}%`);
+                    }
+
+                    const { data: projects, error } = await query;
+                    if (error) throw error;
+                    if (!projects?.length) return { found: false, message: `No projects found matching "${searchTerm}"` };
+                    return { found: true, type: 'projects', count: projects.length, results: projects };
+                }
+
+                case 'equipment':
+                case 'device':
+                case 'devices': {
+                    // Search equipment by name/model, optionally filter by project
+                    let query = supabase
+                        .from('equipment')
+                        .select(`
+                            id, name, manufacturer, model, serial_number, location, status, quantity,
+                            project_id, projects!equipment_project_id_fkey(name, address)
+                        `)
+                        .limit(20);
+
+                    if (filters.projectId) {
+                        query = query.eq('project_id', filters.projectId);
+                    }
+
+                    if (searchTerm) {
+                        query = query.or(`name.ilike.%${searchTerm}%,manufacturer.ilike.%${searchTerm}%,model.ilike.%${searchTerm}%`);
+                    }
+
+                    const { data: equipment, error } = await query;
+                    if (error) throw error;
+                    if (!equipment?.length) return { found: false, message: `No equipment found matching "${searchTerm}"` };
+                    return { found: true, type: 'equipment', count: equipment.length, results: equipment };
+                }
+
+                case 'contact_equipment': {
+                    // Get ALL equipment for a contact across all their projects
+                    // First, find the contact
+                    const { data: contacts } = await supabase
+                        .from('contacts')
+                        .select('id, full_name')
+                        .ilike('full_name', `%${searchTerm}%`)
+                        .limit(1);
+
+                    if (!contacts?.length) return { found: false, message: `No contact found matching "${searchTerm}"` };
+                    const contact = contacts[0];
+
+                    // Get their projects
+                    const { data: projects } = await supabase
+                        .from('projects')
+                        .select('id, name, address')
+                        .eq('customer_id', contact.id);
+
+                    if (!projects?.length) return { found: true, contact: contact.full_name, message: 'Contact found but has no projects' };
+
+                    // Get equipment for all their projects
+                    const projectIds = projects.map(p => p.id);
+                    let equipmentQuery = supabase
+                        .from('equipment')
+                        .select('id, name, manufacturer, model, serial_number, location, status, quantity, project_id')
+                        .in('project_id', projectIds);
+
+                    // Optional: filter by equipment type/name
+                    if (filters.equipmentSearch) {
+                        equipmentQuery = equipmentQuery.or(`name.ilike.%${filters.equipmentSearch}%,manufacturer.ilike.%${filters.equipmentSearch}%,model.ilike.%${filters.equipmentSearch}%`);
+                    }
+
+                    const { data: equipment } = await equipmentQuery;
+
+                    // Map equipment to project names
+                    const projectMap = Object.fromEntries(projects.map(p => [p.id, p.name]));
+                    const enrichedEquipment = (equipment || []).map(e => ({
+                        ...e,
+                        projectName: projectMap[e.project_id]
+                    }));
+
+                    return {
+                        found: true,
+                        contact: contact.full_name,
+                        contactId: contact.id,
+                        projectCount: projects.length,
+                        projects: projects.map(p => ({ id: p.id, name: p.name, address: p.address })),
+                        equipmentCount: enrichedEquipment.length,
+                        equipment: enrichedEquipment,
+                        summary: `${contact.full_name} has ${projects.length} project(s) with ${enrichedEquipment.length} equipment item(s)`
+                    };
+                }
+
+                case 'shades':
+                case 'windows': {
+                    // Search shades/window treatments
+                    let query = supabase
+                        .from('shades')
+                        .select('id, name, room_name, product_type, status, width_top, height, project_id, projects!shades_project_id_fkey(name)')
+                        .limit(20);
+
+                    if (filters.projectId) {
+                        query = query.eq('project_id', filters.projectId);
+                    }
+                    if (searchTerm) {
+                        query = query.or(`name.ilike.%${searchTerm}%,room_name.ilike.%${searchTerm}%`);
+                    }
+
+                    const { data: shades, error } = await query;
+                    if (error) throw error;
+                    return { found: !!shades?.length, type: 'shades', count: shades?.length || 0, results: shades || [] };
+                }
+
+                case 'service_tickets':
+                case 'tickets': {
+                    // Search service tickets
+                    const { data: tickets, error } = await supabase
+                        .from('service_tickets')
+                        .select('id, title, status, priority, created_at, customer_name, assigned_to')
+                        .or(`title.ilike.%${searchTerm}%,customer_name.ilike.%${searchTerm}%`)
+                        .order('created_at', { ascending: false })
+                        .limit(10);
+                    if (error) throw error;
+                    return { found: !!tickets?.length, type: 'service_tickets', count: tickets?.length || 0, results: tickets || [] };
+                }
+
+                default:
+                    return { error: `Unknown query type: ${queryType}. Use: contact, project, equipment, contact_equipment, shades, tickets` };
+            }
+        } catch (error) {
+            console.error('[AIBrain] queryData error:', error);
+            return { error: error.message || 'Query failed' };
+        }
     };
 
     const handleNavigation = async (destination, section) => {
@@ -496,6 +676,7 @@ ${buildContextString(state)}`;
             case 'get_context': return { ...getState(), availableActions: getAvailableActions(), hint: getContextHint(getState().view) };
             case 'execute_action': return await executeAction(args.action, args.params || {});
             case 'search_knowledge': return await searchKnowledgeBase(args.query, args.manufacturer);
+            case 'query_data': return await queryData(args.queryType, args.searchTerm, args.filters || {});
             case 'navigate': return await handleNavigation(args.destination, args.section);
             case 'quick_create': return await handleQuickCreate(args);
             case 'web_search': return { message: `Searching for "${args.query}"...`, useGrounding: true };
