@@ -21,33 +21,27 @@ export const PHOTO_CATEGORIES = {
 export const servicePhotoService = {
   /**
    * Get the SharePoint root URL for service photos
-   * This should be configured in settings
+   * Uses company_sharepoint_root_url from company_settings + /Service
+   * Folder structure: {root}/Service/{CustomerName}/{TicketNumber}/{category}/
    */
   async getServiceSharePointRoot() {
-    // Try to get from settings table
-    const { data, error } = await supabase
-      .from('settings')
-      .select('value')
-      .eq('key', 'sharepoint_service_root')
+    const { data: settings, error } = await supabase
+      .from('company_settings')
+      .select('company_sharepoint_root_url')
+      .limit(1)
       .single();
 
-    if (error || !data?.value) {
-      // Fallback to site configuration
-      const { data: siteConfig } = await supabase
-        .from('settings')
-        .select('value')
-        .eq('key', 'sharepoint_root_url')
-        .single();
-
-      if (siteConfig?.value) {
-        // Append /Service to the root
-        return `${siteConfig.value.replace(/\/+$/, '')}/Service`;
-      }
-
-      throw new Error('SharePoint service root URL not configured. Please configure it in Settings.');
+    if (error && error.code !== 'PGRST116') {
+      console.error('[servicePhotoService] Failed to get company settings:', error);
+      throw error;
     }
 
-    return data.value.replace(/\/+$/, '');
+    if (!settings?.company_sharepoint_root_url) {
+      throw new Error('Company SharePoint URL not configured. Please set it in Admin → Company Settings.');
+    }
+
+    // Append /Service to create service folder root
+    return `${settings.company_sharepoint_root_url.replace(/\/+$/, '')}/Service`;
   },
 
   /**
