@@ -5332,6 +5332,49 @@ npm install intuit-oauth
 
 The bug reporting system captures user-reported issues and uses **Gemini AI** to analyze them, suggest specific code fixes, and create GitHub PRs for tracking. Bug reports are stored as markdown files in the Git repository.
 
+### 🚨 HOW TO LIST AND FIX BUGS (READ THIS FIRST)
+
+**Bug reports are GitHub Pull Requests**, NOT git commits or GitHub Issues.
+
+#### List Open Bugs
+```bash
+gh pr list --repo isehome/unicorn --state open --search "[Bug]"
+```
+
+#### Read a Bug Report
+```bash
+# Get PR details and branch name
+gh pr view <PR_NUMBER> --json title,body,headRefName
+
+# Fetch the full markdown report from the branch
+gh api "repos/isehome/unicorn/contents/bug-reports/<YEAR-MONTH>/<BUG_ID>.md" \
+  -H "Accept: application/vnd.github.raw" \
+  -F ref=<BRANCH_NAME>
+```
+
+#### Fix a Bug Workflow
+1. **List bugs:** `gh pr list --state open --search "[Bug]"`
+2. **Read the bug report:** Fetch the markdown file from the PR branch
+3. **Follow the embedded instructions** in the bug report (they are prompts for you)
+4. **Implement the fix** on the main branch
+5. **Close the PR:** `gh pr close <NUMBER> --comment "Fixed in commit <SHA>"`
+6. **Update AGENT.md changelog** (REQUIRED)
+
+#### Example: Fix Bug #24
+```bash
+# 1. See what bugs exist
+gh pr list --state open --search "[Bug]"
+
+# 2. Read bug #24's full report
+gh pr view 24 --json headRefName  # Get branch name
+gh api "repos/isehome/unicorn/contents/bug-reports/..." -H "Accept: application/vnd.github.raw" -F ref=bug-report/...
+
+# 3. Follow instructions in the report, implement fix
+# 4. Commit and push fix to main
+# 5. Close the PR
+gh pr close 24 --comment "Fixed - skill names now visible in portrait mode"
+```
+
 ### Architecture Flow
 
 ```
