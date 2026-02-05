@@ -47,6 +47,7 @@ import ServicePartsManager from './ServicePartsManager';
 import ServicePOManager from './ServicePOManager';
 import ServiceTimeTracker from './ServiceTimeTracker';
 import ServicePhotosManager from './ServicePhotosManager';
+import TicketActivityLog from './TicketActivityLog';
 import TechnicianAvatar from '../TechnicianAvatar';
 import TechnicianDropdown from './TechnicianDropdown';
 import { useAppState } from '../../contexts/AppStateContext';
@@ -1691,6 +1692,12 @@ const ServiceTicketDetail = () => {
                 )}
               </div>
             </div>
+
+            {/* Activity Audit Log - Collapsible, defaults to closed */}
+            <TicketActivityLog
+              ticketId={ticket.id}
+              refreshTrigger={0}
+            />
           </div>
 
           {/* Sidebar */}

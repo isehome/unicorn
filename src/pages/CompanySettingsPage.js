@@ -23,7 +23,8 @@ import LaborTypesManager from '../components/Admin/LaborTypesManager';
 
 const CompanySettingsPage = () => {
   const navigate = useNavigate();
-  const { isDark } = useTheme();
+  const { mode } = useTheme();
+  const isDark = mode === 'dark';
   const [activeTab, setActiveTab] = useState('company');
 
   const tabs = [
