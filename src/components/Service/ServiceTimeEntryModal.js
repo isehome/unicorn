@@ -4,8 +4,9 @@
  */
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { X, Clock, Calendar, User, FileText, Loader2, Trash2 } from 'lucide-react';
+import { X, Clock, Calendar, User, FileText, Loader2, Trash2, Wrench } from 'lucide-react';
 import { serviceTimeService } from '../../services/serviceTimeService';
+import { laborTypeService } from '../../services/laborTypeService';
 import { brandColors } from '../../styles/styleSystem';
 import { useAppState } from '../../contexts/AppStateContext';
 
@@ -57,11 +58,31 @@ const ServiceTimeEntryModal = ({
     technician_name: '',
     work_date: '',
     hours: 1,
+    labor_type_id: '',
     notes: ''
   });
+  const [laborTypes, setLaborTypes] = useState([]);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState(null);
+
+  // Fetch labor types on mount
+  useEffect(() => {
+    const fetchLaborTypes = async () => {
+      try {
+        const types = await laborTypeService.getAllLaborTypes();
+        setLaborTypes(types);
+        // Set default labor type if available
+        const defaultType = types.find(t => t.is_default) || types[0];
+        if (defaultType && !formData.labor_type_id) {
+          setFormData(prev => ({ ...prev, labor_type_id: defaultType.id }));
+        }
+      } catch (err) {
+        console.error('[ServiceTimeEntryModal] Error fetching labor types:', err);
+      }
+    };
+    fetchLaborTypes();
+  }, []);
 
   const isEditing = !!entry;
 
@@ -81,19 +102,22 @@ const ServiceTimeEntryModal = ({
         technician_name: entry.technician_name || '',
         work_date: formatDateInput(entry.check_in),
         hours: calculateHoursFromEntry(entry.check_in, entry.check_out),
+        labor_type_id: entry.labor_type_id || '',
         notes: entry.notes || ''
       });
     } else {
       // Default to current user and today
+      const defaultType = laborTypes.find(t => t.is_default) || laborTypes[0];
       setFormData({
         technician_email: currentUser?.email || '',
         technician_name: currentUser?.name || currentUser?.full_name || '',
         work_date: formatDateInput(new Date()),
         hours: 1,
+        labor_type_id: defaultType?.id || '',
         notes: ''
       });
     }
-  }, [entry, currentUser]);
+  }, [entry, currentUser, laborTypes]);
 
   // Publish modal state to AppState when open/closed
   useEffect(() => {
@@ -102,15 +126,16 @@ const ServiceTimeEntryModal = ({
         modal: {
           type: 'service-time-entry',
           title: isEditing ? 'Edit Time Entry' : 'Add Time Entry',
-          formFields: ['technician_email', 'work_date', 'hours', 'notes'],
-          currentValues: formData
+          formFields: ['technician_email', 'work_date', 'hours', 'labor_type_id', 'notes'],
+          currentValues: formData,
+          laborTypes: laborTypes.map(t => ({ id: t.id, label: t.label }))
         }
       });
     } else {
       // Clear modal state when closed
       publishState({ modal: null });
     }
-  }, [isOpen, isEditing, formData, publishState]);
+  }, [isOpen, isEditing, formData, laborTypes, publishState]);
 
   // Submit entry action handler
   const submitEntry = useCallback(async () => {
@@ -139,6 +164,7 @@ const ServiceTimeEntryModal = ({
         await serviceTimeService.updateTimeEntry(entry.id, {
           check_in: checkInDate.toISOString(),
           check_out: checkOutDate.toISOString(),
+          labor_type_id: data.labor_type_id || null,
           notes: data.notes || null
         });
       } else {
@@ -147,6 +173,7 @@ const ServiceTimeEntryModal = ({
           technician_name: data.technician_name,
           check_in: checkInDate.toISOString(),
           check_out: checkOutDate.toISOString(),
+          labor_type_id: data.labor_type_id || null,
           notes: data.notes || null,
           created_by_id: currentUser?.id,
           created_by_name: currentUser?.name || currentUser?.full_name
@@ -171,8 +198,8 @@ const ServiceTimeEntryModal = ({
 
     const actions = {
       set_field: ({ field, value }) => {
-        if (!['technician_email', 'work_date', 'hours', 'notes'].includes(field)) {
-          return { success: false, error: `Unknown field: ${field}. Available fields: technician_email, work_date, hours, notes` };
+        if (!['technician_email', 'work_date', 'hours', 'labor_type_id', 'notes'].includes(field)) {
+          return { success: false, error: `Unknown field: ${field}. Available fields: technician_email, work_date, hours, labor_type_id, notes` };
         }
         if (field === 'hours') {
           const numValue = parseFloat(value);
@@ -259,6 +286,7 @@ const ServiceTimeEntryModal = ({
         await serviceTimeService.updateTimeEntry(entry.id, {
           check_in: checkInDate.toISOString(),
           check_out: checkOutDate.toISOString(),
+          labor_type_id: formData.labor_type_id || null,
           notes: formData.notes || null
         });
       } else {
@@ -267,6 +295,7 @@ const ServiceTimeEntryModal = ({
           technician_name: formData.technician_name,
           check_in: checkInDate.toISOString(),
           check_out: checkOutDate.toISOString(),
+          labor_type_id: formData.labor_type_id || null,
           notes: formData.notes || null,
           created_by_id: currentUser?.id,
           created_by_name: currentUser?.name || currentUser?.full_name
@@ -361,6 +390,26 @@ const ServiceTimeEntryModal = ({
                 )}
               </select>
             )}
+          </div>
+
+          {/* Service Type (Labor Type) */}
+          <div>
+            <label className="text-sm text-zinc-400 mb-1 block flex items-center gap-2">
+              <Wrench size={14} />
+              Service Type
+            </label>
+            <select
+              value={formData.labor_type_id}
+              onChange={(e) => handleChange('labor_type_id', e.target.value)}
+              className="w-full px-3 py-2 bg-zinc-700 border border-zinc-600 rounded-lg text-white focus:outline-none focus:border-zinc-500"
+            >
+              <option value="">-- Select Service Type --</option>
+              {laborTypes.map(type => (
+                <option key={type.id} value={type.id}>
+                  {type.label} (${type.hourly_rate}/hr)
+                </option>
+              ))}
+            </select>
           </div>
 
           {/* Work Date */}
