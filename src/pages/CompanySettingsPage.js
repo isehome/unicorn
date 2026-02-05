@@ -12,13 +12,14 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  ArrowLeft, Building2, Briefcase, Calendar, Upload
+  ArrowLeft, Building2, Briefcase, Calendar, Upload, Wrench
 } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 import CompanySettingsManager from '../components/procurement/CompanySettingsManager';
 import HRPreferencesManager from '../components/Admin/HRPreferencesManager';
 import ReviewCyclesManager from '../components/Admin/ReviewCyclesManager';
 import ContactsImportManager from '../components/Admin/ContactsImportManager';
+import LaborTypesManager from '../components/Admin/LaborTypesManager';
 
 const CompanySettingsPage = () => {
   const navigate = useNavigate();
@@ -28,6 +29,7 @@ const CompanySettingsPage = () => {
   const tabs = [
     { id: 'company', label: 'Company', icon: Building2, description: 'Logo, name, contacts' },
     { id: 'hr', label: 'HR & PTO', icon: Briefcase, description: 'Time off policies, holidays' },
+    { id: 'labor', label: 'Labor Types', icon: Wrench, description: 'Service labor rates & types' },
     { id: 'reviews', label: 'Review Cycles', icon: Calendar, description: 'Performance review periods' },
     { id: 'import', label: 'Import Contacts', icon: Upload, description: 'CSV contact import' }
   ];
@@ -139,6 +141,25 @@ const CompanySettingsPage = () => {
               {activeTab === 'hr' && (
                 <div className="space-y-8">
                   <HRPreferencesManager />
+                </div>
+              )}
+
+              {activeTab === 'labor' && (
+                <div>
+                  <div className="flex items-center gap-3 mb-6">
+                    <div className="w-10 h-10 rounded-lg bg-lime-100 dark:bg-lime-900/30 flex items-center justify-center">
+                      <Wrench className="w-5 h-5 text-lime-600 dark:text-lime-400" />
+                    </div>
+                    <div>
+                      <h2 className={`text-lg font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                        Labor Types
+                      </h2>
+                      <p className={`text-sm ${isDark ? 'text-zinc-400' : 'text-gray-500'}`}>
+                        Manage service labor types and hourly rates
+                      </p>
+                    </div>
+                  </div>
+                  <LaborTypesManager />
                 </div>
               )}
 

@@ -211,10 +211,13 @@ export default async function handler(req, res) {
       });
     }
 
-    // Get time logs
+    // Get time logs with labor type details
     const { data: timeLogs } = await supabase
       .from('service_time_logs')
-      .select('*')
+      .select(`
+        *,
+        labor_type:labor_types(id, name, label, hourly_rate, qbo_item_name)
+      `)
       .eq('ticket_id', ticketId)
       .not('check_out', 'is', null);
 
@@ -250,6 +253,11 @@ export default async function handler(req, res) {
       const logHours = Math.round(logMinutes / 60 * 100) / 100;
 
       if (logHours > 0) {
+        // Use labor type rate if available, otherwise fall back to ticket rate
+        const laborType = log.labor_type;
+        const effectiveRate = laborType?.hourly_rate || hourlyRate;
+        const laborTypeLabel = laborType?.label || 'Service';
+
         // Format the date for display
         const visitDate = new Date(log.check_in).toLocaleDateString('en-US', {
           weekday: 'short',
@@ -258,30 +266,42 @@ export default async function handler(req, res) {
           year: 'numeric'
         });
 
-        // Build description with technician and date
+        // Build description with labor type, technician and date
         const techName = log.technician_name || log.technician_email || 'Technician';
-        const description = `Service Visit - ${visitDate} - ${techName} (${logHours}hrs)`;
+        const description = `${laborTypeLabel} - ${visitDate} - ${techName} (${logHours}hrs)`;
+
+        console.log(`[QBO] Labor line: ${laborTypeLabel} @ $${effectiveRate}/hr for ${logHours}hrs`);
 
         lineItems.push({
           DetailType: 'SalesItemLineDetail',
-          Amount: Math.round(logHours * hourlyRate * 100) / 100,
+          Amount: Math.round(logHours * effectiveRate * 100) / 100,
           Description: description,
           SalesItemLineDetail: {
             Qty: logHours,
-            UnitPrice: hourlyRate
+            UnitPrice: effectiveRate
           }
         });
       }
     });
 
-    // Parts lines
+    // Parts lines - include part number and manufacturer for better detail
     (parts || []).forEach(part => {
-      console.log(`[QBO] Part: ${part.name}, qty=${part.quantity_needed}, cost=${part.unit_cost}`);
+      console.log(`[QBO] Part: ${part.name}, part_number=${part.part_number}, manufacturer=${part.manufacturer}, qty=${part.quantity_needed}, cost=${part.unit_cost}`);
       if (part.quantity_needed > 0 && part.unit_cost > 0) {
+        // Build description with manufacturer and part number
+        let description = '';
+        if (part.manufacturer) {
+          description += part.manufacturer + ' ';
+        }
+        description += part.name || 'Parts';
+        if (part.part_number) {
+          description += ` (${part.part_number})`;
+        }
+
         lineItems.push({
           DetailType: 'SalesItemLineDetail',
           Amount: Math.round(part.quantity_needed * part.unit_cost * 100) / 100,
-          Description: part.name || 'Parts',
+          Description: description.trim(),
           SalesItemLineDetail: {
             Qty: part.quantity_needed,
             UnitPrice: part.unit_cost
