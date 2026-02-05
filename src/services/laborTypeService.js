@@ -3,7 +3,7 @@
  * Manages labor types for service ticket time tracking
  */
 
-import { supabase } from './supabase';
+import { supabase } from '../lib/supabase';
 
 export const laborTypeService = {
   /**

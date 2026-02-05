@@ -8883,3 +8883,118 @@ Created comprehensive documentation for the QuickBooks Online integration:
 
 ---
 
+
+## 2026-02-04 - Labor Types Management & QBO Invoice Field Mapping
+
+### Labor Types System
+
+Added a comprehensive labor types management system for tracking different service labor categories (Installation, Programming, Service, etc.) with individual hourly rates.
+
+#### Database Schema
+
+**New Table: `labor_types`**
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | UUID | Primary key |
+| `name` | TEXT | Machine name (unique) |
+| `label` | TEXT | Display name |
+| `description` | TEXT | Optional description |
+| `hourly_rate` | NUMERIC | Rate per hour (default $150) |
+| `qbo_item_name` | TEXT | QuickBooks item name for mapping |
+| `is_default` | BOOLEAN | Whether this is the default type |
+| `is_active` | BOOLEAN | Soft delete flag |
+| `sort_order` | INTEGER | Display order |
+
+**Default Labor Types:**
+- Service ($150/hr) - Default
+- Installation ($150/hr)
+- Programming ($175/hr)
+- Troubleshooting ($150/hr)
+- Consultation ($200/hr)
+- Training ($125/hr)
+
+**New Table: `qbo_item_mapping`**
+For linking local entities (labor types, parts categories) to QuickBooks Products/Services items.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | UUID | Primary key |
+| `entity_type` | TEXT | 'labor_type', 'parts_category', etc. |
+| `entity_id` | TEXT | Local entity ID or name |
+| `qbo_item_id` | TEXT | QuickBooks Item ID |
+| `qbo_item_name` | TEXT | QuickBooks Item name |
+
+**Modified Table: `service_time_logs`**
+Added `labor_type_id` column (nullable FK to labor_types) to associate time entries with specific labor types.
+
+#### Admin UI
+
+Added Labor Types tab in Company Settings (Admin → Company Settings → Labor Types):
+
+- View all labor types with rates
+- Add new labor types
+- Edit existing labor types (name, label, rate, QBO mapping)
+- Set default labor type
+- Soft delete/restore labor types
+- Reorder via sort_order
+
+**Files:**
+- `src/components/Admin/LaborTypesManager.js` - Admin component
+- `src/services/laborTypeService.js` - CRUD operations
+- `src/pages/CompanySettingsPage.js` - Added Labor Types tab
+
+### QuickBooks Invoice Field Mapping Improvements
+
+Enhanced the QBO invoice creation to include more detailed information:
+
+#### Labor Line Items
+
+**Before:** Generic "Service Visit" description
+```
+Service Visit - Thu, Feb 4, 2026 - John Smith (2hrs)
+```
+
+**After:** Labor type-specific with rate from labor_types table
+```
+Installation - Thu, Feb 4, 2026 - John Smith (2hrs)
+```
+
+- Uses labor type's `hourly_rate` if assigned, falls back to ticket rate
+- Uses labor type's `label` in description (e.g., "Installation", "Programming")
+
+#### Parts Line Items
+
+**Before:** Just part name
+```
+UDP-Pro
+```
+
+**After:** Manufacturer + Part Name + Part Number
+```
+Ubiquiti UDP-Pro (UDP-Pro-US)
+```
+
+Format: `{manufacturer} {name} ({part_number})`
+
+#### Files Modified
+
+| File | Changes |
+|------|---------|
+| `database/migrations/20260204_labor_types.sql` | New labor_types and qbo_item_mapping tables |
+| `src/services/laborTypeService.js` | New service for labor type CRUD |
+| `src/components/Admin/LaborTypesManager.js` | New admin component |
+| `src/pages/CompanySettingsPage.js` | Added Labor Types tab |
+| `api/qbo/create-invoice.js` | Enhanced field mapping for labor types and parts |
+
+#### Migration
+
+Run in Supabase SQL Editor:
+```sql
+-- See: database/migrations/20260204_labor_types.sql
+```
+
+### Pending Work
+
+- Update ServiceTimeTracker with labor type dropdown
+- Update ServiceTimeEntryModal with labor type field
+- Create QBO Items sync endpoint for mapping
