@@ -1170,10 +1170,16 @@ const ServiceTicketDetail = () => {
                       </a>
                     )}
                     {ticket.customer_address && (
-                      <div className="flex items-start gap-2 text-zinc-300 text-sm">
+                      <a
+                        href={`https://maps.apple.com/?q=${encodeURIComponent(ticket.customer_address)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-start gap-2 text-zinc-300 hover:text-white text-sm"
+                      >
                         <MapPin size={14} className="text-zinc-500 mt-0.5" />
-                        <span>{ticket.customer_address}</span>
-                      </div>
+                        <span className="underline underline-offset-2">{ticket.customer_address}</span>
+                        <ExternalLink size={12} className="text-zinc-500 mt-0.5 flex-shrink-0" />
+                      </a>
                     )}
                   </div>
                 )}
@@ -1800,19 +1806,31 @@ const ServiceTicketDetail = () => {
                     </a>
                   )}
                   {ticket.customer_address && (
-                    <div className="flex items-start gap-2 text-zinc-300">
+                    <a
+                      href={`https://maps.apple.com/?q=${encodeURIComponent(ticket.customer_address)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-start gap-2 text-zinc-300 hover:text-white"
+                    >
                       <MapPin size={16} className="text-zinc-500 mt-0.5" />
-                      <span>{ticket.customer_address}</span>
-                    </div>
+                      <span className="underline underline-offset-2">{ticket.customer_address}</span>
+                      <ExternalLink size={14} className="text-zinc-500 mt-0.5 flex-shrink-0" />
+                    </a>
                   )}
                   {ticket.service_address && ticket.service_address !== ticket.customer_address && (
-                    <div className="flex items-start gap-2 text-zinc-300">
+                    <a
+                      href={`https://maps.apple.com/?q=${encodeURIComponent(ticket.service_address)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-start gap-2 text-zinc-300 hover:text-white"
+                    >
                       <MapPin size={16} className="text-amber-500 mt-0.5" />
                       <div>
                         <span className="text-xs text-zinc-500 block">Service Address:</span>
-                        <span>{ticket.service_address}</span>
+                        <span className="underline underline-offset-2">{ticket.service_address}</span>
                       </div>
-                    </div>
+                      <ExternalLink size={14} className="text-zinc-500 mt-0.5 flex-shrink-0" />
+                    </a>
                   )}
                 </div>
               )}
