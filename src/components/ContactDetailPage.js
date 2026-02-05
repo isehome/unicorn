@@ -603,15 +603,24 @@ const ContactDetailPage = () => {
         {/* Contact Info Card */}
         <div className="rounded-2xl p-6" style={styles.card}>
           <div className="flex items-start gap-4">
-            <button
-              onClick={handleEditContact}
-              className="w-16 h-16 rounded-full flex items-center justify-center flex-shrink-0 transition-transform hover:scale-105 active:scale-95"
+            <div
+              className="w-16 h-16 rounded-full flex items-center justify-center flex-shrink-0"
               style={{ backgroundColor: contact?.is_internal ? `${palette.accent}20` : `${palette.success}20` }}
-              title="Edit contact"
             >
               <User className="w-8 h-8" style={{ color: contact?.is_internal ? palette.accent : palette.success }} />
-            </button>
+            </div>
             <div className="flex-1 min-w-0">
+              {/* Edit Button */}
+              <div className="flex justify-end mb-2 -mt-1 -mr-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  icon={Edit2}
+                  onClick={handleEditContact}
+                >
+                  Edit
+                </Button>
+              </div>
               <h2 className="text-xl font-bold" style={styles.textPrimary}>
                 {contact?.full_name || contact?.name || `${contact?.first_name} ${contact?.last_name}`}
               </h2>
