@@ -16,7 +16,6 @@ import {
   AlertCircle,
   DollarSign,
   Star,
-  GripVertical,
   RotateCcw
 } from 'lucide-react';
 
@@ -96,14 +95,12 @@ const LaborTypesManager = () => {
     setFormData(prev => ({
       ...prev,
       label,
-      // Auto-generate name slug if creating new
       name: editingType ? prev.name : label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')
     }));
   };
 
   // Handle save
   const handleSave = async () => {
-    // Validation
     if (!formData.label.trim()) {
       setError('Label is required');
       return;
@@ -174,265 +171,37 @@ const LaborTypesManager = () => {
     }
   };
 
-  // Styles
-  const styles = {
-    container: {
-      padding: '20px'
-    },
-    header: {
-      display: 'flex',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      marginBottom: '20px'
-    },
-    title: {
-      fontSize: '18px',
-      fontWeight: '600',
-      color: '#E5E5E5',
-      display: 'flex',
-      alignItems: 'center',
-      gap: '8px'
-    },
-    headerActions: {
-      display: 'flex',
-      gap: '12px',
-      alignItems: 'center'
-    },
-    checkbox: {
-      display: 'flex',
-      alignItems: 'center',
-      gap: '6px',
-      fontSize: '13px',
-      color: '#A3A3A3',
-      cursor: 'pointer'
-    },
-    addButton: {
-      display: 'flex',
-      alignItems: 'center',
-      gap: '6px',
-      padding: '8px 16px',
-      backgroundColor: '#94AF32',
-      color: '#1A1A1A',
-      border: 'none',
-      borderRadius: '6px',
-      fontSize: '14px',
-      fontWeight: '500',
-      cursor: 'pointer'
-    },
-    error: {
-      backgroundColor: 'rgba(239, 68, 68, 0.1)',
-      border: '1px solid rgba(239, 68, 68, 0.3)',
-      borderRadius: '8px',
-      padding: '12px 16px',
-      marginBottom: '16px',
-      display: 'flex',
-      alignItems: 'center',
-      gap: '8px',
-      color: '#EF4444'
-    },
-    table: {
-      width: '100%',
-      borderCollapse: 'collapse'
-    },
-    th: {
-      textAlign: 'left',
-      padding: '12px 16px',
-      borderBottom: '1px solid #333',
-      color: '#A3A3A3',
-      fontSize: '12px',
-      fontWeight: '600',
-      textTransform: 'uppercase'
-    },
-    td: {
-      padding: '12px 16px',
-      borderBottom: '1px solid #2A2A2A',
-      color: '#E5E5E5',
-      fontSize: '14px'
-    },
-    row: {
-      transition: 'background-color 0.2s'
-    },
-    rowInactive: {
-      opacity: 0.5
-    },
-    labelCell: {
-      display: 'flex',
-      alignItems: 'center',
-      gap: '8px'
-    },
-    defaultBadge: {
-      display: 'inline-flex',
-      alignItems: 'center',
-      gap: '4px',
-      padding: '2px 8px',
-      backgroundColor: 'rgba(148, 175, 50, 0.2)',
-      color: '#94AF32',
-      borderRadius: '4px',
-      fontSize: '11px',
-      fontWeight: '500'
-    },
-    rate: {
-      display: 'flex',
-      alignItems: 'center',
-      gap: '4px',
-      color: '#94AF32'
-    },
-    actions: {
-      display: 'flex',
-      gap: '8px'
-    },
-    actionButton: {
-      padding: '6px',
-      backgroundColor: 'transparent',
-      border: '1px solid #333',
-      borderRadius: '4px',
-      color: '#A3A3A3',
-      cursor: 'pointer',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center'
-    },
-    // Modal styles
-    modalOverlay: {
-      position: 'fixed',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      backgroundColor: 'rgba(0, 0, 0, 0.7)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      zIndex: 1000
-    },
-    modal: {
-      backgroundColor: '#1F1F1F',
-      borderRadius: '12px',
-      width: '100%',
-      maxWidth: '500px',
-      maxHeight: '90vh',
-      overflow: 'auto'
-    },
-    modalHeader: {
-      display: 'flex',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      padding: '16px 20px',
-      borderBottom: '1px solid #333'
-    },
-    modalTitle: {
-      fontSize: '16px',
-      fontWeight: '600',
-      color: '#E5E5E5'
-    },
-    closeButton: {
-      padding: '4px',
-      backgroundColor: 'transparent',
-      border: 'none',
-      color: '#A3A3A3',
-      cursor: 'pointer'
-    },
-    modalBody: {
-      padding: '20px'
-    },
-    formGroup: {
-      marginBottom: '16px'
-    },
-    label: {
-      display: 'block',
-      marginBottom: '6px',
-      fontSize: '13px',
-      fontWeight: '500',
-      color: '#A3A3A3'
-    },
-    input: {
-      width: '100%',
-      padding: '10px 12px',
-      backgroundColor: '#2A2A2A',
-      border: '1px solid #333',
-      borderRadius: '6px',
-      color: '#E5E5E5',
-      fontSize: '14px'
-    },
-    textarea: {
-      width: '100%',
-      padding: '10px 12px',
-      backgroundColor: '#2A2A2A',
-      border: '1px solid #333',
-      borderRadius: '6px',
-      color: '#E5E5E5',
-      fontSize: '14px',
-      minHeight: '80px',
-      resize: 'vertical'
-    },
-    checkboxGroup: {
-      display: 'flex',
-      alignItems: 'center',
-      gap: '8px'
-    },
-    modalFooter: {
-      display: 'flex',
-      justifyContent: 'flex-end',
-      gap: '12px',
-      padding: '16px 20px',
-      borderTop: '1px solid #333'
-    },
-    cancelButton: {
-      padding: '10px 20px',
-      backgroundColor: 'transparent',
-      border: '1px solid #333',
-      borderRadius: '6px',
-      color: '#A3A3A3',
-      fontSize: '14px',
-      cursor: 'pointer'
-    },
-    saveButton: {
-      display: 'flex',
-      alignItems: 'center',
-      gap: '6px',
-      padding: '10px 20px',
-      backgroundColor: '#94AF32',
-      border: 'none',
-      borderRadius: '6px',
-      color: '#1A1A1A',
-      fontSize: '14px',
-      fontWeight: '500',
-      cursor: 'pointer'
-    },
-    emptyState: {
-      textAlign: 'center',
-      padding: '40px',
-      color: '#A3A3A3'
-    }
-  };
-
   if (loading) {
     return (
-      <div style={{ ...styles.container, textAlign: 'center', padding: '40px' }}>
-        <Loader2 size={24} style={{ animation: 'spin 1s linear infinite' }} />
-        <p style={{ color: '#A3A3A3', marginTop: '12px' }}>Loading labor types...</p>
+      <div className="flex items-center justify-center p-8">
+        <Loader2 className="animate-spin text-zinc-400" size={24} />
+        <span className="ml-3 text-zinc-400">Loading labor types...</span>
       </div>
     );
   }
 
   return (
-    <div style={styles.container}>
+    <div className="space-y-4">
       {/* Header */}
-      <div style={styles.header}>
-        <div style={styles.title}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-lg font-semibold text-white flex items-center gap-2">
           <Wrench size={20} />
           Labor Types
-        </div>
-        <div style={styles.headerActions}>
-          <label style={styles.checkbox}>
+        </h2>
+        <div className="flex items-center gap-3">
+          <label className="flex items-center gap-2 text-sm text-zinc-400 cursor-pointer">
             <input
               type="checkbox"
               checked={showInactive}
               onChange={(e) => setShowInactive(e.target.checked)}
+              className="rounded border-zinc-600 bg-zinc-700 text-[#94AF32] focus:ring-[#94AF32]"
             />
             Show inactive
           </label>
-          <button style={styles.addButton} onClick={openCreateModal}>
+          <button
+            onClick={openCreateModal}
+            className="flex items-center gap-2 px-4 py-2 bg-[#94AF32] text-black rounded-lg font-medium hover:bg-[#a5c034] transition-colors"
+          >
             <Plus size={16} />
             Add Labor Type
           </button>
@@ -441,13 +210,10 @@ const LaborTypesManager = () => {
 
       {/* Error */}
       {error && (
-        <div style={styles.error}>
+        <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30 flex items-center gap-2 text-red-400">
           <AlertCircle size={16} />
-          {error}
-          <button
-            onClick={() => setError(null)}
-            style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#EF4444', cursor: 'pointer' }}
-          >
+          <span className="flex-1">{error}</span>
+          <button onClick={() => setError(null)} className="hover:text-red-300">
             <X size={16} />
           </button>
         </div>
@@ -455,200 +221,217 @@ const LaborTypesManager = () => {
 
       {/* Table */}
       {laborTypes.length === 0 ? (
-        <div style={styles.emptyState}>
-          <Wrench size={32} style={{ marginBottom: '12px', opacity: 0.5 }} />
+        <div className="text-center py-12 text-zinc-400">
+          <Wrench size={32} className="mx-auto mb-3 opacity-50" />
           <p>No labor types found</p>
-          <button style={{ ...styles.addButton, marginTop: '16px' }} onClick={openCreateModal}>
+          <button
+            onClick={openCreateModal}
+            className="mt-4 flex items-center gap-2 px-4 py-2 bg-[#94AF32] text-black rounded-lg font-medium mx-auto hover:bg-[#a5c034] transition-colors"
+          >
             <Plus size={16} />
             Create First Labor Type
           </button>
         </div>
       ) : (
-        <table style={styles.table}>
-          <thead>
-            <tr>
-              <th style={styles.th}>Label</th>
-              <th style={styles.th}>Name</th>
-              <th style={styles.th}>Hourly Rate</th>
-              <th style={styles.th}>QBO Item</th>
-              <th style={styles.th}>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {laborTypes.map((laborType) => (
-              <tr
-                key={laborType.id}
-                style={{
-                  ...styles.row,
-                  ...(laborType.is_active ? {} : styles.rowInactive)
-                }}
-              >
-                <td style={styles.td}>
-                  <div style={styles.labelCell}>
-                    {laborType.label}
-                    {laborType.is_default && (
-                      <span style={styles.defaultBadge}>
-                        <Star size={10} />
-                        Default
-                      </span>
-                    )}
-                  </div>
-                </td>
-                <td style={{ ...styles.td, color: '#71717A', fontFamily: 'monospace' }}>
-                  {laborType.name}
-                </td>
-                <td style={styles.td}>
-                  <span style={styles.rate}>
-                    <DollarSign size={14} />
-                    {laborType.hourly_rate}/hr
-                  </span>
-                </td>
-                <td style={{ ...styles.td, color: laborType.qbo_item_name ? '#E5E5E5' : '#71717A' }}>
-                  {laborType.qbo_item_name || '—'}
-                </td>
-                <td style={styles.td}>
-                  <div style={styles.actions}>
-                    {laborType.is_active ? (
-                      <>
-                        <button
-                          style={styles.actionButton}
-                          onClick={() => openEditModal(laborType)}
-                          title="Edit"
-                        >
-                          <Edit2 size={14} />
-                        </button>
-                        {!laborType.is_default && (
-                          <button
-                            style={styles.actionButton}
-                            onClick={() => handleSetDefault(laborType)}
-                            title="Set as default"
-                          >
-                            <Star size={14} />
-                          </button>
-                        )}
-                        <button
-                          style={{ ...styles.actionButton, borderColor: '#7F1D1D' }}
-                          onClick={() => handleDelete(laborType)}
-                          title="Deactivate"
-                        >
-                          <Trash2 size={14} color="#EF4444" />
-                        </button>
-                      </>
-                    ) : (
-                      <button
-                        style={styles.actionButton}
-                        onClick={() => handleRestore(laborType)}
-                        title="Restore"
-                      >
-                        <RotateCcw size={14} />
-                      </button>
-                    )}
-                  </div>
-                </td>
+        <div className="rounded-xl border border-zinc-700 overflow-hidden bg-zinc-800/50">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-zinc-700">
+                <th className="text-left px-4 py-3 text-xs font-semibold text-zinc-400 uppercase tracking-wider">Label</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-zinc-400 uppercase tracking-wider">Name</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-zinc-400 uppercase tracking-wider">Hourly Rate</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-zinc-400 uppercase tracking-wider">QBO Item</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-zinc-400 uppercase tracking-wider">Actions</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {laborTypes.map((laborType) => (
+                <tr
+                  key={laborType.id}
+                  className={`border-b border-zinc-700/50 hover:bg-zinc-700/30 transition-colors ${!laborType.is_active ? 'opacity-50' : ''}`}
+                >
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <span className="text-white">{laborType.label}</span>
+                      {laborType.is_default && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-[#94AF32]/20 text-[#94AF32] rounded text-xs font-medium">
+                          <Star size={10} />
+                          Default
+                        </span>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-zinc-500 font-mono text-sm">
+                    {laborType.name}
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className="flex items-center gap-1 text-[#94AF32]">
+                      <DollarSign size={14} />
+                      {laborType.hourly_rate}/hr
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-zinc-400">
+                    {laborType.qbo_item_name || '—'}
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      {laborType.is_active ? (
+                        <>
+                          <button
+                            onClick={() => openEditModal(laborType)}
+                            className="p-1.5 rounded border border-zinc-600 text-zinc-400 hover:text-white hover:border-zinc-500 transition-colors"
+                            title="Edit"
+                          >
+                            <Edit2 size={14} />
+                          </button>
+                          {!laborType.is_default && (
+                            <button
+                              onClick={() => handleSetDefault(laborType)}
+                              className="p-1.5 rounded border border-zinc-600 text-zinc-400 hover:text-[#94AF32] hover:border-[#94AF32] transition-colors"
+                              title="Set as default"
+                            >
+                              <Star size={14} />
+                            </button>
+                          )}
+                          <button
+                            onClick={() => handleDelete(laborType)}
+                            className="p-1.5 rounded border border-red-900/50 text-red-400 hover:text-red-300 hover:border-red-700 transition-colors"
+                            title="Deactivate"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          onClick={() => handleRestore(laborType)}
+                          className="p-1.5 rounded border border-zinc-600 text-zinc-400 hover:text-white hover:border-zinc-500 transition-colors"
+                          title="Restore"
+                        >
+                          <RotateCcw size={14} />
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
 
       {/* Create/Edit Modal */}
       {showCreateModal && (
-        <div style={styles.modalOverlay} onClick={() => setShowCreateModal(false)}>
-          <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
-            <div style={styles.modalHeader}>
-              <span style={styles.modalTitle}>
+        <div
+          className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4"
+          onClick={() => setShowCreateModal(false)}
+        >
+          <div
+            className="bg-zinc-800 rounded-xl w-full max-w-lg max-h-[90vh] overflow-auto border border-zinc-700"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-700">
+              <h3 className="text-lg font-semibold text-white">
                 {editingType ? 'Edit Labor Type' : 'Add Labor Type'}
-              </span>
-              <button style={styles.closeButton} onClick={() => setShowCreateModal(false)}>
+              </h3>
+              <button
+                onClick={() => setShowCreateModal(false)}
+                className="text-zinc-400 hover:text-white transition-colors"
+              >
                 <X size={20} />
               </button>
             </div>
 
-            <div style={styles.modalBody}>
-              <div style={styles.formGroup}>
-                <label style={styles.label}>Label *</label>
+            {/* Modal Body */}
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-zinc-400 mb-1.5">Label *</label>
                 <input
                   type="text"
-                  style={styles.input}
                   value={formData.label}
                   onChange={(e) => handleLabelChange(e.target.value)}
                   placeholder="e.g., Installation"
+                  className="w-full px-3 py-2 bg-zinc-700 border border-zinc-600 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-zinc-500"
                 />
               </div>
 
-              <div style={styles.formGroup}>
-                <label style={styles.label}>Name Slug *</label>
+              <div>
+                <label className="block text-sm font-medium text-zinc-400 mb-1.5">Name Slug *</label>
                 <input
                   type="text"
-                  style={{ ...styles.input, fontFamily: 'monospace' }}
                   value={formData.name}
                   onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
                   placeholder="e.g., install"
                   disabled={!!editingType}
+                  className="w-full px-3 py-2 bg-zinc-700 border border-zinc-600 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-zinc-500 font-mono disabled:opacity-50 disabled:cursor-not-allowed"
                 />
-                <small style={{ color: '#71717A', fontSize: '11px' }}>
-                  Unique identifier (auto-generated from label)
-                </small>
+                <p className="text-xs text-zinc-500 mt-1">Unique identifier (auto-generated from label)</p>
               </div>
 
-              <div style={styles.formGroup}>
-                <label style={styles.label}>Description</label>
+              <div>
+                <label className="block text-sm font-medium text-zinc-400 mb-1.5">Description</label>
                 <textarea
-                  style={styles.textarea}
                   value={formData.description}
                   onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
                   placeholder="Brief description of this labor type"
+                  rows={2}
+                  className="w-full px-3 py-2 bg-zinc-700 border border-zinc-600 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-zinc-500 resize-none"
                 />
               </div>
 
-              <div style={styles.formGroup}>
-                <label style={styles.label}>Hourly Rate ($) *</label>
+              <div>
+                <label className="block text-sm font-medium text-zinc-400 mb-1.5">Hourly Rate ($) *</label>
                 <input
                   type="number"
-                  style={styles.input}
                   value={formData.hourly_rate}
                   onChange={(e) => setFormData(prev => ({ ...prev, hourly_rate: parseFloat(e.target.value) || 0 }))}
                   min="0"
                   step="5"
+                  className="w-full px-3 py-2 bg-zinc-700 border border-zinc-600 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-zinc-500"
                 />
               </div>
 
-              <div style={styles.formGroup}>
-                <label style={styles.label}>QuickBooks Item Name</label>
+              <div>
+                <label className="block text-sm font-medium text-zinc-400 mb-1.5">QuickBooks Item Name</label>
                 <input
                   type="text"
-                  style={styles.input}
                   value={formData.qbo_item_name}
                   onChange={(e) => setFormData(prev => ({ ...prev, qbo_item_name: e.target.value }))}
                   placeholder="e.g., Installation Labor"
+                  className="w-full px-3 py-2 bg-zinc-700 border border-zinc-600 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-zinc-500"
                 />
-                <small style={{ color: '#71717A', fontSize: '11px' }}>
-                  Name of the Product/Service in QuickBooks
-                </small>
+                <p className="text-xs text-zinc-500 mt-1">Name of the Product/Service in QuickBooks</p>
               </div>
 
-              <div style={styles.formGroup}>
-                <label style={styles.checkboxGroup}>
+              <div>
+                <label className="flex items-center gap-2 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={formData.is_default}
                     onChange={(e) => setFormData(prev => ({ ...prev, is_default: e.target.checked }))}
+                    className="rounded border-zinc-600 bg-zinc-700 text-[#94AF32] focus:ring-[#94AF32]"
                   />
-                  <span style={{ color: '#E5E5E5', fontSize: '14px' }}>
-                    Set as default labor type
-                  </span>
+                  <span className="text-white text-sm">Set as default labor type</span>
                 </label>
               </div>
             </div>
 
-            <div style={styles.modalFooter}>
-              <button style={styles.cancelButton} onClick={() => setShowCreateModal(false)}>
+            {/* Modal Footer */}
+            <div className="flex items-center justify-end gap-3 px-5 py-4 border-t border-zinc-700">
+              <button
+                onClick={() => setShowCreateModal(false)}
+                className="px-4 py-2 text-zinc-400 hover:text-white transition-colors"
+              >
                 Cancel
               </button>
-              <button style={styles.saveButton} onClick={handleSave} disabled={saving}>
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                className="flex items-center gap-2 px-4 py-2 bg-[#94AF32] text-black rounded-lg font-medium hover:bg-[#a5c034] transition-colors disabled:opacity-50"
+              >
                 {saving ? (
                   <>
-                    <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />
+                    <Loader2 size={16} className="animate-spin" />
                     Saving...
                   </>
                 ) : (
