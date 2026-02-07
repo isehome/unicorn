@@ -26,6 +26,10 @@
       "schedule": "*/3 * * * *"
     },
     {
+      "path": "/api/cron/close-fixed-bugs",
+      "schedule": "*/10 * * * *"
+    },
+    {
       "path": "/api/cron/enrich-parts",
       "schedule": "0 5 * * *"
     }

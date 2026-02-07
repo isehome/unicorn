@@ -100,23 +100,28 @@ module.exports = async (req, res) => {
           await deleteBugReport(bug.bug_report_id, bug.md_file_path, bug.pr_number);
         } catch (githubError) {
           console.warn('[BugDelete] GitHub cleanup failed:', githubError.message);
-          // Continue with DB deletion even if GitHub fails
+          // Continue with DB update even if GitHub fails
         }
       }
 
-      // Delete from database
-      const { error: deleteError } = await supabase
+      // Mark as fixed in database (preserve record for tracking instead of hard delete)
+      const { error: updateError } = await supabase
         .from('bug_reports')
-        .delete()
+        .update({
+          status: 'fixed',
+          fixed_at: new Date().toISOString(),
+          auto_closed: false,
+          fix_detection_log: [{ type: 'manual', timestamp: new Date().toISOString() }]
+        })
         .eq('id', id);
 
-      if (deleteError) {
-        throw deleteError;
+      if (updateError) {
+        throw updateError;
       }
 
       return res.json({
         success: true,
-        message: 'Bug report deleted',
+        message: 'Bug report marked as fixed',
         bugId: bug.bug_report_id
       });
     }
