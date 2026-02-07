@@ -295,8 +295,10 @@ const SkillReviewPanel = ({
   }, [cycle?.id, targetEmployeeId, targetManagerId, managerReviews, mode, readOnly, isSubmitted]);
 
   // Toggle development goal
+  // Development Focus goals can be modified even after submission
+  // (goals are separate from review ratings and may need adjustment post-review)
   const handleToggleGoal = useCallback(async (skillId) => {
-    if (mode !== 'manager' || readOnly || isSubmitted) return;
+    if (mode !== 'manager' || readOnly) return;
 
     const isGoal = developmentGoals.has(skillId);
 
@@ -345,7 +347,7 @@ const SkillReviewPanel = ({
         return newSet;
       });
     }
-  }, [cycle?.id, targetEmployeeId, targetManagerId, developmentGoals, mode, readOnly, isSubmitted]);
+  }, [cycle?.id, targetEmployeeId, targetManagerId, developmentGoals, mode, readOnly]);
 
   // Submit evaluations
   const handleSubmit = useCallback(async () => {
@@ -522,137 +524,252 @@ const SkillReviewPanel = ({
                       {/* Skills Table */}
                       {isClassExpanded && (
                         <div className="px-4 pb-3">
-                          {/* Table Header */}
-                          <div className="flex items-center gap-2 py-2 text-xs font-medium text-zinc-500 dark:text-zinc-400 border-b border-zinc-100 dark:border-zinc-700">
-                            <div className="flex-1 pl-8">Skill</div>
-                            {mode === 'manager' && (
-                              <div className="w-10 text-center" title="Mark as development focus">
-                                <Target size={14} className="mx-auto text-violet-500" />
-                              </div>
+                          {/* Mobile Layout - Stacked cards for each skill */}
+                          <div className="md:hidden space-y-3 pt-2">
+                            {clsSkills.map(skill => {
+                              const selfRating = getCurrentSelfRating(skill.id);
+                              const mgrRating = managerReviews[skill.id]?.rating || 'none';
+                              const prevMgrRating = previousManagerRatings[skill.id];
+                              const isGoal = developmentGoals.has(skill.id);
+                              const trainingUrls = skill.training_urls || [];
+                              const hasChanged = mode === 'manager' && prevMgrRating && mgrRating !== 'none' && prevMgrRating !== mgrRating;
+
+                              let rowBg = '';
+                              if (isGoal) {
+                                rowBg = 'bg-violet-50 dark:bg-violet-900/20';
+                              } else if (hasChanged) {
+                                rowBg = 'bg-amber-50 dark:bg-amber-900/10';
+                              }
+
+                              return (
+                                <div
+                                  key={skill.id}
+                                  className={`p-3 rounded-lg border border-zinc-100 dark:border-zinc-700 ${rowBg}`}
+                                >
+                                  {/* Skill Name Row */}
+                                  <div className="flex items-start justify-between gap-2 mb-3">
+                                    <div className="flex-1">
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        <h4 className="font-medium text-zinc-900 dark:text-white">
+                                          {skill.name}
+                                        </h4>
+                                        {hasChanged && (
+                                          <AlertTriangle size={14} className="text-amber-500" title="Changed from last review" />
+                                        )}
+                                        {isGoal && (
+                                          <Target size={14} className="text-violet-500" title="Development focus" />
+                                        )}
+                                      </div>
+                                      {skill.description && (
+                                        <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+                                          {skill.description}
+                                        </p>
+                                      )}
+                                    </div>
+                                    {trainingUrls.length > 0 && (
+                                      <a
+                                        href={trainingUrls[0]}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="p-2 rounded-lg text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/30"
+                                        title="Training"
+                                      >
+                                        <GraduationCap size={16} />
+                                      </a>
+                                    )}
+                                  </div>
+
+                                  {/* Ratings Row - Stacked on mobile */}
+                                  <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                      <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-1.5">
+                                        {mode === 'self' ? 'Your Rating' : 'Employee'}
+                                      </p>
+                                      <SkillRatingPicker
+                                        value={selfRating}
+                                        onChange={(r) => handleSelfRatingChange(skill.id, r)}
+                                        disabled={mode !== 'self' || readOnly || isSubmitted || saving[skill.id]}
+                                        size="sm"
+                                        showLabels={false}
+                                      />
+                                    </div>
+                                    <div>
+                                      <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-1.5">Manager</p>
+                                      <SkillRatingPicker
+                                        value={mgrRating}
+                                        onChange={(r) => handleManagerRatingChange(skill.id, r)}
+                                        disabled={mode !== 'manager' || readOnly || isSubmitted || saving[`mgr_${skill.id}`]}
+                                        size="sm"
+                                        showLabels={false}
+                                      />
+                                    </div>
+                                  </div>
+
+                                  {/* Development Focus Checkbox (Manager only) */}
+                                  {mode === 'manager' && (
+                                    <div className="mt-3 pt-2 border-t border-zinc-100 dark:border-zinc-700">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleToggleGoal(skill.id)}
+                                        disabled={readOnly}
+                                        className={`
+                                          flex items-center gap-2 px-3 py-2 rounded-lg text-sm w-full
+                                          min-h-[44px] transition-colors
+                                          ${isGoal
+                                            ? 'bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-400'
+                                            : 'bg-zinc-100 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-400'
+                                          }
+                                          ${readOnly ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
+                                        `}
+                                      >
+                                        <Target size={16} className={isGoal ? 'text-violet-500' : 'text-zinc-400'} />
+                                        {isGoal ? 'Development Focus' : 'Mark as Development Focus'}
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+
+                            {clsSkills.length === 0 && (
+                              <p className="text-sm text-zinc-400 italic py-2">No skills in this class</p>
                             )}
-                            <div className="w-44 text-center">
-                              {mode === 'self' ? 'Your Rating' : 'Employee'}
-                            </div>
-                            <div className="w-44 text-center">Manager</div>
-                            <div className="w-10 text-center" title="Training link">
-                              <GraduationCap size={14} className="mx-auto text-blue-500" />
-                            </div>
                           </div>
 
-                          {/* Skill Rows */}
-                          {clsSkills.map(skill => {
-                            const selfRating = getCurrentSelfRating(skill.id);
-                            const mgrRating = managerReviews[skill.id]?.rating || 'none';
-                            const prevMgrRating = previousManagerRatings[skill.id];
-                            const isGoal = developmentGoals.has(skill.id);
-                            const trainingUrls = skill.training_urls || [];
-
-                            // Determine if this skill changed from last review (for manager view)
-                            const hasChanged = mode === 'manager' && prevMgrRating && mgrRating !== 'none' && prevMgrRating !== mgrRating;
-
-                            // Row styling
-                            let rowBg = '';
-                            if (isGoal) {
-                              rowBg = 'bg-violet-50 dark:bg-violet-900/20';
-                            } else if (hasChanged) {
-                              rowBg = 'bg-amber-50 dark:bg-amber-900/10';
-                            }
-
-                            return (
-                              <div
-                                key={skill.id}
-                                className={`flex items-center gap-2 py-2.5 px-2 rounded-lg hover:bg-zinc-50 dark:hover:bg-zinc-700/30 ${rowBg}`}
-                              >
-                                {/* Skill Name */}
-                                <div className="flex-1 min-w-0 pl-6">
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-sm text-zinc-900 dark:text-white truncate" title={skill.name}>
-                                      {skill.name}
-                                    </span>
-                                    {hasChanged && (
-                                      <AlertTriangle size={14} className="text-amber-500 flex-shrink-0" title="Changed from last review" />
-                                    )}
-                                    {isGoal && (
-                                      <Target size={14} className="text-violet-500 flex-shrink-0" title="Development focus" />
-                                    )}
-                                  </div>
-                                  {skill.description && (
-                                    <p className="text-xs text-zinc-500 dark:text-zinc-400 truncate" title={skill.description}>
-                                      {skill.description}
-                                    </p>
-                                  )}
+                          {/* Desktop Layout - Table format */}
+                          <div className="hidden md:block">
+                            {/* Table Header */}
+                            <div className="flex items-center gap-2 py-2 text-xs font-medium text-zinc-500 dark:text-zinc-400 border-b border-zinc-100 dark:border-zinc-700">
+                              <div className="flex-1 pl-8">Skill</div>
+                              {mode === 'manager' && (
+                                <div className="w-10 text-center" title="Mark as development focus">
+                                  <Target size={14} className="mx-auto text-violet-500" />
                                 </div>
-
-                                {/* Development Goal Checkbox (Manager only) */}
-                                {mode === 'manager' && (
-                                  <div className="w-10 flex justify-center">
-                                    <button
-                                      type="button"
-                                      onClick={() => handleToggleGoal(skill.id)}
-                                      disabled={readOnly || isSubmitted}
-                                      className={`
-                                        w-6 h-6 rounded border-2 flex items-center justify-center
-                                        min-h-[44px] min-w-[44px] transition-colors
-                                        ${isGoal
-                                          ? 'bg-violet-500 border-violet-500 text-white'
-                                          : 'border-zinc-300 dark:border-zinc-600 hover:border-violet-400'
-                                        }
-                                        ${(readOnly || isSubmitted) ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
-                                      `}
-                                      title={isGoal ? 'Remove from development focus' : 'Add to development focus'}
-                                    >
-                                      {isGoal && <CheckCircle size={14} />}
-                                    </button>
-                                  </div>
-                                )}
-
-                                {/* Self/Employee Rating - Always show icon picker */}
-                                <div className="w-44 flex justify-center">
-                                  <SkillRatingPicker
-                                    value={selfRating}
-                                    onChange={(r) => handleSelfRatingChange(skill.id, r)}
-                                    disabled={mode !== 'self' || readOnly || isSubmitted || saving[skill.id]}
-                                    size="sm"
-                                    showLabels={false}
-                                  />
-                                </div>
-
-                                {/* Manager Rating - Always show for both modes */}
-                                <div className="w-44 flex justify-center">
-                                  <SkillRatingPicker
-                                    value={mgrRating}
-                                    onChange={(r) => handleManagerRatingChange(skill.id, r)}
-                                    disabled={mode !== 'manager' || readOnly || isSubmitted || saving[`mgr_${skill.id}`]}
-                                    size="sm"
-                                    showLabels={false}
-                                  />
-                                </div>
-
-                                {/* Training Link */}
-                                <div className="w-10 flex justify-center">
-                                  {trainingUrls.length > 0 ? (
-                                    <a
-                                      href={trainingUrls[0]}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="p-2 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 text-blue-500 min-h-[44px] min-w-[44px] flex items-center justify-center"
-                                      title="Open training materials"
-                                    >
-                                      <ExternalLink size={16} />
-                                    </a>
-                                  ) : (
-                                    <span className="text-zinc-300 dark:text-zinc-600" title="No training link">
-                                      <ExternalLink size={16} />
-                                    </span>
-                                  )}
-                                </div>
+                              )}
+                              <div className="w-44 text-center">
+                                {mode === 'self' ? 'Your Rating' : 'Employee'}
                               </div>
-                            );
-                          })}
+                              <div className="w-44 text-center">Manager</div>
+                              <div className="w-10 text-center" title="Training link">
+                                <GraduationCap size={14} className="mx-auto text-blue-500" />
+                              </div>
+                            </div>
 
-                          {clsSkills.length === 0 && (
-                            <p className="text-sm text-zinc-400 italic py-2 pl-8">No skills in this class</p>
-                          )}
+                            {/* Skill Rows */}
+                            {clsSkills.map(skill => {
+                              const selfRating = getCurrentSelfRating(skill.id);
+                              const mgrRating = managerReviews[skill.id]?.rating || 'none';
+                              const prevMgrRating = previousManagerRatings[skill.id];
+                              const isGoal = developmentGoals.has(skill.id);
+                              const trainingUrls = skill.training_urls || [];
+
+                              // Determine if this skill changed from last review (for manager view)
+                              const hasChanged = mode === 'manager' && prevMgrRating && mgrRating !== 'none' && prevMgrRating !== mgrRating;
+
+                              // Row styling
+                              let rowBg = '';
+                              if (isGoal) {
+                                rowBg = 'bg-violet-50 dark:bg-violet-900/20';
+                              } else if (hasChanged) {
+                                rowBg = 'bg-amber-50 dark:bg-amber-900/10';
+                              }
+
+                              return (
+                                <div
+                                  key={skill.id}
+                                  className={`flex items-center gap-2 py-2.5 px-2 rounded-lg hover:bg-zinc-50 dark:hover:bg-zinc-700/30 ${rowBg}`}
+                                >
+                                  {/* Skill Name */}
+                                  <div className="flex-1 min-w-0 pl-6">
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-sm text-zinc-900 dark:text-white truncate" title={skill.name}>
+                                        {skill.name}
+                                      </span>
+                                      {hasChanged && (
+                                        <AlertTriangle size={14} className="text-amber-500 flex-shrink-0" title="Changed from last review" />
+                                      )}
+                                      {isGoal && (
+                                        <Target size={14} className="text-violet-500 flex-shrink-0" title="Development focus" />
+                                      )}
+                                    </div>
+                                    {skill.description && (
+                                      <p className="text-xs text-zinc-500 dark:text-zinc-400 truncate" title={skill.description}>
+                                        {skill.description}
+                                      </p>
+                                    )}
+                                  </div>
+
+                                  {/* Development Goal Checkbox (Manager only) */}
+                                  {mode === 'manager' && (
+                                    <div className="w-10 flex justify-center">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleToggleGoal(skill.id)}
+                                        disabled={readOnly}
+                                        className={`
+                                          w-6 h-6 rounded border-2 flex items-center justify-center
+                                          min-h-[44px] min-w-[44px] transition-colors
+                                          ${isGoal
+                                            ? 'bg-violet-500 border-violet-500 text-white'
+                                            : 'border-zinc-300 dark:border-zinc-600 hover:border-violet-400'
+                                          }
+                                          ${readOnly ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
+                                        `}
+                                        title={isGoal ? 'Remove from development focus' : 'Add to development focus'}
+                                      >
+                                        {isGoal && <CheckCircle size={14} />}
+                                      </button>
+                                    </div>
+                                  )}
+
+                                  {/* Self/Employee Rating - Always show icon picker */}
+                                  <div className="w-44 flex justify-center">
+                                    <SkillRatingPicker
+                                      value={selfRating}
+                                      onChange={(r) => handleSelfRatingChange(skill.id, r)}
+                                      disabled={mode !== 'self' || readOnly || isSubmitted || saving[skill.id]}
+                                      size="sm"
+                                      showLabels={false}
+                                    />
+                                  </div>
+
+                                  {/* Manager Rating - Always show for both modes */}
+                                  <div className="w-44 flex justify-center">
+                                    <SkillRatingPicker
+                                      value={mgrRating}
+                                      onChange={(r) => handleManagerRatingChange(skill.id, r)}
+                                      disabled={mode !== 'manager' || readOnly || isSubmitted || saving[`mgr_${skill.id}`]}
+                                      size="sm"
+                                      showLabels={false}
+                                    />
+                                  </div>
+
+                                  {/* Training Link */}
+                                  <div className="w-10 flex justify-center">
+                                    {trainingUrls.length > 0 ? (
+                                      <a
+                                        href={trainingUrls[0]}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="p-2 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 text-blue-500 min-h-[44px] min-w-[44px] flex items-center justify-center"
+                                        title="Open training materials"
+                                      >
+                                        <ExternalLink size={16} />
+                                      </a>
+                                    ) : (
+                                      <span className="text-zinc-300 dark:text-zinc-600" title="No training link">
+                                        <ExternalLink size={16} />
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+
+                            {clsSkills.length === 0 && (
+                              <p className="text-sm text-zinc-400 italic py-2 pl-8">No skills in this class</p>
+                            )}
+                          </div>
                         </div>
                       )}
                     </div>

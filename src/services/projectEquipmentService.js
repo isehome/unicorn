@@ -1422,7 +1422,10 @@ export const projectEquipmentService = {
       .eq('project_id', projectId)
       .order('name', { ascending: true });
 
-    if (error) throw error;
+    if (error) {
+      console.error('[ProjectEquipmentService] fetchProjectEquipment error:', error.message, error.details, error.hint);
+      throw new Error(error.message || 'Failed to load equipment list');
+    }
     return data || [];
   },
 

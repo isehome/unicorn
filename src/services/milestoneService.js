@@ -224,7 +224,7 @@ class MilestoneService {
 
       return { percentage, partsReceived, totalParts: totalPartsRequired };
     } catch (error) {
-      console.error('Error calculating prewire receiving percentage:', error);
+      console.error('Error calculating prewire receiving percentage:', error?.message || error);
       return { percentage: 0, partsReceived: 0, totalParts: 0 };
     }
   }
