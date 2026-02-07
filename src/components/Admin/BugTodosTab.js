@@ -16,7 +16,7 @@ const BugTodosTab = () => {
   const { mode } = useTheme();
 
   const [bugs, setBugs] = useState([]);
-  const [stats, setStats] = useState({ pending: 0, processing: 0, analyzed: 0, failed: 0, total: 0 });
+  const [stats, setStats] = useState({ pending: 0, processing: 0, analyzed: 0, pending_review: 0, failed: 0, total: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [filter, setFilter] = useState('all');
@@ -26,6 +26,7 @@ const BugTodosTab = () => {
   const [bugDetails, setBugDetails] = useState({});
   const [loadingDetails, setLoadingDetails] = useState({});
   const [deleteConfirm, setDeleteConfirm] = useState(null); // Bug ID to confirm deletion
+  const [fixDetailsBug, setFixDetailsBug] = useState(null); // Bug to show fix details modal
 
   // Styles
   const textPrimary = mode === 'dark' ? 'text-white' : 'text-gray-900';
@@ -48,6 +49,7 @@ const BugTodosTab = () => {
     pending: 'bg-yellow-500/10 text-yellow-600 border-yellow-500/30',
     processing: 'bg-blue-500/10 text-blue-500 border-blue-500/30',
     analyzed: '', // Uses inline styles for brand olive color
+    pending_review: '', // Uses inline styles for brand olive color
     failed: 'bg-red-500/10 text-red-500 border-red-500/30'
   };
 
@@ -263,65 +265,126 @@ const BugTodosTab = () => {
   /**
    * Generate complete bug report markdown (like the email format)
    * This includes ALL data for pasting into AI assistants
+   *
+   * IMPORTANT: Uses "injected instruction" format - proven more effective in testing.
+   * Directive instructions go at the TOP to ensure AI follows them.
    */
   const generateCompleteBugReport = (bug, screenshotUrl) => {
     const lines = [];
 
-    // Header
+    // ============================================================
+    // INJECTED INSTRUCTIONS - AT THE TOP FOR MAXIMUM EFFECTIVENESS
+    // ============================================================
     lines.push(`# Bug Report: ${bug.bug_report_id || 'Bug Report'}`);
     lines.push('');
-
-    // App Context - Brief primer for AI assistants
-    lines.push(`## App Context`);
-    lines.push(`This is the **Unicorn** app - a React-based field operations management system.`);
-    lines.push(`- **Stack:** React 18, Supabase (PostgreSQL), Vercel serverless functions`);
-    lines.push(`- **UI:** Tailwind CSS, Lucide icons, dark/light mode support`);
-    lines.push(`- **Key patterns:** Service-based architecture, React hooks, async/await`);
-    lines.push(`- **Repo:** https://github.com/isehome/unicorn`);
+    lines.push(`## STOP - READ THIS BEFORE DOING ANYTHING`);
+    lines.push('');
+    lines.push(`You are fixing this bug. There is a suggested fix from Gemini AI below,`);
+    lines.push(`but **you MUST complete your own independent analysis FIRST.**`);
+    lines.push('');
+    lines.push(`**DO NOT scroll down to the "AI Analysis" section yet.**`);
+    lines.push('');
+    lines.push(`### STEP 1: YOUR INDEPENDENT ANALYSIS (DO THIS NOW)`);
+    lines.push('');
+    lines.push(`Based ONLY on the information in sections 1-4 below, answer these questions:`);
+    lines.push('');
+    lines.push(`1. **What is the user trying to do?** (Read their description)`);
+    lines.push(`2. **What files are likely involved?** (Check the Page URL and search the codebase)`);
+    lines.push(`3. **What is likely broken?** (Look at console errors + screenshot)`);
+    lines.push(`4. **What is your proposed fix?** (Write it down BEFORE looking at the AI suggestion)`);
+    lines.push('');
+    lines.push(`**Write your answers above before proceeding.**`);
+    lines.push('');
+    lines.push(`---`);
     lines.push('');
 
-    // Metadata
-    lines.push(`## Bug Details`);
+    // ============================================================
+    // SECTION 1: BUG CONTEXT (for independent analysis)
+    // ============================================================
+    lines.push(`## 1. Bug Context`);
+    lines.push('');
     lines.push(`| Field | Value |`);
     lines.push(`|-------|-------|`);
+    lines.push(`| **Bug ID** | ${bug.bug_report_id || bug.id} |`);
     lines.push(`| **Severity** | ${(bug.ai_severity || 'unknown').toUpperCase()} |`);
-    lines.push(`| **Status** | ${bug.status} |`);
-    lines.push(`| **Reported** | ${formatDate(bug.created_at)} |`);
-    lines.push(`| **Reporter** | ${bug.reported_by_name || 'Anonymous'} (${bug.reported_by_email || 'No email'}) |`);
     lines.push(`| **Page URL** | ${bug.url || 'N/A'} |`);
+    lines.push(`| **Reporter** | ${bug.reported_by_name || 'Anonymous'} |`);
+    lines.push(`| **Reported** | ${formatDate(bug.created_at)} |`);
     lines.push('');
 
-    // AI Summary
+    // App context
+    lines.push(`**App:** Unicorn (React 18 + Supabase + Vercel serverless)`);
+    lines.push(`**Repo:** https://github.com/isehome/unicorn`);
+    lines.push('');
+
+    // ============================================================
+    // SECTION 2: USER DESCRIPTION
+    // ============================================================
+    lines.push(`## 2. User Description`);
+    lines.push('');
+    lines.push(`> ${(bug.description || 'No description provided').split('\n').join('\n> ')}`);
+    lines.push('');
+
+    // ============================================================
+    // SECTION 3: CONSOLE ERRORS
+    // ============================================================
+    lines.push(`## 3. Console Errors`);
+    lines.push('');
+    if (bug.console_errors?.length > 0) {
+      lines.push('```');
+      lines.push(bug.console_errors.join('\n\n'));
+      lines.push('```');
+    } else {
+      lines.push('*No console errors captured*');
+    }
+    lines.push('');
+
+    // ============================================================
+    // SECTION 4: SCREENSHOT
+    // ============================================================
+    lines.push(`## 4. Screenshot`);
+    lines.push('');
+    if (screenshotUrl) {
+      lines.push(`![Bug Screenshot](${screenshotUrl})`);
+    } else {
+      lines.push('*No screenshot available*');
+    }
+    lines.push('');
+
+    // ============================================================
+    // CHECKPOINT - Ensure independent analysis is complete
+    // ============================================================
+    lines.push(`---`);
+    lines.push('');
+    lines.push(`### CHECKPOINT: Did you complete Step 1?`);
+    lines.push('');
+    lines.push(`Before proceeding, confirm you have written down:`);
+    lines.push(`- [ ] What the user is trying to do`);
+    lines.push(`- [ ] Which files are likely involved`);
+    lines.push(`- [ ] What you think is broken`);
+    lines.push(`- [ ] Your proposed fix`);
+    lines.push('');
+    lines.push(`**Only after completing the above, proceed to Step 2.**`);
+    lines.push('');
+    lines.push(`---`);
+    lines.push('');
+
+    // ============================================================
+    // SECTION 5: AI ANALYSIS (revealed after independent analysis)
+    // ============================================================
+    lines.push(`## 5. AI Analysis (from Gemini)`);
+    lines.push('');
+    lines.push(`> **Now compare your analysis with Gemini's suggestion below.**`);
+    lines.push('');
+
     if (bug.ai_summary) {
-      lines.push(`## Summary`);
+      lines.push(`### Summary`);
       lines.push(bug.ai_summary);
       lines.push('');
     }
 
-    // User Description
-    lines.push(`## User Description`);
-    lines.push(bug.description || 'No description provided');
-    lines.push('');
-
-    // Screenshot - Use GitHub raw URL so it actually renders
-    if (screenshotUrl) {
-      lines.push(`## Screenshot`);
-      lines.push(`> **Important:** Review this screenshot to understand the visual context of the bug.`);
-      lines.push('');
-      lines.push(`![Bug Screenshot](${screenshotUrl})`);
-      lines.push('');
-    }
-
-    // Root Cause (if available in AI analysis)
-    if (bug.ai_fix_prompt) {
-      lines.push(`## AI Analysis & Suggested Fix`);
-      lines.push(bug.ai_fix_prompt);
-      lines.push('');
-    }
-
-    // Affected Files
     if (bug.ai_suggested_files?.length > 0) {
-      lines.push(`## Affected Files`);
+      lines.push(`### Suggested Files`);
       bug.ai_suggested_files.forEach(file => {
         const filePath = file.file || file;
         const line = file.line ? `:${file.line}` : '';
@@ -333,74 +396,45 @@ const BugTodosTab = () => {
       lines.push('');
     }
 
-    // Console Errors
-    if (bug.console_errors?.length > 0) {
-      lines.push(`## Console Errors`);
-      lines.push('```');
-      lines.push(bug.console_errors.join('\n\n'));
-      lines.push('```');
+    if (bug.ai_fix_prompt) {
+      lines.push(`### Suggested Fix`);
+      lines.push('');
+      lines.push(bug.ai_fix_prompt);
       lines.push('');
     }
 
-    // Environment
-    if (bug.user_agent) {
-      lines.push(`## Environment`);
-      lines.push(`- **User Agent:** ${bug.user_agent}`);
-      lines.push('');
-    }
+    // ============================================================
+    // SECTION 6: IMPLEMENTATION INSTRUCTIONS
+    // ============================================================
+    lines.push(`---`);
+    lines.push('');
+    lines.push(`## 6. STEP 2: Compare & Implement`);
+    lines.push('');
+    lines.push(`Now that you have both analyses, answer:`);
+    lines.push('');
+    lines.push(`1. **Does the AI suggestion match your analysis?**`);
+    lines.push(`   - If yes: Great, proceed with confidence`);
+    lines.push(`   - If no: Investigate the discrepancy - one of you found something the other missed`);
+    lines.push('');
+    lines.push(`2. **Which approach is better?**`);
+    lines.push(`   - Consider: root cause vs symptom, edge cases, code patterns`);
+    lines.push('');
+    lines.push(`3. **Implement the best solution**`);
+    lines.push(`   - Read the actual files in the codebase before making changes`);
+    lines.push(`   - Follow existing code patterns`);
+    lines.push(`   - Test your fix`);
+    lines.push('');
+    lines.push(`4. **Report your findings**`);
+    lines.push(`   - Which approach did you choose and why?`);
+    lines.push(`   - Did you find anything the AI analysis missed?`);
+    lines.push('');
 
-    // Instructions for AI - Dual perspective verification
+    // ============================================================
+    // FOOTER
+    // ============================================================
     lines.push(`---`);
-    lines.push('');
-    lines.push(`## Instructions for AI Assistant`);
-    lines.push('');
-    lines.push(`> **Important:** This bug report includes a suggested fix from our internal Gemini AI agent.`);
-    lines.push(`> Your task is to provide a **second, independent analysis** to verify or improve upon it.`);
-    lines.push('');
-    lines.push(`### Step 1: Independent Analysis`);
-    lines.push(`Before reading the suggested fix above, perform your own analysis:`);
-    lines.push(`1. **Examine the screenshot** to understand the visual context of the bug`);
-    lines.push(`2. **Read the console errors** for stack traces and error messages`);
-    lines.push(`3. **Review the affected files** in the codebase`);
-    lines.push(`4. **Form your own hypothesis** about the root cause`);
-    lines.push('');
-    lines.push(`### Step 2: Compare Approaches`);
-    lines.push(`Now review the "AI Analysis & Suggested Fix" section above and compare:`);
-    lines.push(`- Does the suggested fix align with your independent analysis?`);
-    lines.push(`- Are there edge cases or issues the suggested fix might miss?`);
-    lines.push(`- Is there a simpler or more robust solution?`);
-    lines.push('');
-    lines.push(`### Step 3: Implement the Best Solution`);
-    lines.push(`Based on both perspectives, implement the fix that:`);
-    lines.push(`- Addresses the root cause (not just symptoms)`);
-    lines.push(`- Handles edge cases appropriately`);
-    lines.push(`- Follows the codebase's existing patterns`);
-    lines.push(`- Includes any necessary error handling`);
-    lines.push('');
-    lines.push(`### Step 4: Verify`);
-    lines.push(`After implementing, briefly explain:`);
-    lines.push(`- Which approach you chose and why`);
-    lines.push(`- Any improvements you made over the suggested fix`);
-    lines.push(`- How to test the fix works correctly`);
-    lines.push('');
-    lines.push(`### Step 5: Update Documentation (REQUIRED)`);
-    lines.push(`Once the fix is verified and acknowledged by the developer:`);
-    lines.push(`1. **Open \`AGENT.md\`** in the project root`);
-    lines.push(`2. **Add a changelog entry** in the appropriate section (Part 6: Changelog) with:`);
-    lines.push(`   - Date of the fix`);
-    lines.push(`   - Bug ID: ${bug.bug_report_id || bug.id}`);
-    lines.push(`   - Brief description of what was wrong`);
-    lines.push(`   - How it was fixed`);
-    lines.push(`   - Files modified`);
-    lines.push(`3. **If this added new functionality**, also update the relevant feature documentation section`);
-    lines.push(`4. **If this changed existing behavior**, update any affected documentation`);
-    lines.push('');
-    lines.push(`> **Important:** The AGENT.md file is the single source of truth for this codebase.`);
-    lines.push(`> Keeping it updated ensures future AI assistants and developers understand what changed.`);
-    lines.push('');
-    lines.push(`---`);
-    lines.push(`*Bug ID: ${bug.bug_report_id || bug.id} | Generated by Unicorn AI Bug Analyzer*`);
-    lines.push(`*Dual-perspective verification enabled for higher fix confidence*`);
+    lines.push(`*Bug ID: ${bug.bug_report_id || bug.id} | Unicorn AI Bug Analyzer*`);
+    lines.push(`*Dual-perspective verification: Your analysis + Gemini's analysis*`);
 
     return lines.join('\n');
   };
@@ -478,6 +512,8 @@ const BugTodosTab = () => {
       case 'processing':
         return <Loader2 className="w-4 h-4 animate-spin" />;
       case 'analyzed':
+        return <CheckCircle className="w-4 h-4" />;
+      case 'pending_review':
         return <CheckCircle className="w-4 h-4" />;
       case 'failed':
         return <XCircle className="w-4 h-4" />;
@@ -583,7 +619,7 @@ const BugTodosTab = () => {
 
       {/* Filter Tabs */}
       <div className={`flex gap-1 p-1 rounded-lg ${mode === 'dark' ? 'bg-zinc-800' : 'bg-gray-100'}`}>
-        {['all', 'pending', 'analyzed', 'failed'].map((status) => (
+        {['all', 'pending', 'analyzed', 'pending_review', 'failed'].map((status) => (
           <button
             key={status}
             onClick={() => setFilter(status)}
@@ -595,7 +631,7 @@ const BugTodosTab = () => {
                   : 'text-gray-600 hover:text-gray-900 hover:bg-white'
             }`}
           >
-            {status.charAt(0).toUpperCase() + status.slice(1)}
+            {status === 'pending_review' ? 'Review' : status.charAt(0).toUpperCase() + status.slice(1)}
             {status !== 'all' && ` (${stats[status] || 0})`}
           </button>
         ))}
@@ -639,7 +675,7 @@ const BugTodosTab = () => {
                       )}
                       <span
                         className={`px-2 py-0.5 text-xs font-medium rounded-full border ${statusColors[bug.status]}`}
-                        style={bug.status === 'analyzed' ? { backgroundColor: 'rgba(148, 175, 50, 0.1)', color: '#94AF32', borderColor: 'rgba(148, 175, 50, 0.3)' } : {}}
+                        style={bug.status === 'analyzed' || bug.status === 'pending_review' ? { backgroundColor: 'rgba(148, 175, 50, 0.1)', color: '#94AF32', borderColor: 'rgba(148, 175, 50, 0.3)' } : {}}
                       >
                         <span className="flex items-center gap-1">
                           <StatusIcon status={bug.status} />
@@ -665,6 +701,24 @@ const BugTodosTab = () => {
                       <span>{formatDate(bug.created_at)}</span>
                       <span className="truncate max-w-[200px]">{bug.url}</span>
                     </div>
+
+                    {/* Fix Summary - shown for pending_review bugs */}
+                    {bug.status === 'pending_review' && bug.fix_summary && (
+                      <div
+                        className="mt-2 px-3 py-2 rounded-lg text-sm font-medium cursor-pointer transition-opacity hover:opacity-80"
+                        style={{
+                          backgroundColor: '#94AF32',
+                          color: 'white'
+                        }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setFixDetailsBug(bug);
+                        }}
+                        title="Click for fix details"
+                      >
+                        Fix Summary: {bug.fix_summary}
+                      </div>
+                    )}
                   </div>
 
                   <div className="flex items-center gap-2">
@@ -1071,6 +1125,81 @@ const BugTodosTab = () => {
                 className="px-4 py-2 rounded-lg text-sm font-medium bg-red-500 text-white hover:bg-red-600 transition-colors"
               >
                 Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Fix Details Modal - shown when clicking the green fix summary box */}
+      {fixDetailsBug && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={() => setFixDetailsBug(null)}>
+          <div
+            className={`${cardBg} rounded-xl border ${borderColor} p-6 max-w-lg w-full shadow-xl`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2 rounded-full" style={{ backgroundColor: 'rgba(148, 175, 50, 0.1)' }}>
+                <CheckCircle className="w-6 h-6" style={{ color: '#94AF32' }} />
+              </div>
+              <div>
+                <h3 className={`text-lg font-semibold ${textPrimary}`}>Fix Applied</h3>
+                <p className={`text-sm ${textSecondary}`}>{fixDetailsBug.bug_report_id}</p>
+              </div>
+            </div>
+
+            {/* Original bug summary */}
+            <div className={`p-3 rounded-lg mb-4 ${mode === 'dark' ? 'bg-zinc-700/50' : 'bg-zinc-100'}`}>
+              <h4 className={`text-xs font-medium ${textSecondary} mb-1`}>Bug</h4>
+              <p className={`text-sm ${textPrimary}`}>{fixDetailsBug.ai_summary || fixDetailsBug.description}</p>
+            </div>
+
+            {/* Fix summary */}
+            <div
+              className="p-4 rounded-lg mb-4"
+              style={{
+                backgroundColor: 'rgba(148, 175, 50, 0.1)',
+                borderLeft: '4px solid #94AF32'
+              }}
+            >
+              <h4 className="text-xs font-medium mb-2" style={{ color: '#94AF32' }}>Fix Summary</h4>
+              <p className={`text-sm ${textPrimary} whitespace-pre-wrap`}>{fixDetailsBug.fix_summary}</p>
+            </div>
+
+            {/* Affected files if available */}
+            {fixDetailsBug.ai_suggested_files?.length > 0 && (
+              <div className="mb-4">
+                <h4 className={`text-xs font-medium ${textSecondary} mb-2`}>Files Changed</h4>
+                <div className="space-y-1">
+                  {fixDetailsBug.ai_suggested_files.map((file, i) => (
+                    <div key={i} className={`px-2 py-1 rounded text-xs font-mono ${mode === 'dark' ? 'bg-zinc-700 text-zinc-300' : 'bg-zinc-100 text-zinc-700'}`}>
+                      {file.file || file}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setFixDetailsBug(null)}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  mode === 'dark'
+                    ? 'bg-zinc-700 text-white hover:bg-zinc-600'
+                    : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'
+                }`}
+              >
+                Close
+              </button>
+              <button
+                onClick={() => {
+                  setFixDetailsBug(null);
+                  confirmDelete(fixDetailsBug.id);
+                }}
+                className="px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors hover:opacity-90"
+                style={{ backgroundColor: '#94AF32' }}
+              >
+                Approve Fix
               </button>
             </div>
           </div>

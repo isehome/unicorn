@@ -1,15 +1,15 @@
--- Add fields for automatic bug fix detection
--- The close-fixed-bugs cron checks if ai_suggested_files were modified on main
--- and flags bugs as 'likely_fixed' for human confirmation, or 'fixed' if a
--- commit message explicitly references the bug ID.
+-- Add fields for bug fix tracking and review workflow
+-- When an AI agent fixes a bug, it sets status='pending_review' and writes a fix_summary.
+-- The admin reviews the summary in the UI and clicks 'Fixed' to close the PR and clean up.
 -- 2026-02-07
 
--- New columns for tracking fix detection
+-- Tracking columns
 ALTER TABLE bug_reports ADD COLUMN IF NOT EXISTS fixed_at TIMESTAMPTZ;
 ALTER TABLE bug_reports ADD COLUMN IF NOT EXISTS auto_closed BOOLEAN DEFAULT false;
 ALTER TABLE bug_reports ADD COLUMN IF NOT EXISTS fix_detection_log JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE bug_reports ADD COLUMN IF NOT EXISTS fix_summary TEXT;
 
--- Index for the cron query: find analyzed bugs with open PRs
-CREATE INDEX IF NOT EXISTS idx_bug_reports_analyzed_open
+-- Index for pending_review bugs (shown differently in the UI)
+CREATE INDEX IF NOT EXISTS idx_bug_reports_pending_review
   ON bug_reports(status, created_at)
-  WHERE status IN ('analyzed', 'likely_fixed') AND pr_number IS NOT NULL;
+  WHERE status = 'pending_review' AND pr_number IS NOT NULL;

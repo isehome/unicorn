@@ -78,7 +78,9 @@ module.exports = async (req, res) => {
         pr_number,
         branch_name,
         initial_email_sent_at,
-        analysis_email_sent_at
+        analysis_email_sent_at,
+        fix_summary,
+        fixed_at
       `, { count: 'exact' })
       .order(sortColumn, { ascending })
       .range(offset, offset + limitNum - 1);
@@ -104,6 +106,7 @@ module.exports = async (req, res) => {
           pending: 0,
           processing: 0,
           analyzed: 0,
+          pending_review: 0,
           failed: 0,
           total: 0
         };
