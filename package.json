@@ -41,9 +41,12 @@
     "web-vitals": "^2.1.4"
   },
   "scripts": {
+    "generate-routes": "node scripts/generate-routes-map.js",
     "sync-docs": "find docs -maxdepth 1 -name '*.md' ! -name 'AGENT.md' -exec cp {} public/docs/ \\; && cp AGENT.md public/docs/ && cp AGENT.md public/",
+    "prebuild": "npm run generate-routes && npm run sync-docs",
+    "prestart": "npm run generate-routes",
     "start": "PORT=3001 react-scripts start",
-    "build": "npm run sync-docs && GENERATE_SOURCEMAP=false CI=false react-scripts build",
+    "build": "GENERATE_SOURCEMAP=false CI=false react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject"
   },
