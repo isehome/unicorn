@@ -50,6 +50,7 @@ const BugTodosTab = () => {
     processing: 'bg-blue-500/10 text-blue-500 border-blue-500/30',
     analyzed: '', // Uses inline styles for brand olive color
     pending_review: '', // Uses inline styles for brand olive color
+    fixed: '', // Uses inline styles for brand olive color
     failed: 'bg-red-500/10 text-red-500 border-red-500/30'
   };
 
@@ -515,6 +516,8 @@ const BugTodosTab = () => {
         return <CheckCircle className="w-4 h-4" />;
       case 'pending_review':
         return <CheckCircle className="w-4 h-4" />;
+      case 'fixed':
+        return <CheckCircle className="w-4 h-4" />;
       case 'failed':
         return <XCircle className="w-4 h-4" />;
       default:
@@ -554,85 +557,41 @@ const BugTodosTab = () => {
         </button>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-        <div className={`${cardBg} p-4 rounded-xl border ${borderColor}`}>
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-violet-500/10">
-              <Bug className="w-5 h-5 text-violet-500" />
-            </div>
-            <div>
-              <div className={`text-2xl font-bold ${textPrimary}`}>{stats.total}</div>
-              <div className={`text-sm ${textSecondary}`}>Total</div>
-            </div>
-          </div>
-        </div>
-
-        <div className={`${cardBg} p-4 rounded-xl border ${borderColor}`}>
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-yellow-500/10">
-              <Clock className="w-5 h-5 text-yellow-500" />
-            </div>
-            <div>
-              <div className={`text-2xl font-bold ${textPrimary}`}>{stats.pending}</div>
-              <div className={`text-sm ${textSecondary}`}>Pending</div>
-            </div>
-          </div>
-        </div>
-
-        <div className={`${cardBg} p-4 rounded-xl border ${borderColor}`}>
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-blue-500/10">
-              <Loader2 className="w-5 h-5 text-blue-500" />
-            </div>
-            <div>
-              <div className={`text-2xl font-bold ${textPrimary}`}>{stats.processing}</div>
-              <div className={`text-sm ${textSecondary}`}>Processing</div>
-            </div>
-          </div>
-        </div>
-
-        <div className={`${cardBg} p-4 rounded-xl border ${borderColor}`}>
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg" style={{ backgroundColor: 'rgba(148, 175, 50, 0.1)' }}>
-              <CheckCircle className="w-5 h-5" style={{ color: '#94AF32' }} />
-            </div>
-            <div>
-              <div className={`text-2xl font-bold ${textPrimary}`}>{stats.analyzed}</div>
-              <div className={`text-sm ${textSecondary}`}>Analyzed</div>
-            </div>
-          </div>
-        </div>
-
-        <div className={`${cardBg} p-4 rounded-xl border ${borderColor}`}>
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-red-500/10">
-              <AlertCircle className="w-5 h-5 text-red-500" />
-            </div>
-            <div>
-              <div className={`text-2xl font-bold ${textPrimary}`}>{stats.failed}</div>
-              <div className={`text-sm ${textSecondary}`}>Failed</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Filter Tabs */}
-      <div className={`flex gap-1 p-1 rounded-lg ${mode === 'dark' ? 'bg-zinc-800' : 'bg-gray-100'}`}>
-        {['all', 'pending', 'analyzed', 'pending_review', 'failed'].map((status) => (
+      {/* Stats Cards - Clickable Filters */}
+      <div className="grid grid-cols-3 md:grid-cols-7 gap-3">
+        {[
+          { key: 'all', label: 'Active', count: stats.total, icon: Bug, iconColor: 'text-violet-500', bgColor: 'bg-violet-500/10' },
+          { key: 'pending', label: 'Pending', count: stats.pending, icon: Clock, iconColor: 'text-yellow-500', bgColor: 'bg-yellow-500/10' },
+          { key: 'processing', label: 'Processing', count: stats.processing, icon: Loader2, iconColor: 'text-blue-500', bgColor: 'bg-blue-500/10' },
+          { key: 'analyzed', label: 'Analyzed', count: stats.analyzed, icon: CheckCircle, iconColor: '', bgColor: '', useOlive: true },
+          { key: 'pending_review', label: 'Review', count: stats.pending_review, icon: CheckCircle, iconColor: '', bgColor: '', useOlive: true },
+          { key: 'failed', label: 'Failed', count: stats.failed, icon: AlertCircle, iconColor: 'text-red-500', bgColor: 'bg-red-500/10' },
+          { key: 'fixed', label: 'Fixed', count: stats.fixed || 0, icon: CheckCircle, iconColor: '', bgColor: '', useOlive: true },
+        ].map(({ key, label, count, icon: Icon, iconColor, bgColor, useOlive }) => (
           <button
-            key={status}
-            onClick={() => setFilter(status)}
-            className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-              filter === status
-                ? 'bg-violet-500 text-white'
-                : mode === 'dark'
-                  ? 'text-zinc-400 hover:text-white hover:bg-zinc-700'
-                  : 'text-gray-600 hover:text-gray-900 hover:bg-white'
+            key={key}
+            onClick={() => setFilter(key)}
+            className={`${cardBg} p-3 rounded-xl border-2 transition-all text-left ${
+              filter === key
+                ? 'border-violet-500 shadow-lg shadow-violet-500/10'
+                : `${borderColor} hover:border-violet-500/30`
             }`}
           >
-            {status === 'pending_review' ? 'Review' : status.charAt(0).toUpperCase() + status.slice(1)}
-            {status !== 'all' && ` (${stats[status] || 0})`}
+            <div className="flex items-center gap-2">
+              <div
+                className={`p-1.5 rounded-lg ${useOlive ? '' : bgColor}`}
+                style={useOlive ? { backgroundColor: 'rgba(148, 175, 50, 0.1)' } : {}}
+              >
+                <Icon
+                  className={`w-4 h-4 ${useOlive ? '' : iconColor}`}
+                  style={useOlive ? { color: '#94AF32' } : {}}
+                />
+              </div>
+              <div>
+                <div className={`text-xl font-bold ${textPrimary}`}>{count}</div>
+                <div className={`text-xs ${textSecondary}`}>{label}</div>
+              </div>
+            </div>
           </button>
         ))}
       </div>
@@ -675,7 +634,7 @@ const BugTodosTab = () => {
                       )}
                       <span
                         className={`px-2 py-0.5 text-xs font-medium rounded-full border ${statusColors[bug.status]}`}
-                        style={bug.status === 'analyzed' || bug.status === 'pending_review' ? { backgroundColor: 'rgba(148, 175, 50, 0.1)', color: '#94AF32', borderColor: 'rgba(148, 175, 50, 0.3)' } : {}}
+                        style={['analyzed', 'pending_review', 'fixed'].includes(bug.status) ? { backgroundColor: 'rgba(148, 175, 50, 0.1)', color: '#94AF32', borderColor: 'rgba(148, 175, 50, 0.3)' } : {}}
                       >
                         <span className="flex items-center gap-1">
                           <StatusIcon status={bug.status} />
