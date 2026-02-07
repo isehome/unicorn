@@ -189,7 +189,8 @@ export const serviceTimeService = {
         p_check_out: data.check_out,
         p_notes: data.notes || null,
         p_created_by_id: data.created_by_id || null,
-        p_created_by_name: data.created_by_name || null
+        p_created_by_name: data.created_by_name || null,
+        p_labor_type_id: data.labor_type_id || null
       });
 
       if (error) {
@@ -217,7 +218,8 @@ export const serviceTimeService = {
         p_entry_id: entryId,
         p_check_in: data.check_in,
         p_check_out: data.check_out,
-        p_notes: data.notes || null
+        p_notes: data.notes || null,
+        p_labor_type_id: data.labor_type_id || null
       });
 
       if (error) {
