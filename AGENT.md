@@ -3931,6 +3931,122 @@ The application needs a proper user capabilities/roles system to control access 
 
 # PART 6: CHANGELOG
 
+## 2026-02-05
+
+### Service Ticket - Clickable Address for Maps
+
+**What:** Made customer and service addresses clickable in service ticket detail to open in Apple Maps.
+
+**Why:** Technicians need to quickly navigate to the service location. Clicking the address now opens Apple Maps (works on iOS, opens web on other platforms).
+
+**Files Modified:**
+- `src/components/Service/ServiceTicketDetail.js` - Made addresses clickable links
+
+**UI Change:**
+- Both mobile and desktop customer info sections now show addresses as clickable links
+- Address text is underlined with an external link icon
+- Clicking opens Apple Maps with the address as the destination
+- Works for both `customer_address` and `service_address` fields
+
+**AI Note:** Uses `maps.apple.com` URL which opens Apple Maps on iOS or the web version on other platforms. Google Maps users on Android will be prompted to open in their maps app from the browser.
+
+---
+
+### Contact Detail Page - Visible Edit Button
+
+**What:** Added a visible "Edit" button to the contact detail page's contact info card.
+
+**Why:** The edit functionality was already implemented but only triggered by clicking the avatar icon, which wasn't discoverable. Users needed a clear way to enter edit mode to modify contact details or delete the contact.
+
+**Files Modified:**
+- `src/components/ContactDetailPage.js` - Added visible Edit button in the contact info card header
+
+**UI Change:**
+- Contact info card now shows an "Edit" button (with pencil icon) in the top-right corner
+- Clicking Edit opens the existing edit modal which includes all contact fields and a Delete button
+- Avatar is no longer a clickable button (reduced confusion)
+
+**AI Note:** The ContactDetailPage already had full edit/delete functionality via `handleEditContact` and `handleDeleteContact` handlers. This change just improves discoverability by adding a visible button.
+
+---
+
+### Dynamic Route Discovery & Unified AI Configuration
+
+**What:** Created a self-maintaining bug analysis system with dynamic route discovery and centralized AI model configuration. Bug reports now automatically map to correct source files without hardcoded routes, and all AI services use a unified config.
+
+**Why:**
+1. The bug analyzer was suggesting wrong files (e.g., `/my-hr` route wasn't in the hardcoded `PAGE_FILE_MAP`)
+2. AI model configurations were fragmented across 11+ API files with 5 different patterns
+3. Bug report instructions at the bottom of files were being ignored by AI assistants
+
+**Architecture:**
+```
+unicorn/
+├── shared/
+│   ├── aiConfig.js          # Unified AI model config (NEW)
+│   └── routesMap.json       # Generated at build time (NEW)
+├── scripts/
+│   └── generate-routes-map.js  # Parses App.js for routes (NEW)
+├── api/
+│   ├── _aiConfig.js         # Backend wrapper (NEW)
+│   └── bugs/
+│       └── analyze.js       # Uses dynamic routes (UPDATED)
+└── src/components/Admin/
+    └── BugTodosTab.js       # Injected instruction template (UPDATED)
+```
+
+**New Files:**
+- `shared/aiConfig.js` - Unified AI model definitions and service configurations
+- `scripts/generate-routes-map.js` - Parses App.js to extract route→component mappings
+- `api/_aiConfig.js` - Backend wrapper providing `getModelForService()`, `getGenAI()`
+
+**Key Changes:**
+1. **Route Discovery:** `npm run generate-routes` parses App.js, extracts 57+ routes, outputs `routesMap.json`
+2. **Unified AI Config:** All services use `AI_SERVICES` config (BUG_ANALYZER, PART_ENRICHER, etc.)
+3. **Bug Report Template:** Uses "injected instruction" format - proven more effective in testing:
+   - STOP instructions at TOP of document
+   - Forces independent analysis BEFORE viewing AI suggestions
+   - Checkpoint to verify analysis before proceeding
+
+**Files Modified:**
+- `api/bugs/analyze.js` - Uses `getModelForService('BUG_ANALYZER')` + dynamic routes
+- `src/components/Admin/BugTodosTab.js` - New `generateCompleteBugReport()` with injected instructions
+- `package.json` - Added `generate-routes`, `prebuild`, `prestart` scripts
+
+**Build Scripts Added:**
+```json
+{
+  "generate-routes": "node scripts/generate-routes-map.js",
+  "prebuild": "npm run generate-routes && npm run sync-docs",
+  "prestart": "npm run generate-routes"
+}
+```
+
+**AI Note:** Bug reports now use "dual-perspective verification" - the AI assistant must complete independent analysis before comparing with Gemini's suggestion. Testing showed this significantly improves fix accuracy. The injected instruction format (directives at TOP) is more effective than passive instructions at bottom.
+
+---
+
+## 2026-02-05
+
+### Fix: Skill names hidden on mobile in Self-Evaluation (BR-2026-01-30-0001)
+
+**What:** Skill names were not visible in the Self-Evaluation section when viewing on mobile devices in portrait mode. Users could see rating icons but couldn't identify which skill they were rating.
+
+**Why:** The SkillReviewPanel.js component used a fixed-width table layout (432px of fixed columns) that didn't fit on mobile screens (~375px). The skill name column with `flex-1 min-w-0` would shrink to zero width.
+
+**Root Cause:** Unlike SkillComparisonView.js which had separate mobile/desktop layouts, SkillReviewPanel.js only had the desktop table layout with no responsive breakpoints.
+
+**Fix:** Added a mobile-first responsive layout using `md:hidden` / `hidden md:block` pattern:
+- Mobile (<768px): Stacked card layout with skill name prominent, ratings in 2-column grid below
+- Desktop (>=768px): Original table layout preserved
+
+**Files Modified:**
+- `src/components/CareerDevelopment/SkillReviewPanel.js` - Added mobile layout (lines 524-632)
+
+**AI Note:** The mobile layout follows the same pattern as SkillComparisonView.js. Both self-evaluation and manager review modes now work on mobile. Development Focus checkbox for managers appears as a full-width button on mobile for better touch targets.
+
+---
+
 ## 2026-02-04
 
 ### Dynamic AI Context System (Self-Aware Agent)
@@ -9041,3 +9157,20 @@ Run in Supabase SQL Editor:
 - Update ServiceTimeTracker with labor type dropdown
 - Update ServiceTimeEntryModal with labor type field
 - Create QBO Items sync endpoint for mapping
+
+### 2026-02-06 - Bug Fixes (Automated)
+**What:** Fixed bugs #12, #18, #21, #22, #26, #27, #28
+**Why:** Overnight automated bug fix run
+**Files:**
+- `api/service/tickets.js` - Improved error handling with structured responses
+- `src/components/Service/ServiceTicketDetail.js` - Fixed status display labels, removed invalid service_address from edit payload
+- `src/components/Service/ServiceDashboard.js` - Updated resolved→work_complete_needs_invoice status references
+- `src/components/Service/ServiceTicketList.js` - Updated STATUSES array with new status values (work_complete_needs_invoice, problem)
+- `src/services/serviceTicketService.js` - Fixed resolved→work_complete_needs_invoice in updateStatus, added payload cleanup in update()
+- `src/components/CareerDevelopment/SkillReviewPanel.js` - Allow Development Focus edits after manager review submission
+- `src/components/EquipmentListPage.js` - Fixed [object Object] error display
+- `src/services/projectEquipmentService.js` - Improved error message extraction in fetchProjectEquipment
+- `src/services/milestoneService.js` - Fixed error logging for prewire receiving percentage
+- `database/migrations/20260206_fix_skill_unique_constraint.sql` - Changed UNIQUE(name, category) to UNIQUE(name, category, class_id)
+- `database/migrations/20260206_fix_feature_flags_rls.sql` - Changed RLS policies from TO authenticated to TO anon, authenticated
+**AI Note:** Automated fix via overnight-bug-fix skill
