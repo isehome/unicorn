@@ -1073,6 +1073,150 @@ Service tickets can be exported to QuickBooks Online as invoices for billing.
 
 ---
 
+#### 8.12 AI Email Agent (unicorn@isehome.com)
+
+An AI-powered email agent that reads the `unicorn@isehome.com` inbox, classifies emails using Gemini 3 Flash, and takes automated actions (create service tickets, reply, forward for review).
+
+##### Architecture Overview
+
+```
+┌──────────────┐     ┌──────────────────┐     ┌───────────────┐     ┌──────────────┐
+│ Cron (5 min) │────▶│ Microsoft Graph   │────▶│ Gemini 3 AI   │────▶│ Action:      │
+│ process-emails│     │ Fetch Unread Mail │     │ Classification │     │ • Ticket     │
+└──────────────┘     └──────────────────┘     └───────────────┘     │ • Reply      │
+                                                                      │ • Forward    │
+                                                                      │ • Ignore     │
+                                                                      └──────────────┘
+```
+
+##### Key Files
+
+| File | Purpose |
+|------|---------|
+| `api/cron/process-emails.js` | Cron trigger, runs every 5 minutes via vercel.json |
+| `api/email/process-incoming.js` | Main processing pipeline: fetch → classify → act |
+| `api/_emailAI.js` | Gemini AI classification, customer lookup, reply generation |
+| `api/_systemGraphEmail.js` | Microsoft Graph email operations (read, reply, forward, mark read) |
+| `api/_systemGraph.js` | App token acquisition (client credentials flow), system account config |
+| `api/email/processed.js` | GET endpoint for fetching processed emails with pagination |
+| `api/email/stats.js` | GET endpoint for email agent stats |
+| `api/email/config.js` | GET/POST endpoint for config management |
+| `src/pages/EmailAgentPage.js` | Admin UI - inbox, outbox, settings views |
+| `src/components/Admin/EmailAgentSettings.js` | Settings/config component |
+| `src/services/emailAgentService.js` | Frontend service layer |
+
+##### Processing Flow
+
+1. Cron calls `/api/email/process-incoming` every 5 minutes
+2. Fetches unread emails from `unicorn@isehome.com` via Microsoft Graph API
+3. For each email:
+   - Check ignore list (noreply, mailer-daemon)
+   - **Customer lookup** in `contacts` table (NOT `global_contacts`)
+   - Internal domain check — known clients from internal domains ARE processed
+   - AI classification via Gemini 3 Flash (support, sales, spam, internal, unknown)
+   - Action based on classification + confidence:
+     - **High confidence support** → Auto-create service ticket + auto-reply
+     - **Low confidence** → Forward to `email_agent_forward_email` for human review
+     - **Spam/internal** → Ignore
+4. Records everything in `processed_emails` table
+5. Marks original email as read in Graph
+
+##### Database Tables
+
+| Table | Purpose |
+|-------|---------|
+| `processed_emails` | Log of all processed emails with AI classification, action taken, confidence |
+| `app_configuration` | Email agent config (keys prefixed `email_agent_*`) |
+
+##### Config Keys (app_configuration)
+
+| Key | Purpose | Default |
+|-----|---------|---------|
+| `email_agent_enabled` | Master on/off | `true` |
+| `email_agent_auto_create_tickets` | Auto-create service tickets | `true` |
+| `email_agent_auto_reply` | Auto-reply to customers | `true` |
+| `email_agent_forward_email` | Where to forward uncertain emails | `stephe@isehome.com` |
+| `email_agent_internal_domains` | Domains treated as internal | `isehome.com,intelligentsystems.com` |
+| `email_agent_ignore_domains` | Domains to always ignore | `noreply.com,mailer-daemon` |
+| `email_agent_require_review_threshold` | Confidence below this forwards for review | `0.7` |
+| `system_account_email` | Mailbox to read from | `unicorn@isehome.com` |
+
+##### Admin UI Access
+
+- Navigate to **Admin → Email Agent** button (navigates to `/admin/email-agent`)
+- Page shows: stats dashboard, inbox tab, outbox tab, settings tab
+- **Process Now** button triggers immediate email processing
+
+---
+
+### Azure Entra ID / App Registration ("unicorn app")
+
+The app uses a single Azure AD App Registration ("unicorn app") for all Microsoft integrations. Authentication uses **client credentials flow** (Application permissions) for server-side operations and **MSAL interactive flow** (Delegated permissions) for user login.
+
+#### Microsoft Graph API Permissions (as of 2026-02-09)
+
+**Application Permissions (server-side, no user login required):**
+
+| Permission | Description |
+|-----------|-------------|
+| `Calendars.ReadWrite` | Read and write calendars in all mailboxes |
+| `Files.ReadWrite.All` | Read and write files in all site collections |
+| `Group.Read.All` | Read all groups |
+| `Mail.ReadWrite` | Read and write mail in all mailboxes |
+| `Mail.Send` | Send mail as any user |
+| `OrgSettings-Todo.Read.All` | Read organization-wide Microsoft To Do settings |
+| `OrgSettings-Todo.ReadWrite` | Read and write organization-wide Microsoft To Do settings |
+| `Sites.ReadWrite.All` | Read and write items in all site collections |
+| `Tasks.ReadWrite.All` | Read and write all users' tasks and tasklists |
+| `User.Read.All` | Read all users' full profiles |
+
+**Delegated Permissions (user-interactive, MSAL login flow):**
+
+| Permission | Description |
+|-----------|-------------|
+| `Calendars.Read` | Read user calendars |
+| `Calendars.ReadWrite` | Have full access to user calendars |
+| `Calendars.ReadWrite.Shared` | Read and write user and shared calendars |
+| `Contacts.Read` | Read user contacts |
+| `email` | View users' email address |
+| `Files.ReadWrite.All` | Have full access to all files user can access |
+| `Mail.ReadWrite` | Read and write access to user mail |
+| `Mail.ReadWrite.Shared` | Read and write user and shared mail |
+| `Mail.Send` | Send mail as a user |
+| `Mail.Send.Shared` | Send mail on behalf of others |
+| `offline_access` | Maintain access to data you have given it access to |
+| `openid` | Sign users in |
+| `profile` | View users' basic profile |
+| `Tasks.ReadWrite.Shared` | Read and write user and shared tasks |
+| `User.Read` | Sign in and read user profile |
+| `User.Read.All` | Read all users' full profiles |
+
+**SharePoint Permissions:**
+
+| Permission | Type | Description |
+|-----------|------|-------------|
+| `AllSites.FullControl` | Delegated | Have full control of all site collections |
+| `Sites.Read.All` | Application | Read items in all site collections |
+| `Sites.ReadWrite.All` | Application | Read and write items in all site collections |
+
+All permissions have admin consent granted for Intelligent Systems, LLC.
+
+#### Environment Variables (Azure)
+
+| Variable | Purpose |
+|----------|---------|
+| `AZURE_TENANT_ID` | Azure AD tenant ID |
+| `AZURE_CLIENT_ID` | App registration client ID |
+| `AZURE_CLIENT_SECRET` | App registration client secret |
+
+#### Token Acquisition
+
+- **Server-side (API routes):** Client credentials flow via `_systemGraph.js` → `getAppToken()`
+- **Client-side (React app):** MSAL interactive flow via `AuthContext.js`
+- Token cache: App tokens cached in memory for ~1 hour with 5-minute buffer refresh
+
+---
+
 ## Key Database Tables
 
 | Table | Purpose |
