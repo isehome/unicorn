@@ -159,13 +159,19 @@ module.exports = async (req, res) => {
         let forwardedTo = null;
 
         // Check confidence threshold
-        const needsReview = analysis.confidence < config.reviewThreshold || analysis.requires_human_review;
+        // needsReview gates auto-reply (sending emails to customers) but NOT ticket creation
+        // Tickets are internal and safe to create even when human review is flagged
+        const lowConfidence = analysis.confidence < config.reviewThreshold;
+        const needsReview = lowConfidence || analysis.requires_human_review;
 
         // Create ticket if needed
-        if (analysis.should_create_ticket && config.autoCreateTickets && !needsReview) {
+        // Only block on low confidence - requires_human_review should not prevent ticket creation
+        // (The AI may flag review for name mismatches, scheduling needs, etc. but ticket should still be made)
+        if (analysis.should_create_ticket && config.autoCreateTickets && !lowConfidence) {
           try {
             const ticket = await createServiceTicket(email, analysis, customer);
             ticketId = ticket.id;
+            actionTaken = 'ticket_created';
             results.tickets_created++;
             console.log(`[EmailAgent] Created ticket: ${ticket.id}`);
           } catch (ticketError) {
@@ -175,6 +181,7 @@ module.exports = async (req, res) => {
         }
 
         // Send reply if needed
+        // Auto-reply IS gated by needsReview - we don't auto-respond when human review is flagged
         if (analysis.should_reply && config.autoReply && !needsReview) {
           try {
             const replyBody = await generateReply(email, analysis, customer, config);
@@ -190,7 +197,7 @@ module.exports = async (req, res) => {
               cc: ccList,
             });
 
-            actionTaken = ticketId ? 'ticket_created' : 'replied';
+            if (!ticketId) actionTaken = 'replied';
             results.replies_sent++;
             console.log(`[EmailAgent] Sent reply to: ${email.from.email}`);
           } catch (replyError) {
