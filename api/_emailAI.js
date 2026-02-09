@@ -138,6 +138,44 @@ function isReplyToNotification(subject, body) {
 }
 
 /**
+ * Check if email is a calendar response (accept/decline/tentative)
+ * or an auto-reply (out of office, automatic reply)
+ * These should be silently ignored by the email agent.
+ */
+function isCalendarOrAutoReply(subject, body) {
+  const subjectLower = (subject || '').trim();
+
+  // Calendar accept/decline/tentative patterns
+  // Outlook formats: "Accepted: ...", "Declined: ...", "Tentative: ..."
+  const calendarPrefixes = [
+    /^accepted:\s/i,
+    /^declined:\s/i,
+    /^tentative:\s/i,
+    /^tentatively accepted:\s/i,
+    /^canceled:\s/i,
+    /^cancelled:\s/i,
+  ];
+
+  if (calendarPrefixes.some(p => p.test(subjectLower))) {
+    return 'calendar_response';
+  }
+
+  // Auto-reply / out-of-office patterns
+  const autoReplyPrefixes = [
+    /^automatic reply:\s/i,
+    /^auto-?reply:\s/i,
+    /^out of office:\s/i,
+    /^out-of-office:\s/i,
+  ];
+
+  if (autoReplyPrefixes.some(p => p.test(subjectLower))) {
+    return 'auto_reply';
+  }
+
+  return false;
+}
+
+/**
  * Analyze email with Gemini AI
  */
 async function analyzeEmail(email, customer, config) {
@@ -334,6 +372,7 @@ module.exports = {
   shouldIgnoreEmail,
   lookupCustomer,
   isReplyToNotification,
+  isCalendarOrAutoReply,
   analyzeEmail,
   generateReply,
 };

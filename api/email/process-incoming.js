@@ -16,6 +16,7 @@ const {
   shouldIgnoreEmail,
   lookupCustomer,
   isReplyToNotification,
+  isCalendarOrAutoReply,
   analyzeEmail,
   generateReply,
 } = require('../_emailAI');
@@ -96,6 +97,23 @@ module.exports = async (req, res) => {
             ai_classification: 'spam',
             action_taken: 'ignored',
             ai_summary: 'Automated/no-reply address - ignored',
+          });
+          results.skipped++;
+          continue;
+        }
+
+        // Auto-ignore calendar responses (Accepted/Declined/Tentative) and auto-replies (OOO)
+        const calendarOrAutoReply = isCalendarOrAutoReply(email.subject, email.body || email.bodyPreview);
+        if (calendarOrAutoReply) {
+          console.log(`[EmailAgent] Auto-ignoring ${calendarOrAutoReply}: ${email.subject}`);
+          await markEmailAsRead(email.id);
+          await logProcessedEmail(email, {
+            ai_classification: calendarOrAutoReply === 'calendar_response' ? 'reply_to_notification' : 'internal',
+            action_taken: 'ignored',
+            ai_confidence: 1.0,
+            ai_summary: calendarOrAutoReply === 'calendar_response'
+              ? 'Calendar accept/decline/tentative response - auto-ignored'
+              : 'Auto-reply or out-of-office message - auto-ignored',
           });
           results.skipped++;
           continue;
