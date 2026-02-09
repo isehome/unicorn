@@ -331,28 +331,20 @@ async function logProcessedEmail(email, data) {
  * Create a service ticket from email
  */
 async function createServiceTicket(email, analysis, customer) {
-  const systemEmail = await getSystemAccountEmail();
-
   const ticketData = {
     title: analysis.ticket_title || email.subject,
     description: analysis.ticket_description || analysis.summary,
     status: 'new',
     priority: mapUrgencyToPriority(analysis.urgency),
     source: 'email',
+    source_reference: email.id,
     customer_email: email.from.email,
     customer_name: customer?.name || email.from.name,
     customer_phone: customer?.phone,
     contact_id: customer?.id,
     category: analysis.ticket_category || 'general',
-    metadata: {
-      email_id: email.id,
-      conversation_id: email.conversationId,
-      ai_classification: analysis.classification,
-      ai_summary: analysis.summary,
-      original_subject: email.subject,
-      has_attachments: email.hasAttachments,
-    },
-    created_by_email: systemEmail,
+    initial_customer_comment: email.body || email.bodyPreview,
+    ai_triage_notes: `AI Classification: ${analysis.classification} | Confidence: ${(analysis.confidence * 100).toFixed(0)}% | Urgency: ${analysis.urgency}\n\nSummary: ${analysis.summary}\n\nAction Items:\n${(analysis.action_items || []).map(item => '• ' + item).join('\n')}`,
   };
 
   const { data: ticket, error } = await supabase
