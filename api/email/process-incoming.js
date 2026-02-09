@@ -9,7 +9,7 @@
 
 const { createClient } = require('@supabase/supabase-js');
 const { getUnreadEmails, markEmailAsRead, replyToEmail, forwardEmail } = require('../_systemGraphEmail');
-const { systemSendMail, getSystemAccountEmail } = require('../_systemGraph');
+const { systemSendMail, getSystemAccountEmail, clearCaches } = require('../_systemGraph');
 const {
   getAgentConfig,
   isInternalEmail,
@@ -51,8 +51,19 @@ module.exports = async (req, res) => {
 
     console.log('[EmailAgent] Starting email processing...');
 
-    // Fetch unread emails
-    const emails = await getUnreadEmails({ top: 20 });
+    // Fetch unread emails (retry once with fresh token on auth failure)
+    let emails;
+    try {
+      emails = await getUnreadEmails({ top: 20 });
+    } catch (fetchErr) {
+      if (fetchErr.message && fetchErr.message.includes('403')) {
+        console.log('[EmailAgent] Got 403 - clearing token cache and retrying with fresh token...');
+        clearCaches();
+        emails = await getUnreadEmails({ top: 20 });
+      } else {
+        throw fetchErr;
+      }
+    }
     console.log(`[EmailAgent] Found ${emails.length} unread emails`);
 
     if (emails.length === 0) {
