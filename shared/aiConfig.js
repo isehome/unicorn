@@ -8,7 +8,7 @@
  *
  * Usage:
  *   const { getModelId, getServiceConfig } = require('../shared/aiConfig');
- *   const modelId = getModelId('BUG_ANALYZER'); // 'gemini-2.5-flash'
+ *   const modelId = getModelId('BUG_ANALYZER'); // 'gemini-3-flash-preview'
  */
 
 // ================================
@@ -16,14 +16,24 @@
 // ================================
 
 const AI_MODELS = {
-  // Fast, general purpose - good for most tasks
+  // Primary model - Gemini 3 Flash (default for all services)
   'gemini-flash': {
-    id: 'gemini-2.5-flash',
-    name: 'Gemini 2.5 Flash',
-    description: 'Fast, cost-effective for most tasks',
+    id: 'gemini-3-flash-preview',
+    name: 'Gemini 3 Flash',
+    description: 'Primary model - fast, excellent reasoning, multimodal',
     status: 'stable',
     costTier: 'low',
-    capabilities: ['text', 'vision', 'json', 'code'],
+    capabilities: ['text', 'vision', 'json', 'code', 'audio'],
+  },
+
+  // Alias for clarity - same as gemini-flash
+  'gemini-flash-3': {
+    id: 'gemini-3-flash-preview',
+    name: 'Gemini 3 Flash',
+    description: 'Primary model - fast, excellent reasoning, multimodal',
+    status: 'stable',
+    costTier: 'low',
+    capabilities: ['text', 'vision', 'json', 'code', 'audio'],
   },
 
   // Best reasoning - for complex research tasks
@@ -36,16 +46,6 @@ const AI_MODELS = {
     capabilities: ['text', 'vision', 'json', 'code', 'grounding', 'long-context'],
   },
 
-  // Latest flash - faster with improved quality
-  'gemini-flash-3': {
-    id: 'gemini-3-flash-preview',
-    name: 'Gemini 3 Flash',
-    description: 'Latest flash model, 40-60% faster, improved reasoning',
-    status: 'preview',
-    costTier: 'low',
-    capabilities: ['text', 'vision', 'json', 'code', 'audio'],
-  },
-
   // Native audio for real-time voice
   'gemini-native-audio': {
     id: 'gemini-2.5-flash-native-audio-preview-12-2025',
@@ -56,7 +56,17 @@ const AI_MODELS = {
     capabilities: ['audio', 'realtime', 'interruption'],
   },
 
-  // Legacy - for backwards compatibility
+  // Legacy - for backwards compatibility only
+  'gemini-2.5-flash': {
+    id: 'gemini-2.5-flash',
+    name: 'Gemini 2.5 Flash (Legacy)',
+    description: 'Legacy model - migrated to Gemini 3 Flash',
+    status: 'deprecated',
+    costTier: 'low',
+    capabilities: ['text', 'vision', 'json', 'code'],
+  },
+
+  // Legacy - deprecated
   'gemini-2.0-flash': {
     id: 'gemini-2.0-flash',
     name: 'Gemini 2.0 Flash',
@@ -82,7 +92,7 @@ const AI_SERVICES = {
 
   // Email classification and response generation
   EMAIL_ANALYZER: {
-    model: 'gemini-flash',
+    model: 'gemini-flash-3',
     description: 'Email classification and response generation',
     temperature: 0.3,
     maxTokens: 2048,
@@ -244,7 +254,7 @@ function getServiceConfig(serviceName) {
 /**
  * Get the model ID for a service
  * @param {string} serviceName - Key from AI_SERVICES
- * @returns {string} Model ID (e.g., 'gemini-2.5-flash')
+ * @returns {string} Model ID (e.g., 'gemini-3-flash-preview')
  */
 function getModelId(serviceName) {
   const config = getServiceConfig(serviceName);

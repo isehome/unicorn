@@ -76,18 +76,47 @@ function shouldIgnoreEmail(fromEmail, ignoreDomains) {
 }
 
 /**
- * Lookup customer by email in global_contacts
+ * Lookup customer by email in contacts table
+ * Also checks project_contacts to find associated projects
  */
 async function lookupCustomer(email) {
   if (!email) return null;
 
-  const { data: contact } = await getSupabase()
-    .from('global_contacts')
-    .select('*')
-    .ilike('email', email)
-    .single();
+  try {
+    // First check contacts table for a direct email match
+    const { data: contact, error } = await getSupabase()
+      .from('contacts')
+      .select('id, name, first_name, last_name, email, phone, company, address, is_internal, is_active')
+      .ilike('email', email)
+      .eq('is_archived', false)
+      .limit(1)
+      .single();
 
-  return contact;
+    if (error || !contact) {
+      console.log(`[EmailAI] No contact found for: ${email}`);
+      return null;
+    }
+
+    // Look up associated projects for richer context
+    const { data: projectLinks } = await getSupabase()
+      .from('project_contacts')
+      .select('project_id, projects(id, name, status)')
+      .eq('contact_id', contact.id)
+      .limit(5);
+
+    const projects = projectLinks
+      ?.map(pl => pl.projects)
+      .filter(Boolean) || [];
+
+    return {
+      ...contact,
+      projects,
+      has_active_projects: projects.some(p => p.status === 'active' || p.status === 'in_progress'),
+    };
+  } catch (err) {
+    console.error(`[EmailAI] Customer lookup error for ${email}:`, err.message);
+    return null;
+  }
 }
 
 /**
@@ -112,7 +141,11 @@ function isReplyToNotification(subject, body) {
  * Analyze email with Gemini AI
  */
 async function analyzeEmail(email, customer, config) {
-  const model = getGenAI().getGenerativeModel({ model: 'gemini-2.5-flash' });
+  const model = getGenAI().getGenerativeModel({ model: 'gemini-3-flash-preview' });
+
+  const projectList = customer?.projects?.length
+    ? customer.projects.map(p => `  - ${p.name} (${p.status})`).join('\n')
+    : '  - None found';
 
   const customerContext = customer
     ? `
@@ -121,7 +154,10 @@ Customer Information:
 - Company: ${customer.company || 'N/A'}
 - Email: ${customer.email}
 - Phone: ${customer.phone || 'N/A'}
-- Previous interactions: Existing customer in our system
+- Status: Existing customer in our system
+- Active projects: ${customer.has_active_projects ? 'Yes' : 'No'}
+- Projects:
+${projectList}
 `
     : `
 Customer Information:
@@ -231,7 +267,7 @@ async function generateReply(email, analysis, customer, config) {
   }
 
   // Otherwise generate a new one
-  const model = getGenAI().getGenerativeModel({ model: 'gemini-2.5-flash' });
+  const model = getGenAI().getGenerativeModel({ model: 'gemini-3-flash-preview' });
 
   const prompt = `${config.systemPrompt}
 

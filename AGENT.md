@@ -9245,6 +9245,24 @@ Run in Supabase SQL Editor:
 - Update ServiceTimeEntryModal with labor type field
 - Create QBO Items sync endpoint for mapping
 
+### 2026-02-09 - Gemini 3 Flash Migration (All AI Services)
+
+**What:** Migrated all AI-powered services from Gemini 2.5 Flash to Gemini 3 Flash Preview as the default model. Updated the centralized `shared/aiConfig.js` config and all hardcoded model references in API routes.
+
+**Why:** Gemini 3 Flash provides 40-60% faster latency and improved reasoning. Standardizing on a single model version across all services for consistency and performance.
+
+**Files:**
+- `shared/aiConfig.js` - `gemini-flash` now points to `gemini-3-flash-preview`, old 2.5 moved to legacy
+- `api/_emailAI.js` - Email classification and reply generation → Gemini 3
+- `api/match-rooms.js` - Room matching for Lucid imports → Gemini 3
+- `api/parse-lutron-headers.js` - Lutron shade header parsing → Gemini 3
+- `api/extract-training.js` - Training data extraction → Gemini 3
+- `api/parse-measurement.js` - Voice measurement parsing → Gemini 3
+- `api/ai/scan-business-card.js` - Business card OCR → Gemini 3
+- `api/ai/parse-contacts.js` - Contact parsing → Gemini 3
+
+**AI Note:** ALL text/vision AI services now use `gemini-3-flash-preview`. Voice AI (real-time audio) still uses `gemini-2.5-flash-native-audio-preview-12-2025` for native audio — Gemini 3 native audio model not yet available. The `shared/aiConfig.js` is the single source of truth for model assignments.
+
 ### 2026-02-07 - Bug Fix Review Workflow (Pending Review UI)
 
 **What:** Added a human-in-the-loop review system for AI-fixed bugs. When the AI agent fixes a bug, it marks it as `pending_review` in Supabase with a fix summary. The admin sees a green summary box in the Bug Todos UI, clicks it for a details modal, and approves the fix.

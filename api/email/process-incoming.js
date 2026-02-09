@@ -77,19 +77,6 @@ module.exports = async (req, res) => {
           continue;
         }
 
-        // Check if internal email
-        if (isInternalEmail(email.from.email, config.internalDomains)) {
-          console.log(`[EmailAgent] Skipping internal email from: ${email.from.email}`);
-          await markEmailAsRead(email.id);
-          await logProcessedEmail(email, {
-            ai_classification: 'internal',
-            action_taken: 'ignored',
-            ai_summary: 'Internal email - no action needed',
-          });
-          results.skipped++;
-          continue;
-        }
-
         // Check if should ignore (noreply, etc.)
         if (shouldIgnoreEmail(email.from.email, config.ignoreDomains)) {
           console.log(`[EmailAgent] Ignoring email from: ${email.from.email}`);
@@ -103,9 +90,26 @@ module.exports = async (req, res) => {
           continue;
         }
 
-        // Lookup customer
+        // Lookup customer BEFORE internal domain check
+        // Known clients should always be processed, even from internal domains
         const customer = await lookupCustomer(email.from.email);
         console.log(`[EmailAgent] Customer lookup: ${customer ? customer.name : 'Not found'}`);
+
+        // Check if internal email — but only skip if sender is NOT a known client
+        if (isInternalEmail(email.from.email, config.internalDomains) && !customer) {
+          console.log(`[EmailAgent] Skipping internal email from: ${email.from.email} (not a known client)`);
+          await markEmailAsRead(email.id);
+          await logProcessedEmail(email, {
+            ai_classification: 'internal',
+            action_taken: 'ignored',
+            ai_summary: 'Internal email from non-client - no action needed',
+          });
+          results.skipped++;
+          continue;
+        }
+        if (isInternalEmail(email.from.email, config.internalDomains) && customer) {
+          console.log(`[EmailAgent] Internal domain but known client: ${customer.name} - processing normally`);
+        }
 
         // Check if reply to notification
         const isNotificationReply = isReplyToNotification(email.subject, email.body || email.bodyPreview);
