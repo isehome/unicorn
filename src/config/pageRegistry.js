@@ -313,6 +313,17 @@ export const PAGE_REGISTRY = {
     teachableElements: ['users-tab', 'skills-tab', 'features-tab', 'integrations-tab'],
   },
 
+  '/admin/email-agent': {
+    componentName: 'EmailAgentPage',
+    pageTitle: 'Email Agent',
+    targetUsers: ['admin', 'owner'],
+    staticContext: {
+      purpose: 'AI email agent management - inbox processing, ticket creation, auto-reply',
+      keyFeatures: ['Inbox processing', 'AI classification', 'Auto ticket creation', 'Email settings', 'Processing stats'],
+    },
+    teachableElements: ['inbox-tab', 'outbox-tab', 'settings-tab', 'stats-dashboard'],
+  },
+
   '/settings': {
     componentName: 'SettingsPage',
     pageTitle: 'Settings',

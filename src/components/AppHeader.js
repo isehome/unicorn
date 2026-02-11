@@ -73,6 +73,9 @@ const AppHeader = () => {
     // Career Development routes
     if (p === '/career') return 'Career Development';
     if (p === '/team-reviews') return 'Team Reviews';
+    // Admin routes
+    if (p === '/admin/email-agent') return 'Email Agent';
+    if (p.startsWith('/admin')) return 'Administration';
     return 'Field Operations';
   }, [location.pathname]);
 
