@@ -2506,13 +2506,6 @@ const AdminPage = () => {
           AI Agent
         </button>
         <button
-          onClick={() => navigate('/admin/email-agent')}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors bg-gray-100 dark:bg-zinc-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-zinc-600"
-        >
-          <Mail size={16} />
-          Email Agent
-        </button>
-        <button
           onClick={() => setActiveTab('bug-todos')}
           className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
             activeTab === 'bug-todos'

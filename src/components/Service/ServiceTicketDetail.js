@@ -232,7 +232,6 @@ const ServiceTicketDetail = () => {
   };
 
   // Initialize edit data when entering edit mode
-  // Note: service_address belongs to service_schedules, NOT service_tickets
   const handleStartEdit = () => {
     setEditData({
       title: ticket?.title || '',
@@ -242,7 +241,8 @@ const ServiceTicketDetail = () => {
       customer_name: ticket?.customer_name || '',
       customer_phone: ticket?.customer_phone || '',
       customer_email: ticket?.customer_email || '',
-      customer_address: ticket?.customer_address || ''
+      customer_address: ticket?.customer_address || '',
+      service_address: ticket?.service_address || ''
     });
     setIsEditing(true);
   };
@@ -950,7 +950,7 @@ const ServiceTicketDetail = () => {
                     className={`px-2 py-0.5 rounded border ${typeof statusStyle === 'string' ? statusStyle : ''}`}
                     style={typeof statusStyle === 'object' ? statusStyle : undefined}
                   >
-                    {ALL_STATUSES.find(s => s.value === ticket.status)?.label || ticket.status?.replace(/_/g, ' ')}
+                    {ticket.status?.replace('_', ' ')}
                   </span>
                   <select
                     value={ticket.priority}

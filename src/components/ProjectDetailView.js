@@ -21,8 +21,13 @@ import {
   Search,
   CheckSquare,
   Square,
+  Trash2,
   Loader,
   Plus,
+  Mail,
+  Phone,
+  Building,
+  Map as MapIcon,
   Check,
   X,
   Pencil,
@@ -50,7 +55,6 @@ import MilestoneGaugesDisplay from './MilestoneGaugesDisplay';
 import ProjectPermits from './ProjectPermits';
 import ProjectLinks from './project-detail/ProjectLinks';
 import IssuesSection from './project-detail/IssuesSection';
-import StakeholderDetailModal from './StakeholderDetailModal';
 
 const importanceRanking = {
   critical: 0,
@@ -215,8 +219,6 @@ const ProjectDetailView = () => {
   const [pendingRoleId, setPendingRoleId] = useState('');
   const [editingStakeholder, setEditingStakeholder] = useState(null);
   const [creatingNewContact, setCreatingNewContact] = useState(false);
-  const [detailStakeholder, setDetailStakeholder] = useState(null); // stakeholder for detail modal
-  const [detailStakeholderCategory, setDetailStakeholderCategory] = useState('internal');
   const [showEquipmentManager, setShowEquipmentManager] = useState(false);
   const [showSecureDataManager, setShowSecureDataManager] = useState(false);
   const [milestonePercentages, setMilestonePercentages] = useState({});
@@ -701,8 +703,6 @@ const ProjectDetailView = () => {
     return match?.id || '';
   }, [stakeholderRoles]);
 
-  // handleToggleContact is preserved for inline contact expand (currently using detail modal)
-  // eslint-disable-next-line no-unused-vars
   const handleToggleContact = useCallback((key) => {
     setExpandedContact((prev) => (prev === key ? null : key));
   }, []);
@@ -813,16 +813,16 @@ const ProjectDetailView = () => {
     }
   }, []);
 
-  const StakeholderCard = ({ person, category, onOpenDetail, onContactAction }) => {
+  const StakeholderCard = ({ person, category, isExpanded, onToggle, onRemove, onEdit, onContactAction }) => {
     const accentColor = category === 'internal' ? palette.accent : palette.success;
     return (
       <div
         className="rounded-2xl transition-transform duration-200 hover:-translate-y-0.5 cursor-pointer"
         style={{ ...styles.mutedCard, borderWidth: 1, borderStyle: 'solid', boxShadow: styles.innerShadow }}
-        onClick={() => onOpenDetail?.(person, category)}
+        onClick={onToggle}
         role="button"
         tabIndex={0}
-        onKeyUp={(e) => { if (e.key === 'Enter' || e.key === ' ') onOpenDetail?.(person, category); }}
+        onKeyUp={(e) => { if (e.key === 'Enter' || e.key === ' ') onToggle?.(); }}
       >
         <div className="p-4">
           <div className="flex items-start gap-3">
@@ -834,12 +834,72 @@ const ProjectDetailView = () => {
               <div className="text-left font-semibold tracking-tight" style={{ ...styles.textPrimary, lineHeight: 1.35 }}>
                 {person.contact_name || person.name || 'Unassigned contact'}
               </div>
-              {person.email && (
-                <p className="text-xs mt-1 truncate" style={styles.textSecondary}>{person.email}</p>
-              )}
             </div>
           </div>
         </div>
+        {isExpanded && (
+          <div
+            className="px-4 pb-4 border-t"
+            style={{ borderColor: palette.border, backgroundColor: withAlpha(palette.cardMuted, mode === 'dark' ? 0.6 : 0.4) }}
+          >
+            <div className="pt-3 space-y-3 text-sm">
+              {person.email && (
+                <div className="flex items-center gap-2">
+                  <Mail size={14} style={styles.textSecondary} />
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onContactAction?.('email', person.email); }}
+                    className="hover:underline"
+                    style={{ color: palette.info }}
+                  >
+                    {person.email}
+                  </button>
+                </div>
+              )}
+              {person.phone && (
+                <div className="flex items-center gap-2">
+                  <Phone size={14} style={styles.textSecondary} />
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onContactAction?.('phone', person.phone); }}
+                    className="hover:underline"
+                    style={{ color: palette.info }}
+                  >
+                    {person.phone}
+                  </button>
+                </div>
+              )}
+              {person.company && (
+                <div className="flex items-center gap-2">
+                  <Building size={14} style={styles.textSecondary} />
+                  <span style={styles.textPrimary}>{person.company}</span>
+                </div>
+              )}
+              {person.address && (
+                <div className="flex items-center gap-2">
+                  <MapIcon size={14} style={styles.textSecondary} />
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onContactAction?.('address', person.address); }}
+                    className="hover:underline text-left"
+                    style={{ color: palette.info }}
+                  >
+                    {person.address}
+                  </button>
+                </div>
+              )}
+              {person.assignment_notes && (
+                <div
+                  className="pt-2 text-xs italic border-t"
+                  style={{ ...styles.textSecondary, borderColor: palette.border }}
+                >
+                  Note: {person.assignment_notes}
+                </div>
+              )}
+              <div className="flex gap-2 pt-3">
+                <Button variant="primary" icon={Pencil} size="sm" onClick={(e) => { e.stopPropagation(); onEdit?.(person); }}>Edit</Button>
+                <Button variant="danger" icon={Trash2} size="sm" onClick={(e) => { e.stopPropagation(); onRemove(); }}>Delete</Button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   };
@@ -2180,12 +2240,16 @@ const ProjectDetailView = () => {
                   {stakeholders.internal?.length ? (
                     stakeholders.internal.map((person, index) => {
                       const cardKey = getStakeholderKey(person) || `internal-${index}`;
+                      const assignmentId = person?.assignment_id || person?.id;
                       return (
                         <StakeholderCard
                           key={cardKey}
                           person={person}
                           category="internal"
-                          onOpenDetail={(p, cat) => { setDetailStakeholder(p); setDetailStakeholderCategory(cat); }}
+                          isExpanded={expandedContact === cardKey}
+                          onToggle={() => handleToggleContact(cardKey)}
+                          onRemove={() => handleRemoveStakeholder(assignmentId, cardKey, person?.contact_name || person?.name)}
+                          onEdit={() => handleEditStakeholder(person)}
                           onContactAction={handleContactAction}
                         />
                       );
@@ -2209,12 +2273,16 @@ const ProjectDetailView = () => {
                   {stakeholders.external?.length ? (
                     stakeholders.external.map((person, index) => {
                       const cardKey = getStakeholderKey(person) || `external-${index}`;
+                      const assignmentId = person?.assignment_id || person?.id;
                       return (
                         <StakeholderCard
                           key={cardKey}
                           person={person}
                           category="external"
-                          onOpenDetail={(p, cat) => { setDetailStakeholder(p); setDetailStakeholderCategory(cat); }}
+                          isExpanded={expandedContact === cardKey}
+                          onToggle={() => handleToggleContact(cardKey)}
+                          onRemove={() => handleRemoveStakeholder(assignmentId, cardKey, person?.contact_name || person?.name)}
+                          onEdit={() => handleEditStakeholder(person)}
                           onContactAction={handleContactAction}
                         />
                       );
@@ -2247,31 +2315,6 @@ const ProjectDetailView = () => {
             setCreatingNewContact(false);
           }}
           isEditing={Boolean(editingStakeholder)}
-        />
-      )}
-
-      {detailStakeholder && (
-        <StakeholderDetailModal
-          person={detailStakeholder}
-          category={detailStakeholderCategory}
-          projectId={id}
-          palette={palette}
-          styles={styles}
-          mode={mode}
-          withAlpha={withAlpha}
-          onClose={() => setDetailStakeholder(null)}
-          onEdit={(person) => {
-            setDetailStakeholder(null);
-            handleEditStakeholder(person);
-          }}
-          onRemove={() => {
-            const assignmentId = detailStakeholder?.assignment_id || detailStakeholder?.id;
-            const name = detailStakeholder?.contact_name || detailStakeholder?.name;
-            const cardKey = getStakeholderKey(detailStakeholder);
-            handleRemoveStakeholder(assignmentId, cardKey, name);
-            setDetailStakeholder(null);
-          }}
-          onContactAction={handleContactAction}
         />
       )}
             </div>

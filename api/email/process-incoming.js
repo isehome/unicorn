@@ -9,14 +9,13 @@
 
 const { createClient } = require('@supabase/supabase-js');
 const { getUnreadEmails, markEmailAsRead, replyToEmail, forwardEmail } = require('../_systemGraphEmail');
-const { systemSendMail, getSystemAccountEmail, clearCaches } = require('../_systemGraph');
+const { systemSendMail, getSystemAccountEmail } = require('../_systemGraph');
 const {
   getAgentConfig,
   isInternalEmail,
   shouldIgnoreEmail,
   lookupCustomer,
   isReplyToNotification,
-  isCalendarOrAutoReply,
   analyzeEmail,
   generateReply,
 } = require('../_emailAI');
@@ -52,19 +51,8 @@ module.exports = async (req, res) => {
 
     console.log('[EmailAgent] Starting email processing...');
 
-    // Fetch unread emails (retry once with fresh token on auth failure)
-    let emails;
-    try {
-      emails = await getUnreadEmails({ top: 20 });
-    } catch (fetchErr) {
-      if (fetchErr.message && fetchErr.message.includes('403')) {
-        console.log('[EmailAgent] Got 403 - clearing token cache and retrying with fresh token...');
-        clearCaches();
-        emails = await getUnreadEmails({ top: 20 });
-      } else {
-        throw fetchErr;
-      }
-    }
+    // Fetch unread emails
+    const emails = await getUnreadEmails({ top: 20 });
     console.log(`[EmailAgent] Found ${emails.length} unread emails`);
 
     if (emails.length === 0) {
@@ -89,6 +77,19 @@ module.exports = async (req, res) => {
           continue;
         }
 
+        // Check if internal email
+        if (isInternalEmail(email.from.email, config.internalDomains)) {
+          console.log(`[EmailAgent] Skipping internal email from: ${email.from.email}`);
+          await markEmailAsRead(email.id);
+          await logProcessedEmail(email, {
+            ai_classification: 'internal',
+            action_taken: 'ignored',
+            ai_summary: 'Internal email - no action needed',
+          });
+          results.skipped++;
+          continue;
+        }
+
         // Check if should ignore (noreply, etc.)
         if (shouldIgnoreEmail(email.from.email, config.ignoreDomains)) {
           console.log(`[EmailAgent] Ignoring email from: ${email.from.email}`);
@@ -102,43 +103,9 @@ module.exports = async (req, res) => {
           continue;
         }
 
-        // Auto-ignore calendar responses (Accepted/Declined/Tentative) and auto-replies (OOO)
-        const calendarOrAutoReply = isCalendarOrAutoReply(email.subject, email.body || email.bodyPreview);
-        if (calendarOrAutoReply) {
-          console.log(`[EmailAgent] Auto-ignoring ${calendarOrAutoReply}: ${email.subject}`);
-          await markEmailAsRead(email.id);
-          await logProcessedEmail(email, {
-            ai_classification: calendarOrAutoReply === 'calendar_response' ? 'reply_to_notification' : 'internal',
-            action_taken: 'ignored',
-            ai_confidence: 1.0,
-            ai_summary: calendarOrAutoReply === 'calendar_response'
-              ? 'Calendar accept/decline/tentative response - auto-ignored'
-              : 'Auto-reply or out-of-office message - auto-ignored',
-          });
-          results.skipped++;
-          continue;
-        }
-
-        // Lookup customer BEFORE internal domain check
-        // Known clients should always be processed, even from internal domains
+        // Lookup customer
         const customer = await lookupCustomer(email.from.email);
         console.log(`[EmailAgent] Customer lookup: ${customer ? customer.name : 'Not found'}`);
-
-        // Check if internal email — but only skip if sender is NOT a known client
-        if (isInternalEmail(email.from.email, config.internalDomains) && !customer) {
-          console.log(`[EmailAgent] Skipping internal email from: ${email.from.email} (not a known client)`);
-          await markEmailAsRead(email.id);
-          await logProcessedEmail(email, {
-            ai_classification: 'internal',
-            action_taken: 'ignored',
-            ai_summary: 'Internal email from non-client - no action needed',
-          });
-          results.skipped++;
-          continue;
-        }
-        if (isInternalEmail(email.from.email, config.internalDomains) && customer) {
-          console.log(`[EmailAgent] Internal domain but known client: ${customer.name} - processing normally`);
-        }
 
         // Check if reply to notification
         const isNotificationReply = isReplyToNotification(email.subject, email.body || email.bodyPreview);
@@ -159,19 +126,13 @@ module.exports = async (req, res) => {
         let forwardedTo = null;
 
         // Check confidence threshold
-        // needsReview gates auto-reply (sending emails to customers) but NOT ticket creation
-        // Tickets are internal and safe to create even when human review is flagged
-        const lowConfidence = analysis.confidence < config.reviewThreshold;
-        const needsReview = lowConfidence || analysis.requires_human_review;
+        const needsReview = analysis.confidence < config.reviewThreshold || analysis.requires_human_review;
 
         // Create ticket if needed
-        // Only block on low confidence - requires_human_review should not prevent ticket creation
-        // (The AI may flag review for name mismatches, scheduling needs, etc. but ticket should still be made)
-        if (analysis.should_create_ticket && config.autoCreateTickets && !lowConfidence) {
+        if (analysis.should_create_ticket && config.autoCreateTickets && !needsReview) {
           try {
             const ticket = await createServiceTicket(email, analysis, customer);
             ticketId = ticket.id;
-            actionTaken = 'ticket_created';
             results.tickets_created++;
             console.log(`[EmailAgent] Created ticket: ${ticket.id}`);
           } catch (ticketError) {
@@ -181,7 +142,6 @@ module.exports = async (req, res) => {
         }
 
         // Send reply if needed
-        // Auto-reply IS gated by needsReview - we don't auto-respond when human review is flagged
         if (analysis.should_reply && config.autoReply && !needsReview) {
           try {
             const replyBody = await generateReply(email, analysis, customer, config);
@@ -197,7 +157,7 @@ module.exports = async (req, res) => {
               cc: ccList,
             });
 
-            if (!ticketId) actionTaken = 'replied';
+            actionTaken = ticketId ? 'ticket_created' : 'replied';
             results.replies_sent++;
             console.log(`[EmailAgent] Sent reply to: ${email.from.email}`);
           } catch (replyError) {
@@ -257,14 +217,6 @@ module.exports = async (req, res) => {
           ai_suggested_response: analysis.suggested_response,
           ai_confidence: analysis.confidence,
           ai_raw_response: { analysis },
-          // Richer AI metadata for ops manager routing & recursive improvement
-          ai_topics: analysis.topics || [],
-          ai_intent: analysis.intent || null,
-          ai_department: analysis.department || null,
-          ai_suggested_assignee_role: analysis.suggested_assignee_role || null,
-          ai_routing_reasoning: analysis.routing_reasoning || null,
-          ai_priority_reasoning: analysis.priority_reasoning || null,
-          ai_entities: analysis.entities || {},
           action_taken: actionTaken,
           action_details: {
             ticket_created: !!ticketId,
@@ -339,20 +291,28 @@ async function logProcessedEmail(email, data) {
  * Create a service ticket from email
  */
 async function createServiceTicket(email, analysis, customer) {
+  const systemEmail = await getSystemAccountEmail();
+
   const ticketData = {
     title: analysis.ticket_title || email.subject,
     description: analysis.ticket_description || analysis.summary,
-    status: 'open',
+    status: 'new',
     priority: mapUrgencyToPriority(analysis.urgency),
     source: 'email',
-    source_reference: email.id,
     customer_email: email.from.email,
     customer_name: customer?.name || email.from.name,
     customer_phone: customer?.phone,
     contact_id: customer?.id,
     category: analysis.ticket_category || 'general',
-    initial_customer_comment: email.body || email.bodyPreview,
-    ai_triage_notes: `AI Classification: ${analysis.classification} | Confidence: ${(analysis.confidence * 100).toFixed(0)}% | Urgency: ${analysis.urgency}\n\nSummary: ${analysis.summary}\n\nAction Items:\n${(analysis.action_items || []).map(item => '• ' + item).join('\n')}`,
+    metadata: {
+      email_id: email.id,
+      conversation_id: email.conversationId,
+      ai_classification: analysis.classification,
+      ai_summary: analysis.summary,
+      original_subject: email.subject,
+      has_attachments: email.hasAttachments,
+    },
+    created_by_email: systemEmail,
   };
 
   const { data: ticket, error } = await supabase

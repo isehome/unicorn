@@ -1464,9 +1464,8 @@ const EquipmentListPage = () => {
 
       setEquipment(mapped);
     } catch (err) {
-      const errorMsg = err?.message || (typeof err === 'object' ? JSON.stringify(err) : String(err));
-      console.error('[EquipmentListPage] Failed to load project equipment:', errorMsg);
-      setError(errorMsg || 'Failed to load project equipment');
+      console.error('Failed to load project equipment:', err);
+      setError(err.message || 'Failed to load project equipment');
       setEquipment([]);
     } finally {
       setLoading(false);

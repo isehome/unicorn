@@ -329,19 +329,6 @@ async function handleExchange(body) {
     return { status: 404, data: { status: 'invalid', reason: 'link_not_found' } };
   }
 
-  // Track portal access for stakeholder engagement reporting
-  try {
-    await supabase
-      .from('issue_public_access_links')
-      .update({
-        last_accessed_at: nowIso(),
-        access_count: (link.access_count || 0) + 1
-      })
-      .eq('id', link.id);
-  } catch (trackErr) {
-    console.warn('[PublicIssue] Failed to track portal access:', trackErr.message);
-  }
-
   const validSession = isSessionValid(link, sessionToken);
   const payload = await buildPortalPayload(link, validSession);
   return { status: 200, data: payload };

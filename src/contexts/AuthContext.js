@@ -14,42 +14,20 @@ import {
 } from '../config/authConfig';
 import { supabase } from '../lib/supabase';
 
-// Clear stale MSAL interaction state on page load if no auth hash is present.
-// This prevents the hash_empty_error that occurs when MSAL expects a redirect
-// response but the hash was already stripped (e.g. by Safari or React Router).
+// Clear stale MSAL state on page load if hash is empty but state exists
+// This prevents the hash_empty_error from occurring
 (() => {
   const hasAuthHash = window.location.hash &&
     (window.location.hash.includes('code=') ||
      window.location.hash.includes('id_token=') ||
-     window.location.hash.includes('access_token=') ||
-     window.location.hash.includes('error='));
+     window.location.hash.includes('access_token='));
 
   if (!hasAuthHash) {
-    // Clear ALL interaction-related keys from both storages.
-    // Account / token caches are left intact so users stay signed in.
-    let cleared = 0;
-    const clearInteractionState = (storage) => {
-      for (let i = storage.length - 1; i >= 0; i--) {
-        const key = storage.key(i);
-        if (!key) continue;
-        // Only target interaction / request tracking keys, NOT cached tokens/accounts
-        const isInteraction =
-          key === 'msal.interaction.status' ||
-          (key.startsWith('msal.') && (
-            key.includes('.request.') ||
-            key.includes('interaction') ||
-            key.includes('.redirect')
-          ));
-        if (isInteraction) {
-          storage.removeItem(key);
-          cleared++;
-        }
-      }
-    };
-    try { clearInteractionState(localStorage); } catch (_) { /* private browsing */ }
-    try { clearInteractionState(sessionStorage); } catch (_) { /* private browsing */ }
-    if (cleared > 0) {
-      console.log(`[Auth] Cleared ${cleared} stale MSAL interaction key(s) on page load`);
+    // Check if there's stale interaction state
+    const interactionStatus = localStorage.getItem('msal.interaction.status');
+    if (interactionStatus) {
+      console.log('[Auth] Clearing stale MSAL interaction state');
+      localStorage.removeItem('msal.interaction.status');
     }
   }
 })();

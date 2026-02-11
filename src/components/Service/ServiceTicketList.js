@@ -43,8 +43,7 @@ const STATUSES = [
   { value: 'in_progress', label: 'In Progress' },
   { value: 'waiting_parts', label: 'Waiting Parts' },
   { value: 'waiting_customer', label: 'Waiting Customer' },
-  { value: 'work_complete_needs_invoice', label: 'Work Complete - Needs Invoice' },
-  { value: 'problem', label: 'Problem (Escalation)' },
+  { value: 'resolved', label: 'Resolved' },
   { value: 'closed', label: 'Closed' }
 ];
 

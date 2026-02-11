@@ -75,7 +75,7 @@ async function getOrCreateQBOCustomer(supabase, client, realmId, ticket, contact
   const { data: mapping } = await supabase
     .from('qbo_customer_mapping')
     .select('qbo_customer_id')
-    .eq('contact_id', ticket.contact_id)
+    .eq('contact_id', ticket.customer_id)
     .eq('qbo_realm_id', realmId)
     .single();
 
@@ -104,7 +104,7 @@ async function getOrCreateQBOCustomer(supabase, client, realmId, ticket, contact
     await supabase
       .from('qbo_customer_mapping')
       .insert({
-        contact_id: ticket.contact_id,
+        contact_id: ticket.customer_id,
         qbo_customer_id: qboCustomer.Id,
         qbo_display_name: qboCustomer.DisplayName,
         qbo_realm_id: realmId,
@@ -147,7 +147,7 @@ async function getOrCreateQBOCustomer(supabase, client, realmId, ticket, contact
   await supabase
     .from('qbo_customer_mapping')
     .insert({
-      contact_id: ticket.contact_id,
+      contact_id: ticket.customer_id,
       qbo_customer_id: createdCustomer.Id,
       qbo_display_name: createdCustomer.DisplayName,
       qbo_realm_id: realmId,
@@ -348,32 +348,13 @@ export default async function handler(req, res) {
     const createdInvoice = invoiceResult.Invoice;
     console.log('[QBO] Invoice created:', createdInvoice.Id, createdInvoice.DocNumber);
 
-    // Update the service ticket with invoice info (server-side to ensure it persists)
-    const { error: updateError } = await supabase
-      .from('service_tickets')
-      .update({
-        qbo_invoice_id: String(createdInvoice.Id),
-        qbo_invoice_number: String(createdInvoice.DocNumber),
-        qbo_synced_at: new Date().toISOString(),
-        qbo_sync_status: 'synced',
-        qbo_sync_error: null
-      })
-      .eq('id', ticketId);
-
-    if (updateError) {
-      console.error('[QBO] Warning: Failed to update ticket with invoice info:', updateError);
-      // Don't fail the response - invoice was created successfully
-    } else {
-      console.log('[QBO] Ticket updated with invoice info');
-    }
-
     // Build invoice URL
     const invoiceUrl = `https://${process.env.QBO_ENVIRONMENT === 'production' ? 'qbo' : 'sandbox.qbo'}.intuit.com/app/invoice?txnId=${createdInvoice.Id}`;
 
     return res.status(200).json({
       success: true,
-      invoiceId: String(createdInvoice.Id),
-      invoiceNumber: String(createdInvoice.DocNumber),
+      invoiceId: createdInvoice.Id,
+      invoiceNumber: createdInvoice.DocNumber,
       invoiceUrl,
       total: createdInvoice.TotalAmt
     });

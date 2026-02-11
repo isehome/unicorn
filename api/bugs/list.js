@@ -4,7 +4,7 @@
  * GET /api/bugs/list - List bug reports with filtering and pagination
  *
  * Query params:
- * - status: pending | processing | analyzed | pending_review | failed | fixed | all (default: all)
+ * - status: pending | processing | analyzed | failed | all (default: all)
  * - page: page number (default: 1)
  * - limit: items per page (default: 20, max: 100)
  * - sort: created_at | processed_at | severity (default: created_at)
@@ -78,19 +78,13 @@ module.exports = async (req, res) => {
         pr_number,
         branch_name,
         initial_email_sent_at,
-        analysis_email_sent_at,
-        fix_summary,
-        fixed_at
+        analysis_email_sent_at
       `, { count: 'exact' })
       .order(sortColumn, { ascending })
       .range(offset, offset + limitNum - 1);
 
     // Apply status filter
-    if (status === 'all') {
-      query = query.not('status', 'eq', 'fixed');
-    } else if (status === 'fixed') {
-      query = query.eq('status', 'fixed');
-    } else {
+    if (status !== 'all') {
       query = query.eq('status', status);
     }
 
@@ -110,17 +104,13 @@ module.exports = async (req, res) => {
           pending: 0,
           processing: 0,
           analyzed: 0,
-          pending_review: 0,
           failed: 0,
-          fixed: 0,
           total: 0
         };
         if (data) {
           data.forEach(row => {
             stats[row.status] = (stats[row.status] || 0) + 1;
-            if (row.status !== 'fixed') {
-              stats.total++;
-            }
+            stats.total++;
           });
         }
         return { data: stats };

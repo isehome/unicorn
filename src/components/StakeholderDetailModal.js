@@ -58,29 +58,27 @@ const StakeholderDetailModal = ({
   const email = person?.email;
   const tagId = person?.tag_id || person?.stakeholder_tag_id || person?.id;
 
-  // Load engagement history (notifications, comments, portal access)
+  // Load engagement history (notifications, comments, portal access).
+  // We query by contact_email (always available from project stakeholders)
+  // rather than issue-level tag_id which only exists on issue stakeholder tags.
   const loadHistory = useCallback(async () => {
-    if (!email && !tagId) return;
+    if (!email) return;
     setLoadingHistory(true);
+    const normalizedEmail = email.trim().toLowerCase();
+
     try {
       const events = [];
 
-      // 1. Notification log entries for this stakeholder
-      if (tagId || email) {
-        let query = supabase
+      // 1. Notification log entries — match by recipient email for this project
+      {
+        const { data: notifications } = await supabase
           .from('issue_notification_log')
           .select('id, notification_type, subject, sent_at, recipient_email, metadata')
           .eq('project_id', projectId)
+          .ilike('recipient_email', normalizedEmail)
           .order('sent_at', { ascending: false })
           .limit(50);
 
-        if (tagId) {
-          query = query.eq('stakeholder_tag_id', tagId);
-        } else {
-          query = query.eq('recipient_email', email.trim().toLowerCase());
-        }
-
-        const { data: notifications } = await query;
         (notifications || []).forEach((n) => {
           events.push({
             type: 'notification',
@@ -92,12 +90,13 @@ const StakeholderDetailModal = ({
         });
       }
 
-      // 2. Portal access events (for external stakeholders)
-      if (category === 'external' && tagId) {
+      // 2. Portal access events — match by contact_email on portal links for this project
+      if (category === 'external') {
         const { data: links } = await supabase
           .from('issue_public_access_links')
-          .select('id, issue_id, last_accessed_at, access_count, created_at, last_notified_at')
-          .eq('issue_stakeholder_tag_id', tagId)
+          .select('id, issue_id, last_accessed_at, access_count, created_at, last_notified_at, contact_email')
+          .eq('project_id', projectId)
+          .ilike('contact_email', normalizedEmail)
           .is('revoked_at', null)
           .order('created_at', { ascending: false })
           .limit(20);
@@ -124,26 +123,36 @@ const StakeholderDetailModal = ({
         });
       }
 
-      // 3. Comments on issues in this project by this stakeholder's email
-      if (email) {
-        const { data: comments } = await supabase
-          .from('issue_comments')
-          .select('id, text, created_at, author_email, issue_id')
-          .eq('author_email', email.trim().toLowerCase())
-          .order('created_at', { ascending: false })
-          .limit(30);
+      // 3. Comments — first get issue IDs for this project, then find comments by email
+      {
+        // Get all issues for this project so we can filter comments
+        const { data: projectIssues } = await supabase
+          .from('issues')
+          .select('id')
+          .eq('project_id', projectId);
 
-        // Filter to comments on issues belonging to this project
-        // (issue_comments may not have project_id, so we do a quick check)
-        (comments || []).forEach((c) => {
-          events.push({
-            type: 'comment',
-            date: c.created_at,
-            label: 'Left a comment',
-            detail: c.text ? (c.text.length > 80 ? c.text.slice(0, 80) + '…' : c.text) : null,
-            icon: 'message'
+        const issueIds = (projectIssues || []).map(i => i.id);
+
+        if (issueIds.length > 0) {
+          const { data: comments } = await supabase
+            .from('issue_comments')
+            .select('id, comment_text, created_at, author_name, author_email, issue_id')
+            .ilike('author_email', normalizedEmail)
+            .in('issue_id', issueIds)
+            .order('created_at', { ascending: false })
+            .limit(30);
+
+          (comments || []).forEach((c) => {
+            const txt = c.comment_text || '';
+            events.push({
+              type: 'comment',
+              date: c.created_at,
+              label: 'Left a comment',
+              detail: txt ? (txt.length > 80 ? txt.slice(0, 80) + '…' : txt) : null,
+              icon: 'message'
+            });
           });
-        });
+        }
       }
 
       // Sort all events by date descending
@@ -155,7 +164,7 @@ const StakeholderDetailModal = ({
     } finally {
       setLoadingHistory(false);
     }
-  }, [email, tagId, projectId, category]);
+  }, [email, projectId, category]);
 
   useEffect(() => {
     loadHistory();

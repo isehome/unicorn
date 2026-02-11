@@ -205,19 +205,12 @@ export const serviceTicketService = {
     if (!id) throw new Error('Ticket ID is required');
 
     try {
-      // Clean the payload - remove read-only and non-ticket fields
+      // Clean the payload
       const payload = { ...updates };
       delete payload.id;
       delete payload.created_at;
       delete payload.ticket_number;
       delete payload.search_vector;
-      // service_address belongs to service_schedules, not service_tickets
-      delete payload.service_address;
-      // Remove any joined/related data that might be passed
-      delete payload.project;
-      delete payload.contact;
-      delete payload.schedules;
-      delete payload.notes;
 
       const { data, error } = await supabase
         .from('service_tickets')
@@ -247,7 +240,7 @@ export const serviceTicketService = {
     try {
       const updates = { status: newStatus };
 
-      if (newStatus === 'work_complete_needs_invoice' || newStatus === 'closed') {
+      if (newStatus === 'resolved' || newStatus === 'closed') {
         updates.resolved_at = new Date().toISOString();
         updates.resolved_by = userId;
       }
@@ -257,7 +250,7 @@ export const serviceTicketService = {
       // Add status change note
       await this.addNote(id, {
         note_type: 'status_change',
-        content: `Status changed to: ${newStatus.replace(/_/g, ' ')}`,
+        content: `Status changed to: ${newStatus.replace('_', ' ')}`,
         author_id: userId,
         author_name: userName
       });

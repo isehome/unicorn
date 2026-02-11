@@ -190,7 +190,7 @@ const ServiceDashboard = () => {
       view: 'service-dashboard',
       stats,
       ticketCount: tickets.length,
-      openTickets: tickets.filter(t => !['work_complete_needs_invoice', 'closed'].includes(t.status)).length,
+      openTickets: tickets.filter(t => !['resolved', 'closed'].includes(t.status)).length,
       todayAppointments: todaySchedule.length,
       filters,
       searchQuery
@@ -220,7 +220,7 @@ const ServiceDashboard = () => {
         return {
           success: true,
           tickets: tickets
-            .filter(t => !['work_complete_needs_invoice', 'closed'].includes(t.status))
+            .filter(t => !['resolved', 'closed'].includes(t.status))
             .map(t => ({
               number: t.ticket_number,
               title: t.title,
@@ -233,7 +233,7 @@ const ServiceDashboard = () => {
         return {
           success: true,
           tickets: tickets
-            .filter(t => t.priority === 'urgent' && !['work_complete_needs_invoice', 'closed'].includes(t.status))
+            .filter(t => t.priority === 'urgent' && !['resolved', 'closed'].includes(t.status))
             .map(t => ({
               number: t.ticket_number,
               title: t.title,
@@ -449,9 +449,9 @@ const ServiceDashboard = () => {
               </div>
               <div>
                 <div className="text-2xl font-bold text-white">
-                  {(stats?.byStatus?.work_complete_needs_invoice || 0) + (stats?.byStatus?.closed || 0)}
+                  {stats?.byStatus?.resolved || 0}
                 </div>
-                <div className="text-sm text-zinc-400">Completed This Week</div>
+                <div className="text-sm text-zinc-400">Resolved This Week</div>
               </div>
             </div>
           </div>

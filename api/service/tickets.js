@@ -77,13 +77,8 @@ module.exports = async (req, res) => {
                 .single();
 
             if (error) {
-                console.error('[Service Tickets] Create error:', error.message, error.details, error.hint);
-                return res.status(400).json({
-                    success: false,
-                    error: error.message || 'Failed to create ticket',
-                    details: error.details || null,
-                    hint: error.hint || null
-                });
+                console.error('[Service Tickets] Create error:', error);
+                throw error;
             }
 
             // Add creation note
@@ -140,11 +135,7 @@ module.exports = async (req, res) => {
         return res.status(405).json({ error: 'Method not allowed' });
 
     } catch (error) {
-        console.error('[Service Tickets] Error:', error.message || error);
-        return res.status(500).json({
-            success: false,
-            error: error.message || 'Internal server error',
-            details: error.details || null
-        });
+        console.error('[Service Tickets] Error:', error);
+        return res.status(500).json({ success: false, error: error.message });
     }
 };

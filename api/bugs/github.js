@@ -447,40 +447,6 @@ async function getBugScreenshot(bugId, branch = null) {
   }
 }
 
-/**
- * Check if a file was modified on a branch since a given date
- * Uses the GitHub commits API: GET /repos/:owner/:repo/commits?sha=:branch&path=:file&since=:date
- *
- * @param {string} filePath - Repository-relative file path (e.g., "src/components/Button.js")
- * @param {string} sinceDate - ISO 8601 timestamp (e.g., "2026-02-06T00:00:00Z")
- * @param {string} branch - Branch to check (default: "main")
- * @returns {Object} { modified: boolean, commits: [{sha, message, date}] }
- */
-async function getCommitsForFile(filePath, sinceDate, branch = 'main') {
-  try {
-    const encodedPath = encodeURIComponent(filePath);
-    const data = await githubRequest(
-      `/repos/${REPO_OWNER}/${REPO_NAME}/commits?sha=${branch}&path=${encodedPath}&since=${sinceDate}&per_page=5`
-    );
-
-    if (!Array.isArray(data) || data.length === 0) {
-      return { modified: false, commits: [] };
-    }
-
-    return {
-      modified: true,
-      commits: data.map(c => ({
-        sha: c.sha?.substring(0, 7),
-        message: c.commit?.message?.substring(0, 120),
-        date: c.commit?.committer?.date
-      }))
-    };
-  } catch (err) {
-    console.error(`[GitHub] getCommitsForFile error for ${filePath}:`, err.message);
-    return { modified: false, commits: [], error: err.message };
-  }
-}
-
 module.exports = {
   githubRequest,
   getMainBranchSha,
@@ -497,6 +463,5 @@ module.exports = {
   listBugReports,
   getBugReportContent,
   getBugScreenshot,
-  getFileSha,
-  getCommitsForFile
+  getFileSha
 };

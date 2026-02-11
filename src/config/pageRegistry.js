@@ -313,17 +313,6 @@ export const PAGE_REGISTRY = {
     teachableElements: ['users-tab', 'skills-tab', 'features-tab', 'integrations-tab'],
   },
 
-  '/admin/email-agent': {
-    componentName: 'EmailAgentPage',
-    pageTitle: 'Email Agent',
-    targetUsers: ['admin', 'owner'],
-    staticContext: {
-      purpose: 'Monitor and manage AI email agent - inbox, outbox, and settings',
-      keyFeatures: ['Inbox view', 'Outbox view', 'Email classification', 'Auto-reply settings', 'Process emails manually'],
-    },
-    teachableElements: ['inbox-list', 'outbox-list', 'settings-panel', 'process-now-button'],
-  },
-
   '/settings': {
     componentName: 'SettingsPage',
     pageTitle: 'Settings',
