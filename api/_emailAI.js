@@ -226,12 +226,25 @@ ${email.body || email.bodyPreview}
 Analyze this email and respond with ONLY a JSON object (no markdown, no explanation) with these fields:
 
 {
-  "classification": "support" | "sales" | "spam" | "reply_to_notification" | "unknown",
-  "summary": "Brief 1-2 sentence summary of the email",
+  "classification": "support" | "sales" | "spam" | "reply_to_notification" | "vendor" | "billing" | "scheduling" | "unknown",
+  "summary": "Brief 1-2 sentence summary of what this email is about and what the sender wants",
   "urgency": "low" | "medium" | "high" | "critical",
+  "priority_reasoning": "1 sentence explaining WHY you assigned this urgency level",
   "sentiment": "positive" | "neutral" | "negative" | "frustrated",
   "confidence": 0.0 to 1.0,
-  "action_items": ["list", "of", "action items"],
+  "intent": "request_service" | "provide_info" | "ask_question" | "complaint" | "follow_up" | "schedule" | "escalation" | "feedback" | "purchase_order" | "other",
+  "topics": ["array", "of", "topic tags relevant to this email (e.g. wifi, network, home_theater, camera, audio, lighting, shades, control, security, billing, scheduling)"],
+  "entities": {
+    "systems_mentioned": ["specific equipment or systems mentioned (e.g. Sonos, Lutron, Ubiquiti, Control4)"],
+    "locations_mentioned": ["rooms or areas mentioned (e.g. home theater, master bedroom, patio)"],
+    "people_mentioned": ["names of people referenced in the email"],
+    "dates_mentioned": ["any dates, deadlines, or time references"],
+    "project_references": ["any project names or numbers mentioned"]
+  },
+  "department": "service" | "sales" | "project_management" | "admin" | "billing" | "unknown",
+  "suggested_assignee_role": "service_tech" | "project_manager" | "sales_rep" | "office_admin" | "owner" | "unknown",
+  "routing_reasoning": "1-2 sentences explaining WHY this should go to that department/role",
+  "action_items": ["list", "of", "specific next steps to take"],
   "should_create_ticket": true | false,
   "ticket_title": "Suggested ticket title if creating one",
   "ticket_description": "Suggested ticket description",
@@ -247,9 +260,24 @@ Analyze this email and respond with ONLY a JSON object (no markdown, no explanat
 Classification guidelines:
 - "support": Customer needs help with existing system/service
 - "sales": New inquiry, quote request, or sales question
+- "vendor": Communication from a vendor or supplier
+- "billing": Invoice, payment, or billing related
+- "scheduling": Appointment scheduling or calendar coordination
 - "spam": Marketing, newsletters, automated messages
 - "reply_to_notification": Reply to an email we sent (ticket update, PO, etc.)
 - "unknown": Cannot determine intent
+
+Intent guidelines:
+- "request_service": Customer wants something fixed, installed, or serviced
+- "ask_question": Customer has a question about their system or our services
+- "complaint": Customer is unhappy and expressing dissatisfaction
+- "follow_up": Continuing a previous conversation or checking on status
+- "schedule": Wants to set up an appointment or change a schedule
+- "escalation": Issue has been ongoing, customer wants it elevated
+- "feedback": Positive or negative feedback about completed work
+- "provide_info": Sending information we requested or FYI
+- "purchase_order": Sending a PO or order-related communication
+- "other": None of the above
 
 Urgency guidelines:
 - "critical": System down, security issue, business-impacting

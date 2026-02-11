@@ -257,6 +257,14 @@ module.exports = async (req, res) => {
           ai_suggested_response: analysis.suggested_response,
           ai_confidence: analysis.confidence,
           ai_raw_response: { analysis },
+          // Richer AI metadata for ops manager routing & recursive improvement
+          ai_topics: analysis.topics || [],
+          ai_intent: analysis.intent || null,
+          ai_department: analysis.department || null,
+          ai_suggested_assignee_role: analysis.suggested_assignee_role || null,
+          ai_routing_reasoning: analysis.routing_reasoning || null,
+          ai_priority_reasoning: analysis.priority_reasoning || null,
+          ai_entities: analysis.entities || {},
           action_taken: actionTaken,
           action_details: {
             ticket_created: !!ticketId,
