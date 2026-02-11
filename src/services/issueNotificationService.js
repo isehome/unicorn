@@ -450,6 +450,207 @@ export const sendNotificationEmail = async (message, options = {}) => {
   await postNotification(message, options);
 };
 
+/**
+ * Notify all tagged stakeholders about an issue (bulk notification).
+ * Sends a branded email from the current user (sendAsUser: true) with
+ * CC to unicorn@isehome.com. Internal stakeholders get the internal URL;
+ * external stakeholders get their secure portal link + OTP if new.
+ *
+ * @param {Object} params
+ * @param {Object} params.issue - Issue record ({ id, title, description, status, priority, due_date })
+ * @param {Object} params.project - Project record ({ id, name })
+ * @param {Array}  params.stakeholders - Tagged stakeholder list
+ * @param {Object} params.actor - Current user { name, email }
+ * @param {string} params.issueUrl - Internal issue URL
+ * @param {Object} params.externalPortalLinks - Map of tagId → { url, otp }
+ * @param {Object} [params.companySettings] - Optional pre-fetched company settings
+ */
+export const notifyAllStakeholders = async (
+  { issue, project, stakeholders, actor, issueUrl, externalPortalLinks = {}, companySettings },
+  options = {}
+) => {
+  if (!Array.isArray(stakeholders) || stakeholders.length === 0) {
+    console.warn('[IssueNotificationService] notifyAllStakeholders: No stakeholders to notify');
+    return { sent: 0 };
+  }
+
+  // Fetch company settings if not provided
+  let settings = companySettings;
+  if (!settings) {
+    try {
+      settings = await companySettingsService.getCompanySettings();
+    } catch (err) {
+      console.warn('[IssueNotificationService] Could not fetch company settings:', err.message);
+    }
+  }
+
+  const { issueTitle, projectName } = formatIssueContext(issue, project);
+  const rawProjectName = project?.name || '';
+  const actorName = actor?.name || actor?.email || 'Your project team';
+  const safeActorName = escapeHtml(actorName);
+  const safeIssueTitle = escapeHtml(issueTitle);
+  const safeProjectName = escapeHtml(projectName);
+
+  // Build a summary block for the issue
+  const status = issue?.status ? escapeHtml(formatStatusLabel(issue.status)) : 'Open';
+  const priority = issue?.priority ? escapeHtml(formatStatusLabel(issue.priority)) : '—';
+  const description = issue?.description
+    ? escapeHtml(issue.description.length > 300 ? issue.description.slice(0, 300) + '…' : issue.description)
+    : '';
+  const dueDateStr = issue?.due_date
+    ? new Date(issue.due_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    : null;
+
+  const emailFooter = generateEmailFooter(settings, rawProjectName);
+  const textFooter = generateTextFooter(settings, rawProjectName);
+  const subject = `Issue Update: "${issueTitle}"`;
+
+  const internalStakeholders = [];
+  const externalStakeholders = [];
+
+  (stakeholders || []).forEach((s) => {
+    if (!s?.email) return;
+    const isExternal = s?.is_internal === false ||
+                       s?.role_category === 'external' ||
+                       s?.category === 'external';
+    if (isExternal) {
+      externalStakeholders.push(s);
+    } else {
+      internalStakeholders.push(s);
+    }
+  });
+
+  console.log('[IssueNotificationService] notifyAllStakeholders:', {
+    issueId: issue?.id,
+    internalCount: internalStakeholders.length,
+    externalCount: externalStakeholders.length,
+    hasAuthToken: !!options?.authToken
+  });
+
+  let sent = 0;
+  const safeUrl = escapeHtml(issueUrl || '#');
+
+  // Build the issue summary HTML block
+  const summaryBlock = `
+    <table style="width:100%;border-collapse:collapse;margin:16px 0;">
+      <tr>
+        <td style="padding:8px 12px;border:1px solid #e5e7eb;font-weight:600;width:120px;background:#f9fafb;color:#333;">Status</td>
+        <td style="padding:8px 12px;border:1px solid #e5e7eb;color:#333;">${status}</td>
+      </tr>
+      <tr>
+        <td style="padding:8px 12px;border:1px solid #e5e7eb;font-weight:600;background:#f9fafb;color:#333;">Priority</td>
+        <td style="padding:8px 12px;border:1px solid #e5e7eb;color:#333;">${priority}</td>
+      </tr>
+      ${dueDateStr ? `<tr>
+        <td style="padding:8px 12px;border:1px solid #e5e7eb;font-weight:600;background:#f9fafb;color:#333;">Due Date</td>
+        <td style="padding:8px 12px;border:1px solid #e5e7eb;color:#333;">${escapeHtml(dueDateStr)}</td>
+      </tr>` : ''}
+    </table>
+    ${description ? `<p style="color:#555555;margin:12px 0;">${description}</p>` : ''}
+  `;
+
+  const textSummary = `Status: ${issue?.status || 'Open'} | Priority: ${issue?.priority || '—'}${dueDateStr ? ` | Due: ${dueDateStr}` : ''}${description ? `\n\n${issue.description.slice(0, 300)}` : ''}`;
+
+  // ── Internal stakeholders: one email to all ──
+  if (internalStakeholders.length > 0) {
+    const internalRecipients = internalStakeholders
+      .map(s => s?.email?.trim())
+      .filter(Boolean);
+
+    if (internalRecipients.length > 0) {
+      const htmlContent = `
+        <p>${safeActorName} is requesting your attention on issue <strong>${safeIssueTitle}</strong>${safeProjectName}.</p>
+        ${summaryBlock}
+        <p><a href="${safeUrl}" style="display:inline-block;padding:12px 24px;background-color:#7c3aed;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:500;">View Issue</a></p>
+        ${emailFooter}
+      `;
+      const html = wrapEmailHtml(htmlContent);
+
+      const text = `${actorName} is requesting your attention on issue "${issueTitle}"${projectName}.
+
+${textSummary}
+
+View Issue: ${issueUrl || '#'}${textFooter}`;
+
+      await postNotification(
+        {
+          to: internalRecipients,
+          cc: [SYSTEM_EMAIL],
+          subject,
+          html,
+          text,
+          sendAsUser: true
+        },
+        { authToken: options?.authToken }
+      );
+      sent += internalRecipients.length;
+    }
+  }
+
+  // ── External stakeholders: individual emails with portal links ──
+  for (const stakeholder of externalStakeholders) {
+    const email = stakeholder?.email?.trim();
+    if (!email) continue;
+
+    const tagId = stakeholder?.tag_id || stakeholder?.id;
+    const portalInfo = externalPortalLinks[tagId];
+    const portalUrl = portalInfo?.url;
+    const portalOtp = portalInfo?.otp;
+    const recipientName = stakeholder?.contact_name || stakeholder?.displayName || stakeholder?.role_name || 'there';
+    const safeRecipientName = escapeHtml(recipientName);
+
+    const linkUrl = portalUrl ? escapeHtml(portalUrl) : safeUrl;
+    const linkLabel = portalUrl ? 'Open the Secure Portal' : 'View Issue';
+
+    const htmlContent = `
+      <p>Hi ${safeRecipientName},</p>
+      <p>${safeActorName} is requesting your attention on issue <strong>${safeIssueTitle}</strong>${safeProjectName}.</p>
+      ${summaryBlock}
+      <p><a href="${linkUrl}" style="display:inline-block;padding:12px 24px;background-color:#7c3aed;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:500;">${linkLabel}</a></p>
+      ${portalOtp ? `<p>Your one-time verification code: <strong>${escapeHtml(portalOtp)}</strong></p>` : ''}
+      ${!portalUrl ? `<p style="color:#666;font-size:13px;">Please use the secure portal link from your original invitation email if you have one.</p>` : ''}
+      ${WHITELIST_NOTICE_HTML}
+      ${emailFooter}
+    `;
+    const html = wrapEmailHtml(htmlContent);
+
+    const text = `Hi ${recipientName},
+
+${actorName} is requesting your attention on issue "${issueTitle}"${projectName}.
+
+${textSummary}
+
+${linkLabel}: ${portalUrl || issueUrl || '#'}
+${portalOtp ? `Your one-time verification code: ${portalOtp}` : ''}
+${!portalUrl ? 'Please use the secure portal link from your original invitation email if you have one.' : ''}
+${WHITELIST_NOTICE_TEXT}${textFooter}`;
+
+    await postNotification(
+      {
+        to: [email],
+        cc: [SYSTEM_EMAIL],
+        subject,
+        html,
+        text,
+        sendAsUser: true
+      },
+      { authToken: options?.authToken }
+    );
+    sent++;
+  }
+
+  console.log(`[IssueNotificationService] notifyAllStakeholders complete: ${sent} emails sent`);
+  return { sent };
+};
+
+// Helper used by notifyAllStakeholders
+const formatStatusLabel = (label = '') => {
+  if (!label) return '';
+  const normalized = `${label}`.trim();
+  if (!normalized) return '';
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1).toLowerCase();
+};
+
 // Process pending notifications for an issue (called when internal user views the issue)
 export const processPendingNotifications = async (issueId, options = {}) => {
   if (!issueId) return { processed: 0 };

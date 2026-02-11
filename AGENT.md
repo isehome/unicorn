@@ -9389,6 +9389,19 @@ Run in Supabase SQL Editor:
 - Update ServiceTimeEntryModal with labor type field
 - Create QBO Items sync endpoint for mapping
 
+### 2026-02-11 - Notify Stakeholders & MSAL Auth Fix (BR-2026-02-09-0001)
+
+**What:** Added "Notify All" button to the Issues Stakeholders section that sends a branded email to all tagged stakeholders (internal + external) with issue summary, status, priority, and portal links. Fixed MSAL `hash_empty_error` by enhancing pre-emptive clearing of stale interaction state on page load. Added portal access tracking (`last_accessed_at`, `access_count`) for stakeholder engagement reporting.
+
+**Why:** Stakeholders need proactive notification when attention is needed on an issue, and the team needs visibility into whether stakeholders actually opened their portal links. The MSAL error was a recurring console warning on Safari redirects.
+
+**Files:**
+- `src/components/IssueDetail.js` - Added "Notify All" button + success/error feedback banner
+- `src/services/issueNotificationService.js` - Added `notifyAllStakeholders()` function
+- `src/contexts/AuthContext.js` - Enhanced MSAL stale state clearing (localStorage + sessionStorage)
+- `api/public-issue.js` - Added portal access tracking on exchange
+- **Migration:** `add_stakeholder_notify_tracking_to_issues` - Added `last_stakeholder_notify_at/by` to `issues`, `last_accessed_at/access_count` to `issue_public_access_links`
+
 ### 2026-02-09 - Gemini 3 Flash Migration (All AI Services)
 
 **What:** Migrated all AI-powered services from Gemini 2.5 Flash to Gemini 3 Flash Preview as the default model. Updated the centralized `shared/aiConfig.js` config and all hardcoded model references in API routes.
