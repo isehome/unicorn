@@ -79,7 +79,9 @@ setup_git_dir() {
     # Remove any lock files from the temp copy
     find "$temp_git_dir" -name "*.lock" -delete
 
-    log_info "Git directory copied to: $temp_git_dir"
+    # Print the path to stdout (captured by caller)
+    # Log message goes to stderr so it doesn't corrupt the return value
+    echo -e "${BLUE}[INFO]${NC} Git directory copied to: $temp_git_dir" >&2
     echo "$temp_git_dir"
 }
 
@@ -144,7 +146,27 @@ list_claude_branches() {
     log_info "Claude branches:"
     echo ""
 
-    # Get all local claude/* branches
+    # Get remote claude/* branches and create local tracking branches for them
+    local remote_branches
+    remote_branches=$(GIT_DIR="$temp_git_dir" GIT_WORK_TREE="$REPO_ROOT" \
+        git for-each-ref refs/remotes/origin/claude/ --format='%(refname:short)' 2>/dev/null || true)
+
+    if [ -n "$remote_branches" ]; then
+        while IFS= read -r remote_branch; do
+            local local_name="${remote_branch#origin/}"
+            if ! GIT_DIR="$temp_git_dir" GIT_WORK_TREE="$REPO_ROOT" \
+                git rev-parse --verify "refs/heads/$local_name" >/dev/null 2>&1; then
+                # Create local tracking branch
+                local sha
+                sha=$(GIT_DIR="$temp_git_dir" GIT_WORK_TREE="$REPO_ROOT" \
+                    git rev-parse "$remote_branch")
+                GIT_DIR="$temp_git_dir" GIT_WORK_TREE="$REPO_ROOT" \
+                    git update-ref "refs/heads/$local_name" "$sha" 2>/dev/null || true
+            fi
+        done <<< "$remote_branches"
+    fi
+
+    # Get all local claude/* branches (including ones just created from remotes)
     local branches
     branches=$(GIT_DIR="$temp_git_dir" GIT_WORK_TREE="$REPO_ROOT" \
         git for-each-ref refs/heads/claude/ --format='%(refname:short)')
@@ -253,9 +275,29 @@ merge_all_branches() {
     GIT_DIR="$temp_git_dir" GIT_WORK_TREE="$REPO_ROOT" \
         git fetch origin 2>/dev/null || true
 
-    # Ensure we're on main
+    # Switch to main using plumbing (avoids checkout failures with dirty working dir)
     GIT_DIR="$temp_git_dir" GIT_WORK_TREE="$REPO_ROOT" \
-        git checkout main 2>/dev/null || true
+        git symbolic-ref HEAD refs/heads/main
+    GIT_DIR="$temp_git_dir" GIT_WORK_TREE="$REPO_ROOT" \
+        git read-tree main
+
+    # Create local tracking branches for any remote claude/* branches
+    local remote_branches
+    remote_branches=$(GIT_DIR="$temp_git_dir" GIT_WORK_TREE="$REPO_ROOT" \
+        git for-each-ref refs/remotes/origin/claude/ --format='%(refname:short)' 2>/dev/null || true)
+    if [ -n "$remote_branches" ]; then
+        while IFS= read -r remote_branch; do
+            local local_name="${remote_branch#origin/}"
+            if ! GIT_DIR="$temp_git_dir" GIT_WORK_TREE="$REPO_ROOT" \
+                git rev-parse --verify "refs/heads/$local_name" >/dev/null 2>&1; then
+                local sha
+                sha=$(GIT_DIR="$temp_git_dir" GIT_WORK_TREE="$REPO_ROOT" \
+                    git rev-parse "$remote_branch")
+                GIT_DIR="$temp_git_dir" GIT_WORK_TREE="$REPO_ROOT" \
+                    git update-ref "refs/heads/$local_name" "$sha" 2>/dev/null || true
+            fi
+        done <<< "$remote_branches"
+    fi
 
     local branches
     branches=$(GIT_DIR="$temp_git_dir" GIT_WORK_TREE="$REPO_ROOT" \
@@ -371,8 +413,8 @@ main() {
     local temp_git_dir
     temp_git_dir=$(setup_git_dir "$REPO_ROOT")
 
-    # Trap to cleanup on exit
-    trap "cleanup_git_dir '$temp_git_dir'" EXIT
+    # Don't auto-cleanup — other operations in the session may still need the temp dir
+    # Call cleanup_git_dir manually when fully done if needed
 
     # Execute mode
     case "$MODE" in
@@ -385,8 +427,11 @@ main() {
                 print_usage
                 exit 1
             fi
+            # Switch to main using plumbing (avoids checkout failures)
             GIT_DIR="$temp_git_dir" GIT_WORK_TREE="$REPO_ROOT" \
-                git checkout main 2>/dev/null || true
+                git symbolic-ref HEAD refs/heads/main
+            GIT_DIR="$temp_git_dir" GIT_WORK_TREE="$REPO_ROOT" \
+                git read-tree main
             merge_branch "$temp_git_dir" "$TARGET_BRANCH" "$DRY_RUN"
             ;;
         all)
