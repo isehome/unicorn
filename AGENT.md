@@ -4139,6 +4139,30 @@ The application needs a proper user capabilities/roles system to control access 
 
 ## 2026-02-11
 
+### Supabase Security — MSAL→Supabase Token Exchange + RLS Enforcement
+**What:** Added token exchange endpoint and enabled RLS on all unprotected tables.
+**Why:** Supabase Security Advisor flagged 35 errors — 14 tables had no RLS. With MSAL as auth provider, auth.uid() was always null, making RLS unusable. Token exchange bridges the gap so RLS policies can actually enforce access.
+**Details:**
+- New `/api/auth/supabase-token` endpoint: validates MSAL token via Graph API, mints Supabase JWT with Azure OID as `sub`
+- AuthContext calls exchange on login, redirect, and token refresh (non-blocking)
+- `supabase.js` exports `setSupabaseSessionFromMSAL()` helper
+- Migration enables RLS on 12 unprotected tables + fixes 2 tables with orphaned policies + adds policy to `role_types`
+- Security Advisor errors reduced from 35 → 21 (remaining 21 are security_definer views)
+**Env:** `SUPABASE_JWT_SECRET` added to Vercel (all environments) ✅
+**Files:** `api/auth/supabase-token.js`, `src/contexts/AuthContext.js`, `src/lib/supabase.js`, `database/migrations/20260211_enable_rls_unprotected_tables.sql`
+
+### Supabase JWT Signing Keys Migration
+**What:** Migrated project from legacy JWT secret to new JWT signing keys system.
+**Why:** Supabase prompted migration to their updated key management infrastructure. Required for long-term compatibility and eventual upgrade to asymmetric (ES256) signing.
+**Details:**
+- Imported existing HS256 secret into new JWT signing keys system via Supabase dashboard
+- Added `SUPABASE_JWT_SECRET` to Vercel environment variables (all environments)
+- Did NOT rotate to asymmetric keys — rotation would switch to ECC P-256 and break the HS256 token exchange endpoint
+- Verified app loads and authenticates correctly post-migration
+**Current key state:** CURRENT = Legacy HS256, STANDBY = ECC P-256 (not active)
+**Future:** When ready to rotate, update `api/auth/supabase-token.js` to use ES256/JWKS signing before clicking "Rotate keys" in Supabase dashboard
+**Files:** No code changes — dashboard + Vercel config only
+
 ### Email Agent — Ticket Creation Bug Fixes
 **What:** Fixed 4 cascading bugs preventing the email agent from auto-creating service tickets
 **Why:** Support emails (e.g., WiFi issues) were classified correctly (confidence 1.0, urgency high) but action_taken stayed "pending_review" — no ticket was created.
