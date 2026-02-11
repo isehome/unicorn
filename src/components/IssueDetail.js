@@ -17,12 +17,12 @@ import {
 import { supabase } from '../lib/supabase';
 import { sharePointStorageService } from '../services/sharePointStorageService';
 import { issuePublicAccessService } from '../services/issuePublicAccessService';
-import { notifyIssueComment, notifyStakeholderAdded, processPendingNotifications } from '../services/issueNotificationService';
+import { notifyIssueComment, notifyStakeholderAdded, notifyAllStakeholders, processPendingNotifications } from '../services/issueNotificationService';
 import CachedSharePointImage from './CachedSharePointImage';
 import { usePhotoViewer } from './photos/PhotoViewerProvider';
 import { enqueueUpload } from '../lib/offline';
 import { compressImage } from '../lib/images';
-import { Plus, Trash2, AlertTriangle, CheckCircle, Image as ImageIcon, Mail, Phone, Building, Map as MapIcon, ChevronDown, WifiOff, ShieldAlert, Paperclip, Download, Loader, Search } from 'lucide-react';
+import { Plus, Trash2, AlertTriangle, CheckCircle, Image as ImageIcon, Mail, Phone, Building, Map as MapIcon, ChevronDown, WifiOff, ShieldAlert, Paperclip, Download, Loader, Search, Send } from 'lucide-react';
 
 const formatStatusLabel = (label = '') => {
   if (!label) return '';
@@ -102,6 +102,8 @@ const IssueDetail = () => {
   const [showPublicWarningModal, setShowPublicWarningModal] = useState(false);
   const [showStakeholderDropdown, setShowStakeholderDropdown] = useState(false);
   const [contactSearchTerm, setContactSearchTerm] = useState('');
+  const [notifyingSending, setNotifyingSending] = useState(false);
+  const [notifyResult, setNotifyResult] = useState(null); // { type: 'success'|'error', message }
   const stakeholderDropdownRef = useRef(null);
   const contactSearchInputRef = useRef(null);
   const { openPhotoViewer, updatePhotoViewerOptions, closePhotoViewer } = usePhotoViewer();
@@ -461,10 +463,12 @@ const IssueDetail = () => {
     }
   }, [tags]);
 
-  // Generate portal links for external stakeholders (for comment notifications)
-  // Only returns new portal URLs for stakeholders who don't already have links.
-  // Stakeholders with existing links keep their original portal URL (not regenerated).
-  const generateExternalPortalLinks = useCallback(async (issueId, stakeholderList) => {
+  // Generate portal links for external stakeholders (for notifications).
+  // When forceRegenerate is true (used by Notify All), regenerates links so every
+  // external stakeholder gets a fresh portal URL + OTP in their email.
+  // When false (used by comment notifications), only creates links for stakeholders
+  // who don't have one yet, to avoid invalidating existing portal URLs.
+  const generateExternalPortalLinks = useCallback(async (issueId, stakeholderList, { forceRegenerate = false } = {}) => {
     const portalLinks = {};
     if (!issueId || !Array.isArray(stakeholderList)) return portalLinks;
 
@@ -478,18 +482,17 @@ const IssueDetail = () => {
       if (!tagId) continue;
 
       try {
-        // ensureLink checks for existing valid links first.
-        // If a link exists, returns { linkExists: true } without regenerating.
-        // Only creates new links for stakeholders who don't have one yet.
+        // forceRegenerate: true → always create a new token + OTP (for bulk Notify All)
+        // forceRegenerate: false → only create if no existing link (for comment notifications)
         const result = await issuePublicAccessService.ensureLink({
           issueId,
           projectId,
           stakeholderTagId: tagId,
-          stakeholder
+          stakeholder,
+          forceRegenerate
         });
 
-        // Only include in notifications if this is a NEW link (has token)
-        // Existing links don't return a token since we can't recover the hashed value
+        // Include in notifications if we got a token (new or regenerated link)
         if (result?.token) {
           const portalUrl = `${window.location.origin}/public/issues/${result.token}`;
           portalLinks[tagId] = {
@@ -1110,6 +1113,74 @@ const IssueDetail = () => {
     }
   };
 
+  // ── Notify All Stakeholders ──
+  const handleNotifyStakeholders = useCallback(async () => {
+    if (!activeIssueId || tags.length === 0) return;
+    try {
+      setNotifyingSending(true);
+      setNotifyResult(null);
+      setError('');
+
+      const graphToken = await acquireToken();
+      const issueContext = resolvedIssue || issue || { id: activeIssueId, title: '', project_id: projectId };
+      const link = issueLink || (typeof window !== 'undefined'
+        ? `${window.location.origin}/project/${projectId}/issues/${activeIssueId}`
+        : '');
+
+      // Force-regenerate portal links so every external stakeholder gets a fresh URL + OTP
+      const externalPortalLinks = await generateExternalPortalLinks(activeIssueId, tags, { forceRegenerate: true });
+
+      const result = await notifyAllStakeholders(
+        {
+          issue: issueContext,
+          project: projectInfo,
+          stakeholders: tags,
+          actor: currentUserSummary,
+          issueUrl: link,
+          externalPortalLinks
+        },
+        { authToken: graphToken, userId: user?.id }
+      );
+
+      // Record when bulk notification was sent
+      try {
+        await supabase
+          .from('issues')
+          .update({
+            last_stakeholder_notify_at: new Date().toISOString(),
+            last_stakeholder_notify_by: user?.id || null
+          })
+          .eq('id', activeIssueId);
+      } catch (dbErr) {
+        console.warn('[IssueDetail] Failed to record notification timestamp:', dbErr);
+      }
+
+      setNotifyResult({
+        type: 'success',
+        message: `Notified ${result.sent} stakeholder${result.sent !== 1 ? 's' : ''} successfully.`
+      });
+      setTimeout(() => setNotifyResult(null), 5000);
+    } catch (err) {
+      console.error('[IssueDetail] Failed to notify stakeholders:', err);
+      setNotifyResult({ type: 'error', message: err.message || 'Failed to send notifications' });
+      setTimeout(() => setNotifyResult(null), 8000);
+    } finally {
+      setNotifyingSending(false);
+    }
+  }, [
+    activeIssueId,
+    acquireToken,
+    currentUserSummary,
+    generateExternalPortalLinks,
+    issue,
+    issueLink,
+    projectId,
+    projectInfo,
+    resolvedIssue,
+    tags,
+    user?.id
+  ]);
+
   const handleContactAction = useCallback((type, value) => {
     if (!value) return;
     if (type === 'email') {
@@ -1240,6 +1311,23 @@ const IssueDetail = () => {
           }}
         >
           {successMessage}
+        </div>
+      )}
+      {notifyResult && (
+        <div
+          className="rounded-2xl border px-4 py-3 text-sm flex items-center gap-2"
+          style={notifyResult.type === 'success' ? {
+            backgroundColor: 'rgba(148, 175, 50, 0.1)',
+            borderColor: 'rgba(148, 175, 50, 0.3)',
+            color: '#94AF32'
+          } : {
+            backgroundColor: 'rgba(239, 68, 68, 0.1)',
+            borderColor: 'rgba(239, 68, 68, 0.3)',
+            color: '#ef4444'
+          }}
+        >
+          {notifyResult.type === 'success' ? <Send size={16} /> : <AlertTriangle size={16} />}
+          {notifyResult.message}
         </div>
       )}
       <section className="rounded-2xl border p-4 space-y-3" style={sectionStyles.card}>
@@ -1576,6 +1664,38 @@ const IssueDetail = () => {
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold">Stakeholders</h3>
           <div className="flex items-center gap-2">
+            {/* Notify Stakeholders button - only show for existing issues with tagged stakeholders */}
+            {!isNew && tags.length > 0 && (
+              <button
+                type="button"
+                disabled={notifyingSending || saving}
+                onClick={handleNotifyStakeholders}
+                style={{
+                  backgroundColor: notifyingSending ? (mode === 'dark' ? '#3F3F46' : '#e5e7eb') : 'rgba(139, 92, 246, 0.1)',
+                  color: notifyingSending ? (mode === 'dark' ? '#71717a' : '#9ca3af') : '#7c3aed',
+                  borderColor: notifyingSending ? (mode === 'dark' ? '#3F3F46' : '#d1d5db') : 'rgba(139, 92, 246, 0.3)',
+                  padding: '6px 12px',
+                  borderRadius: '0.75rem',
+                  fontSize: '0.875rem',
+                  fontWeight: '500',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  border: '1px solid',
+                  transition: 'all 0.2s',
+                  cursor: notifyingSending || saving ? 'not-allowed' : 'pointer',
+                  opacity: notifyingSending ? 0.7 : 1
+                }}
+                title="Send an email notification to all tagged stakeholders"
+              >
+                {notifyingSending ? (
+                  <Loader size={14} className="animate-spin" />
+                ) : (
+                  <Send size={14} />
+                )}
+                {notifyingSending ? 'Sending…' : 'Notify All'}
+              </button>
+            )}
             <div className="relative" ref={stakeholderDropdownRef}>
               <button
                 type="button"

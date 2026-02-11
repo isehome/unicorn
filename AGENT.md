@@ -1073,6 +1073,150 @@ Service tickets can be exported to QuickBooks Online as invoices for billing.
 
 ---
 
+#### 8.12 AI Email Agent (unicorn@isehome.com)
+
+An AI-powered email agent that reads the `unicorn@isehome.com` inbox, classifies emails using Gemini 3 Flash, and takes automated actions (create service tickets, reply, forward for review).
+
+##### Architecture Overview
+
+```
+┌──────────────┐     ┌──────────────────┐     ┌───────────────┐     ┌──────────────┐
+│ Cron (5 min) │────▶│ Microsoft Graph   │────▶│ Gemini 3 AI   │────▶│ Action:      │
+│ process-emails│     │ Fetch Unread Mail │     │ Classification │     │ • Ticket     │
+└──────────────┘     └──────────────────┘     └───────────────┘     │ • Reply      │
+                                                                      │ • Forward    │
+                                                                      │ • Ignore     │
+                                                                      └──────────────┘
+```
+
+##### Key Files
+
+| File | Purpose |
+|------|---------|
+| `api/cron/process-emails.js` | Cron trigger, runs every 5 minutes via vercel.json |
+| `api/email/process-incoming.js` | Main processing pipeline: fetch → classify → act |
+| `api/_emailAI.js` | Gemini AI classification, customer lookup, reply generation |
+| `api/_systemGraphEmail.js` | Microsoft Graph email operations (read, reply, forward, mark read) |
+| `api/_systemGraph.js` | App token acquisition (client credentials flow), system account config |
+| `api/email/processed.js` | GET endpoint for fetching processed emails with pagination |
+| `api/email/stats.js` | GET endpoint for email agent stats |
+| `api/email/config.js` | GET/POST endpoint for config management |
+| `src/pages/EmailAgentPage.js` | Admin UI - inbox, outbox, settings views |
+| `src/components/Admin/EmailAgentSettings.js` | Settings/config component |
+| `src/services/emailAgentService.js` | Frontend service layer |
+
+##### Processing Flow
+
+1. Cron calls `/api/email/process-incoming` every 5 minutes
+2. Fetches unread emails from `unicorn@isehome.com` via Microsoft Graph API
+3. For each email:
+   - Check ignore list (noreply, mailer-daemon)
+   - **Customer lookup** in `contacts` table (NOT `global_contacts`)
+   - Internal domain check — known clients from internal domains ARE processed
+   - AI classification via Gemini 3 Flash (support, sales, spam, internal, unknown)
+   - Action based on classification + confidence:
+     - **High confidence support** → Auto-create service ticket + auto-reply
+     - **Low confidence** → Forward to `email_agent_forward_email` for human review
+     - **Spam/internal** → Ignore
+4. Records everything in `processed_emails` table
+5. Marks original email as read in Graph
+
+##### Database Tables
+
+| Table | Purpose |
+|-------|---------|
+| `processed_emails` | Log of all processed emails with AI classification, action taken, confidence |
+| `app_configuration` | Email agent config (keys prefixed `email_agent_*`) |
+
+##### Config Keys (app_configuration)
+
+| Key | Purpose | Default |
+|-----|---------|---------|
+| `email_agent_enabled` | Master on/off | `true` |
+| `email_agent_auto_create_tickets` | Auto-create service tickets | `true` |
+| `email_agent_auto_reply` | Auto-reply to customers | `true` |
+| `email_agent_forward_email` | Where to forward uncertain emails | `stephe@isehome.com` |
+| `email_agent_internal_domains` | Domains treated as internal | `isehome.com,intelligentsystems.com` |
+| `email_agent_ignore_domains` | Domains to always ignore | `noreply.com,mailer-daemon` |
+| `email_agent_require_review_threshold` | Confidence below this forwards for review | `0.7` |
+| `system_account_email` | Mailbox to read from | `unicorn@isehome.com` |
+
+##### Admin UI Access
+
+- Navigate to **Admin → Email Agent** button (navigates to `/admin/email-agent`)
+- Page shows: stats dashboard, inbox tab, outbox tab, settings tab
+- **Process Now** button triggers immediate email processing
+
+---
+
+### Azure Entra ID / App Registration ("unicorn app")
+
+The app uses a single Azure AD App Registration ("unicorn app") for all Microsoft integrations. Authentication uses **client credentials flow** (Application permissions) for server-side operations and **MSAL interactive flow** (Delegated permissions) for user login.
+
+#### Microsoft Graph API Permissions (as of 2026-02-09)
+
+**Application Permissions (server-side, no user login required):**
+
+| Permission | Description |
+|-----------|-------------|
+| `Calendars.ReadWrite` | Read and write calendars in all mailboxes |
+| `Files.ReadWrite.All` | Read and write files in all site collections |
+| `Group.Read.All` | Read all groups |
+| `Mail.ReadWrite` | Read and write mail in all mailboxes |
+| `Mail.Send` | Send mail as any user |
+| `OrgSettings-Todo.Read.All` | Read organization-wide Microsoft To Do settings |
+| `OrgSettings-Todo.ReadWrite` | Read and write organization-wide Microsoft To Do settings |
+| `Sites.ReadWrite.All` | Read and write items in all site collections |
+| `Tasks.ReadWrite.All` | Read and write all users' tasks and tasklists |
+| `User.Read.All` | Read all users' full profiles |
+
+**Delegated Permissions (user-interactive, MSAL login flow):**
+
+| Permission | Description |
+|-----------|-------------|
+| `Calendars.Read` | Read user calendars |
+| `Calendars.ReadWrite` | Have full access to user calendars |
+| `Calendars.ReadWrite.Shared` | Read and write user and shared calendars |
+| `Contacts.Read` | Read user contacts |
+| `email` | View users' email address |
+| `Files.ReadWrite.All` | Have full access to all files user can access |
+| `Mail.ReadWrite` | Read and write access to user mail |
+| `Mail.ReadWrite.Shared` | Read and write user and shared mail |
+| `Mail.Send` | Send mail as a user |
+| `Mail.Send.Shared` | Send mail on behalf of others |
+| `offline_access` | Maintain access to data you have given it access to |
+| `openid` | Sign users in |
+| `profile` | View users' basic profile |
+| `Tasks.ReadWrite.Shared` | Read and write user and shared tasks |
+| `User.Read` | Sign in and read user profile |
+| `User.Read.All` | Read all users' full profiles |
+
+**SharePoint Permissions:**
+
+| Permission | Type | Description |
+|-----------|------|-------------|
+| `AllSites.FullControl` | Delegated | Have full control of all site collections |
+| `Sites.Read.All` | Application | Read items in all site collections |
+| `Sites.ReadWrite.All` | Application | Read and write items in all site collections |
+
+All permissions have admin consent granted for Intelligent Systems, LLC.
+
+#### Environment Variables (Azure)
+
+| Variable | Purpose |
+|----------|---------|
+| `AZURE_TENANT_ID` | Azure AD tenant ID |
+| `AZURE_CLIENT_ID` | App registration client ID |
+| `AZURE_CLIENT_SECRET` | App registration client secret |
+
+#### Token Acquisition
+
+- **Server-side (API routes):** Client credentials flow via `_systemGraph.js` → `getAppToken()`
+- **Client-side (React app):** MSAL interactive flow via `AuthContext.js`
+- Token cache: App tokens cached in memory for ~1 hour with 5-minute buffer refresh
+
+---
+
 ## Key Database Tables
 
 | Table | Purpose |
@@ -3931,6 +4075,142 @@ The application needs a proper user capabilities/roles system to control access 
 
 # PART 6: CHANGELOG
 
+## 2026-02-07
+
+### Bug Fixes (Automated)
+
+**What:** Fixed bugs #29 and #20
+
+**Bug #29 — Contact secure data audit log save failure:**
+- Root cause: `logAccess()` method referenced non-existent table `contact_secure_data_audit_log` — the actual table is `secure_data_audit_log`
+- Also removed non-existent `contact_id` column from the insert payload
+- Fixed `getAuditLogs()` to query by `secure_data_id` via the `contact_secure_data` table instead of the missing `contact_id` column
+
+**Bug #20 — Skill names not visible on phones in portrait mode:**
+- Root cause: Desktop table layout (with fixed-width columns w-44) was shown at `md` breakpoint (768px), causing skill names to overflow and become invisible on narrow phone screens
+- Fix: Changed breakpoint from `md` to `lg` (1024px) so the mobile card layout (which properly shows skill names) is used on phones and tablets
+
+**Files:** `src/services/equipmentService.js`, `src/components/CareerDevelopment/SkillReviewPanel.js`
+**AI Note:** Automated fix via overnight-bug-fix skill
+
+---
+
+## 2026-02-05
+
+### Service Ticket - Clickable Address for Maps
+
+**What:** Made customer and service addresses clickable in service ticket detail to open in Apple Maps.
+
+**Why:** Technicians need to quickly navigate to the service location. Clicking the address now opens Apple Maps (works on iOS, opens web on other platforms).
+
+**Files Modified:**
+- `src/components/Service/ServiceTicketDetail.js` - Made addresses clickable links
+
+**UI Change:**
+- Both mobile and desktop customer info sections now show addresses as clickable links
+- Address text is underlined with an external link icon
+- Clicking opens Apple Maps with the address as the destination
+- Works for both `customer_address` and `service_address` fields
+
+**AI Note:** Uses `maps.apple.com` URL which opens Apple Maps on iOS or the web version on other platforms. Google Maps users on Android will be prompted to open in their maps app from the browser.
+
+---
+
+### Contact Detail Page - Visible Edit Button
+
+**What:** Added a visible "Edit" button to the contact detail page's contact info card.
+
+**Why:** The edit functionality was already implemented but only triggered by clicking the avatar icon, which wasn't discoverable. Users needed a clear way to enter edit mode to modify contact details or delete the contact.
+
+**Files Modified:**
+- `src/components/ContactDetailPage.js` - Added visible Edit button in the contact info card header
+
+**UI Change:**
+- Contact info card now shows an "Edit" button (with pencil icon) in the top-right corner
+- Clicking Edit opens the existing edit modal which includes all contact fields and a Delete button
+- Avatar is no longer a clickable button (reduced confusion)
+
+**AI Note:** The ContactDetailPage already had full edit/delete functionality via `handleEditContact` and `handleDeleteContact` handlers. This change just improves discoverability by adding a visible button.
+
+---
+
+### Dynamic Route Discovery & Unified AI Configuration
+
+**What:** Created a self-maintaining bug analysis system with dynamic route discovery and centralized AI model configuration. Bug reports now automatically map to correct source files without hardcoded routes, and all AI services use a unified config.
+
+**Why:**
+1. The bug analyzer was suggesting wrong files (e.g., `/my-hr` route wasn't in the hardcoded `PAGE_FILE_MAP`)
+2. AI model configurations were fragmented across 11+ API files with 5 different patterns
+3. Bug report instructions at the bottom of files were being ignored by AI assistants
+
+**Architecture:**
+```
+unicorn/
+├── shared/
+│   ├── aiConfig.js          # Unified AI model config (NEW)
+│   └── routesMap.json       # Generated at build time (NEW)
+├── scripts/
+│   └── generate-routes-map.js  # Parses App.js for routes (NEW)
+├── api/
+│   ├── _aiConfig.js         # Backend wrapper (NEW)
+│   └── bugs/
+│       └── analyze.js       # Uses dynamic routes (UPDATED)
+└── src/components/Admin/
+    └── BugTodosTab.js       # Injected instruction template (UPDATED)
+```
+
+**New Files:**
+- `shared/aiConfig.js` - Unified AI model definitions and service configurations
+- `scripts/generate-routes-map.js` - Parses App.js to extract route→component mappings
+- `api/_aiConfig.js` - Backend wrapper providing `getModelForService()`, `getGenAI()`
+
+**Key Changes:**
+1. **Route Discovery:** `npm run generate-routes` parses App.js, extracts 57+ routes, outputs `routesMap.json`
+2. **Unified AI Config:** All services use `AI_SERVICES` config (BUG_ANALYZER, PART_ENRICHER, etc.)
+3. **Bug Report Template:** Uses "injected instruction" format - proven more effective in testing:
+   - STOP instructions at TOP of document
+   - Forces independent analysis BEFORE viewing AI suggestions
+   - Checkpoint to verify analysis before proceeding
+
+**Files Modified:**
+- `api/bugs/analyze.js` - Uses `getModelForService('BUG_ANALYZER')` + dynamic routes
+- `src/components/Admin/BugTodosTab.js` - New `generateCompleteBugReport()` with injected instructions
+- `package.json` - Added `generate-routes`, `prebuild`, `prestart` scripts
+
+**Build Scripts Added:**
+```json
+{
+  "generate-routes": "node scripts/generate-routes-map.js",
+  "prebuild": "npm run generate-routes && npm run sync-docs",
+  "prestart": "npm run generate-routes"
+}
+```
+
+**AI Note:** Bug reports now use "dual-perspective verification" - the AI assistant must complete independent analysis before comparing with Gemini's suggestion. Testing showed this significantly improves fix accuracy. The injected instruction format (directives at TOP) is more effective than passive instructions at bottom.
+
+---
+
+## 2026-02-05
+
+### Fix: Skill names hidden on mobile in Self-Evaluation (BR-2026-01-30-0001)
+
+**What:** Skill names were not visible in the Self-Evaluation section when viewing on mobile devices in portrait mode. Users could see rating icons but couldn't identify which skill they were rating.
+
+**Why:** The SkillReviewPanel.js component used a fixed-width table layout (432px of fixed columns) that didn't fit on mobile screens (~375px). The skill name column with `flex-1 min-w-0` would shrink to zero width.
+
+**Root Cause:** Unlike SkillComparisonView.js which had separate mobile/desktop layouts, SkillReviewPanel.js only had the desktop table layout with no responsive breakpoints.
+
+**Fix:** Added a mobile-first responsive layout using `md:hidden` / `hidden md:block` pattern:
+- Mobile (<768px): Stacked card layout with skill name prominent, ratings in 2-column grid below
+- Desktop (>=768px): Original table layout preserved
+
+**Files Modified:**
+- `src/components/CareerDevelopment/SkillReviewPanel.js` - Added mobile layout (lines 524-632)
+
+**AI Note:** The mobile layout follows the same pattern as SkillComparisonView.js. Both self-evaluation and manager review modes now work on mobile. Development Focus checkbox for managers appears as a full-width button on mobile for better touch targets.
+
+---
+
 ## 2026-02-04
 
 ### Dynamic AI Context System (Self-Aware Agent)
@@ -5352,27 +5632,40 @@ gh api "repos/isehome/unicorn/contents/bug-reports/<YEAR-MONTH>/<BUG_ID>.md" \
   -F ref=<BRANCH_NAME>
 ```
 
-#### Fix a Bug Workflow
+#### Fix a Bug Workflow (AI Agent — Automated)
 1. **List bugs:** `gh pr list --state open --search "[Bug]"`
 2. **Read the bug report:** Fetch the markdown file from the PR branch
 3. **Follow the embedded instructions** in the bug report (they are prompts for you)
 4. **Implement the fix** on the main branch
-5. **Close the PR:** `gh pr close <NUMBER> --comment "Fixed in commit <SHA>"`
-6. **Update AGENT.md changelog** (REQUIRED)
+5. **Commit and push** the fix to main (one commit per bug preferred)
+6. **Mark pending_review in Supabase** (via Supabase MCP — NOT the Vercel API):
+   ```sql
+   UPDATE bug_reports SET status = 'pending_review',
+     fix_summary = 'Description of what was fixed and how'
+   WHERE bug_report_id = 'BR-YYYY-MM-DD-NNNN';
+   ```
+7. **Update AGENT.md changelog** (REQUIRED)
+8. Steve reviews and approves through the Unicorn UI
 
-#### Example: Fix Bug #24
+#### Fix a Bug Workflow (Manual — Admin UI)
+1. Admin opens **Bug Todos** tab
+2. Reviews the bug details (AI analysis, screenshot, suggested fix)
+3. Implements the fix manually
+4. Clicks **"Mark Fixed"** button → closes GitHub PR, deletes branch, marks as `fixed`
+
+#### Example: Automated Fix for Bug #24
 ```bash
 # 1. See what bugs exist
 gh pr list --state open --search "[Bug]"
 
 # 2. Read bug #24's full report
 gh pr view 24 --json headRefName  # Get branch name
-gh api "repos/isehome/unicorn/contents/bug-reports/..." -H "Accept: application/vnd.github.raw" -F ref=bug-report/...
+gh api "repos/isehome/unicorn/contents/bug-reports/..." \
+  -H "Accept: application/vnd.github.raw" -F ref=bug-report/...
 
 # 3. Follow instructions in the report, implement fix
 # 4. Commit and push fix to main
-# 5. Close the PR
-gh pr close 24 --comment "Fixed - skill names now visible in portrait mode"
+# 5. Mark as pending_review in Supabase (via MCP execute_sql)
 ```
 
 ### Architecture Flow
@@ -5405,6 +5698,18 @@ User Reports Bug (BugReporter.js)
     Sends enhanced email with AI fix suggestions
         ↓
     Updates DB status to "analyzed"
+        ↓
+    [Bug Fix Phase - AI Agent or Developer]
+        ↓
+    AI agent reads bug report → implements fix on main branch
+        ↓
+    Updates Supabase directly: status → 'pending_review' + fix_summary
+        ↓
+    Admin sees green fix summary box in Bug Todos UI
+        ↓
+    Admin clicks green box → reviews fix details in modal
+        ↓
+    Admin clicks "Approve Fix" → closes PR, deletes branch, status → 'fixed'
 ```
 
 ### Key Files
@@ -5415,8 +5720,8 @@ User Reports Bug (BugReporter.js)
 | `api/bug-report.js` | Initial submission endpoint - saves to queue, sends email via **system account** (never expires) |
 | `api/bugs/analyze.js` | Gemini AI analysis module (multimodal) |
 | `api/bugs/github.js` | GitHub API integration (branches, commits, PRs) |
-| `api/bugs/list.js` | List bugs with filtering/pagination |
-| `api/bugs/[id].js` | Get/Delete/Reanalyze single bug |
+| `api/bugs/list.js` | List bugs with filtering/pagination (includes fix_summary, fixed_at) |
+| `api/bugs/[id].js` | Get/Reanalyze single bug; DELETE marks as 'fixed' (soft delete) |
 | `api/cron/process-bugs.js` | Background processor (cron every 3 min) |
 | `src/components/Admin/BugTodosTab.js` | Admin UI for bug management |
 
@@ -5439,7 +5744,7 @@ CREATE TABLE bug_reports (
   screenshot_base64 TEXT,     -- Cleared after GitHub upload to save space
 
   -- Processing
-  status TEXT CHECK (status IN ('pending', 'processing', 'analyzed', 'failed')),
+  status TEXT CHECK (status IN ('pending', 'processing', 'analyzed', 'pending_review', 'fixed', 'failed')),
   processed_at TIMESTAMPTZ,
   processing_error TEXT,
 
@@ -5457,7 +5762,13 @@ CREATE TABLE bug_reports (
   -- GitHub
   pr_url TEXT,
   pr_number INTEGER,
-  branch_name TEXT
+  branch_name TEXT,
+
+  -- Fix tracking (added 2026-02-07)
+  fixed_at TIMESTAMPTZ,            -- When the bug was marked fixed
+  auto_closed BOOLEAN DEFAULT false, -- Whether closed by automation vs manual
+  fix_detection_log JSONB DEFAULT '[]', -- Audit trail of fix events
+  fix_summary TEXT                  -- AI-written summary of how the bug was fixed
 );
 ```
 
@@ -5612,8 +5923,8 @@ Please review the suggested fix and implement it.
 Located at **Admin → Bug Todos** (9th tab)
 
 **Features:**
-- Stats cards: Pending | Analyzed | Failed | Total
-- Filter by status
+- Stats cards: Pending | Analyzed | Review | Failed | Total
+- Filter tabs by status (including "Review" for `pending_review`)
 - Expandable bug cards matching email format:
   - Violet header banner with bug ID
   - Severity & Confidence cards side by side
@@ -5622,13 +5933,26 @@ Located at **Admin → Bug Todos** (9th tab)
   - Console errors (red box)
   - Screenshot (fetched from GitHub if not in DB)
   - Token usage display with estimated cost
+- **Green fix summary box** (brand color `#94AF32`) — shown inline on `pending_review` bugs
+  - Displays a one-line summary of how the AI fixed the bug
+  - Clickable → opens **Fix Details Modal**
 
-**Actions:**
+**Fix Details Modal (pending_review bugs):**
+- Original bug description
+- Fix summary with olive (`#94AF32`) left border accent
+- List of affected files from the AI analysis
+- **Close** button (dismiss modal)
+- **Approve Fix** button (olive `#94AF32` background) → calls DELETE endpoint which:
+  - Closes the GitHub PR with a "Fixed" comment
+  - Deletes the bug report branch
+  - Marks the bug as `status = 'fixed'` in Supabase (soft delete, not hard delete)
+
+**Other Actions:**
 - **Download Report** - Downloads complete `.md` file with dual-perspective AI instructions
 - **Open File** - Downloads and opens `.md` file in system default markdown editor
 - **View PR** (GitHub icon in header) - Opens GitHub pull request
 - **Reanalyze** - Resets to pending for re-processing
-- **Mark Fixed** - Deletes from GitHub + database
+- **Mark Fixed** - Soft-deletes: closes PR, deletes branch, sets status to `fixed`
 
 **Filenames:** Bug reports use AI-generated descriptive slugs for meaningful filenames:
 - Example: `BR-2026-01-09-0001-login-button-broken.md` instead of just `BR-2026-01-09-0001.md`
@@ -5730,13 +6054,36 @@ The bug processor runs every 3 minutes via Vercel cron:
 
 ### Workflow for Fixing Bugs
 
+#### Full Lifecycle (Automated AI Fix)
 1. **Bug submitted** → User sees "Bug report submitted! AI analysis will be sent shortly."
-2. **AI processes** → Within 3 minutes, creates GitHub PR
-3. **Developer reviews** → Opens PR, reads AI analysis
-4. **Implement fix** → Make changes based on `ai_fix_prompt`
-5. **Mark fixed** → Admin → Bug Todos → Mark Fixed (deletes .md file)
+2. **AI processes** → Within 3 minutes, Gemini analyzes and creates GitHub PR (status: `analyzed`)
+3. **AI agent fixes** → Reads bug report, implements fix, pushes to main
+4. **AI marks pending_review** → Updates Supabase via MCP with `status = 'pending_review'` + `fix_summary`
+5. **Admin reviews** → Sees green fix summary box in Bug Todos UI, clicks for details modal
+6. **Admin approves** → Clicks "Approve Fix" → PR closed, branch deleted, status → `fixed`
 
-Or merge the PR and delete the branch.
+#### Manual Fix (Developer)
+1. **Bug submitted** → same as above
+2. **AI processes** → same as above
+3. **Developer reviews** → Opens PR or reads in Bug Todos UI
+4. **Implement fix** → Make changes based on `ai_fix_prompt`
+5. **Mark fixed** → Click "Mark Fixed" in Bug Todos (closes PR, soft-deletes bug)
+
+#### Bug Status Lifecycle
+```
+pending → processing → analyzed → pending_review → fixed
+                          ↓                           ↑
+                        failed          (manual fix path)
+```
+
+| Status | Meaning | Set By |
+|--------|---------|--------|
+| `pending` | Submitted, waiting for AI | Bug Reporter |
+| `processing` | AI is analyzing | Cron job |
+| `analyzed` | AI created PR with fix suggestions | Cron job |
+| `pending_review` | Fix implemented, awaiting human approval | AI agent (via Supabase MCP) |
+| `fixed` | Approved and closed | Admin UI ("Approve Fix" or "Mark Fixed") |
+| `failed` | AI analysis failed | Cron job |
 
 ---
 
@@ -9041,3 +9388,103 @@ Run in Supabase SQL Editor:
 - Update ServiceTimeTracker with labor type dropdown
 - Update ServiceTimeEntryModal with labor type field
 - Create QBO Items sync endpoint for mapping
+
+### 2026-02-11 - Stakeholder Notification Fixes & Detail Modal
+
+**What:** Fixed notification emails to send FROM the logged-in user (not the system account) with CC to system email, preventing spam flagging. Fixed portal links for external stakeholders — Notify All now force-regenerates tokens so every external recipient gets a fresh portal URL + OTP code. Created `issue_notification_log` table to track all notification sends. Built StakeholderDetailModal in project stakeholders section — clicking a stakeholder opens a detail view with contact info, edit/delete (delete only visible in edit mode), and a collapsible engagement history showing: notifications sent, comments made, and portal access timestamps.
+
+**Why:** System account emails were getting flagged as spam; emails should come from the human user. External stakeholders weren't getting portal links (tokens are hashed, can't be recovered from existing links). No visibility into whether stakeholders received emails — now tracked in notification log and visible in stakeholder detail modal.
+
+**Files:**
+- `api/send-issue-notification.js` - Sends from user via `/me/sendMail` when `sendAsUser: true`, falls back to system account
+- `src/components/IssueDetail.js` - `generateExternalPortalLinks` now accepts `forceRegenerate` option, used by Notify All
+- `src/services/issueNotificationService.js` - Added `logNotificationSend()`, imports supabase, logs each send to `issue_notification_log`
+- `src/components/StakeholderDetailModal.js` - **NEW** - Detail modal with contact info, edit/delete, collapsible engagement history
+- `src/components/ProjectDetailView.js` - Integrated StakeholderDetailModal, simplified StakeholderCard (click opens modal)
+- **Migration:** `create_issue_notification_log` - New table with indexes for issue/stakeholder/project queries
+
+### 2026-02-11 - Notify Stakeholders & MSAL Auth Fix (BR-2026-02-09-0001)
+
+**What:** Added "Notify All" button to the Issues Stakeholders section that sends a branded email to all tagged stakeholders (internal + external) with issue summary, status, priority, and portal links. Fixed MSAL `hash_empty_error` by enhancing pre-emptive clearing of stale interaction state on page load. Added portal access tracking (`last_accessed_at`, `access_count`) for stakeholder engagement reporting.
+
+**Why:** Stakeholders need proactive notification when attention is needed on an issue, and the team needs visibility into whether stakeholders actually opened their portal links. The MSAL error was a recurring console warning on Safari redirects.
+
+**Files:**
+- `src/components/IssueDetail.js` - Added "Notify All" button + success/error feedback banner
+- `src/services/issueNotificationService.js` - Added `notifyAllStakeholders()` function
+- `src/contexts/AuthContext.js` - Enhanced MSAL stale state clearing (localStorage + sessionStorage)
+- `api/public-issue.js` - Added portal access tracking on exchange
+- **Migration:** `add_stakeholder_notify_tracking_to_issues` - Added `last_stakeholder_notify_at/by` to `issues`, `last_accessed_at/access_count` to `issue_public_access_links`
+
+### 2026-02-09 - Gemini 3 Flash Migration (All AI Services)
+
+**What:** Migrated all AI-powered services from Gemini 2.5 Flash to Gemini 3 Flash Preview as the default model. Updated the centralized `shared/aiConfig.js` config and all hardcoded model references in API routes.
+
+**Why:** Gemini 3 Flash provides 40-60% faster latency and improved reasoning. Standardizing on a single model version across all services for consistency and performance.
+
+**Files:**
+- `shared/aiConfig.js` - `gemini-flash` now points to `gemini-3-flash-preview`, old 2.5 moved to legacy
+- `api/_emailAI.js` - Email classification and reply generation → Gemini 3
+- `api/match-rooms.js` - Room matching for Lucid imports → Gemini 3
+- `api/parse-lutron-headers.js` - Lutron shade header parsing → Gemini 3
+- `api/extract-training.js` - Training data extraction → Gemini 3
+- `api/parse-measurement.js` - Voice measurement parsing → Gemini 3
+- `api/ai/scan-business-card.js` - Business card OCR → Gemini 3
+- `api/ai/parse-contacts.js` - Contact parsing → Gemini 3
+
+**AI Note:** ALL text/vision AI services now use `gemini-3-flash-preview`. Voice AI (real-time audio) still uses `gemini-2.5-flash-native-audio-preview-12-2025` for native audio — Gemini 3 native audio model not yet available. The `shared/aiConfig.js` is the single source of truth for model assignments.
+
+### 2026-02-07 - Bug Fix Review Workflow (Pending Review UI)
+
+**What:** Added a human-in-the-loop review system for AI-fixed bugs. When the AI agent fixes a bug, it marks it as `pending_review` in Supabase with a fix summary. The admin sees a green summary box in the Bug Todos UI, clicks it for a details modal, and approves the fix.
+
+**Why:** Steve needs hands-free bug fixing but with human verification before closing. The AI fixes bugs autonomously, but a human reviews and approves each fix before the PR is closed.
+
+**New Status Lifecycle:**
+`pending → processing → analyzed → pending_review → fixed`
+
+**Database Changes:**
+- Added columns: `fixed_at`, `auto_closed`, `fix_detection_log`, `fix_summary`
+- Updated status constraint to include `pending_review` and `fixed`
+- Added index on `pending_review` status for performance
+- Migration: `database/migrations/20260207_add_bug_auto_close_fields.sql`
+
+**UI Changes (BugTodosTab.js):**
+- New "Review" filter tab for `pending_review` bugs
+- Green fix summary box (brand `#94AF32`) inline on pending_review bug rows
+- Click green box → Fix Details Modal showing original bug, fix summary, affected files
+- "Approve Fix" button in modal calls existing DELETE endpoint
+- `pending_review` counted in stats cards
+
+**API Changes:**
+- `api/bugs/list.js` — now returns `fix_summary` and `fixed_at` fields, counts `pending_review` in stats
+- `api/bugs/[id].js` — DELETE now soft-deletes (sets `status = 'fixed'` instead of removing the row)
+- `api/bugs/github.js` — added `getCommitsForFile()` helper (available for future use)
+
+**Files:**
+- `src/components/Admin/BugTodosTab.js` — pending_review status, green fix summary box, fix details modal
+- `api/bugs/list.js` — fix_summary/fixed_at in SELECT, pending_review stats
+- `api/bugs/[id].js` — soft delete (status→fixed) instead of hard delete
+- `api/bugs/github.js` — getCommitsForFile() function
+- `database/migrations/20260207_add_bug_auto_close_fields.sql` — new columns + index
+- `vercel.json` — removed abandoned close-fixed-bugs cron entry
+
+**Removed/Abandoned:**
+- `api/cron/close-fixed-bugs.js` — file still exists but NOT in vercel.json crons. Was the original file-watching auto-close approach; replaced by the Supabase-direct + UI review approach.
+
+### 2026-02-06 - Bug Fixes (Automated)
+**What:** Fixed bugs #12, #18, #21, #22, #26, #27, #28
+**Why:** Overnight automated bug fix run
+**Files:**
+- `api/service/tickets.js` - Improved error handling with structured responses
+- `src/components/Service/ServiceTicketDetail.js` - Fixed status display labels, removed invalid service_address from edit payload
+- `src/components/Service/ServiceDashboard.js` - Updated resolved→work_complete_needs_invoice status references
+- `src/components/Service/ServiceTicketList.js` - Updated STATUSES array with new status values (work_complete_needs_invoice, problem)
+- `src/services/serviceTicketService.js` - Fixed resolved→work_complete_needs_invoice in updateStatus, added payload cleanup in update()
+- `src/components/CareerDevelopment/SkillReviewPanel.js` - Allow Development Focus edits after manager review submission
+- `src/components/EquipmentListPage.js` - Fixed [object Object] error display
+- `src/services/projectEquipmentService.js` - Improved error message extraction in fetchProjectEquipment
+- `src/services/milestoneService.js` - Fixed error logging for prewire receiving percentage
+- `database/migrations/20260206_fix_skill_unique_constraint.sql` - Changed UNIQUE(name, category) to UNIQUE(name, category, class_id)
+- `database/migrations/20260206_fix_feature_flags_rls.sql` - Changed RLS policies from TO authenticated to TO anon, authenticated
+**AI Note:** Automated fix via overnight-bug-fix skill

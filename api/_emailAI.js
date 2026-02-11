@@ -76,18 +76,47 @@ function shouldIgnoreEmail(fromEmail, ignoreDomains) {
 }
 
 /**
- * Lookup customer by email in global_contacts
+ * Lookup customer by email in contacts table
+ * Also checks project_contacts to find associated projects
  */
 async function lookupCustomer(email) {
   if (!email) return null;
 
-  const { data: contact } = await getSupabase()
-    .from('global_contacts')
-    .select('*')
-    .ilike('email', email)
-    .single();
+  try {
+    // First check contacts table for a direct email match
+    const { data: contact, error } = await getSupabase()
+      .from('contacts')
+      .select('id, name, first_name, last_name, email, phone, company, address, is_internal, is_active')
+      .ilike('email', email)
+      .eq('is_archived', false)
+      .limit(1)
+      .single();
 
-  return contact;
+    if (error || !contact) {
+      console.log(`[EmailAI] No contact found for: ${email}`);
+      return null;
+    }
+
+    // Look up associated projects for richer context
+    const { data: projectLinks } = await getSupabase()
+      .from('project_contacts')
+      .select('project_id, projects(id, name, status)')
+      .eq('contact_id', contact.id)
+      .limit(5);
+
+    const projects = projectLinks
+      ?.map(pl => pl.projects)
+      .filter(Boolean) || [];
+
+    return {
+      ...contact,
+      projects,
+      has_active_projects: projects.some(p => p.status === 'active' || p.status === 'in_progress'),
+    };
+  } catch (err) {
+    console.error(`[EmailAI] Customer lookup error for ${email}:`, err.message);
+    return null;
+  }
 }
 
 /**
@@ -109,10 +138,52 @@ function isReplyToNotification(subject, body) {
 }
 
 /**
+ * Check if email is a calendar response (accept/decline/tentative)
+ * or an auto-reply (out of office, automatic reply)
+ * These should be silently ignored by the email agent.
+ */
+function isCalendarOrAutoReply(subject, body) {
+  const subjectLower = (subject || '').trim();
+
+  // Calendar accept/decline/tentative patterns
+  // Outlook formats: "Accepted: ...", "Declined: ...", "Tentative: ..."
+  const calendarPrefixes = [
+    /^accepted:\s/i,
+    /^declined:\s/i,
+    /^tentative:\s/i,
+    /^tentatively accepted:\s/i,
+    /^canceled:\s/i,
+    /^cancelled:\s/i,
+  ];
+
+  if (calendarPrefixes.some(p => p.test(subjectLower))) {
+    return 'calendar_response';
+  }
+
+  // Auto-reply / out-of-office patterns
+  const autoReplyPrefixes = [
+    /^automatic reply:\s/i,
+    /^auto-?reply:\s/i,
+    /^out of office:\s/i,
+    /^out-of-office:\s/i,
+  ];
+
+  if (autoReplyPrefixes.some(p => p.test(subjectLower))) {
+    return 'auto_reply';
+  }
+
+  return false;
+}
+
+/**
  * Analyze email with Gemini AI
  */
 async function analyzeEmail(email, customer, config) {
-  const model = getGenAI().getGenerativeModel({ model: 'gemini-2.5-flash' });
+  const model = getGenAI().getGenerativeModel({ model: 'gemini-3-flash-preview' });
+
+  const projectList = customer?.projects?.length
+    ? customer.projects.map(p => `  - ${p.name} (${p.status})`).join('\n')
+    : '  - None found';
 
   const customerContext = customer
     ? `
@@ -121,7 +192,10 @@ Customer Information:
 - Company: ${customer.company || 'N/A'}
 - Email: ${customer.email}
 - Phone: ${customer.phone || 'N/A'}
-- Previous interactions: Existing customer in our system
+- Status: Existing customer in our system
+- Active projects: ${customer.has_active_projects ? 'Yes' : 'No'}
+- Projects:
+${projectList}
 `
     : `
 Customer Information:
@@ -152,12 +226,25 @@ ${email.body || email.bodyPreview}
 Analyze this email and respond with ONLY a JSON object (no markdown, no explanation) with these fields:
 
 {
-  "classification": "support" | "sales" | "spam" | "reply_to_notification" | "unknown",
-  "summary": "Brief 1-2 sentence summary of the email",
+  "classification": "support" | "sales" | "spam" | "reply_to_notification" | "vendor" | "billing" | "scheduling" | "unknown",
+  "summary": "Brief 1-2 sentence summary of what this email is about and what the sender wants",
   "urgency": "low" | "medium" | "high" | "critical",
+  "priority_reasoning": "1 sentence explaining WHY you assigned this urgency level",
   "sentiment": "positive" | "neutral" | "negative" | "frustrated",
   "confidence": 0.0 to 1.0,
-  "action_items": ["list", "of", "action items"],
+  "intent": "request_service" | "provide_info" | "ask_question" | "complaint" | "follow_up" | "schedule" | "escalation" | "feedback" | "purchase_order" | "other",
+  "topics": ["array", "of", "topic tags relevant to this email (e.g. wifi, network, home_theater, camera, audio, lighting, shades, control, security, billing, scheduling)"],
+  "entities": {
+    "systems_mentioned": ["specific equipment or systems mentioned (e.g. Sonos, Lutron, Ubiquiti, Control4)"],
+    "locations_mentioned": ["rooms or areas mentioned (e.g. home theater, master bedroom, patio)"],
+    "people_mentioned": ["names of people referenced in the email"],
+    "dates_mentioned": ["any dates, deadlines, or time references"],
+    "project_references": ["any project names or numbers mentioned"]
+  },
+  "department": "service" | "sales" | "project_management" | "admin" | "billing" | "unknown",
+  "suggested_assignee_role": "service_tech" | "project_manager" | "sales_rep" | "office_admin" | "owner" | "unknown",
+  "routing_reasoning": "1-2 sentences explaining WHY this should go to that department/role",
+  "action_items": ["list", "of", "specific next steps to take"],
   "should_create_ticket": true | false,
   "ticket_title": "Suggested ticket title if creating one",
   "ticket_description": "Suggested ticket description",
@@ -173,9 +260,24 @@ Analyze this email and respond with ONLY a JSON object (no markdown, no explanat
 Classification guidelines:
 - "support": Customer needs help with existing system/service
 - "sales": New inquiry, quote request, or sales question
+- "vendor": Communication from a vendor or supplier
+- "billing": Invoice, payment, or billing related
+- "scheduling": Appointment scheduling or calendar coordination
 - "spam": Marketing, newsletters, automated messages
 - "reply_to_notification": Reply to an email we sent (ticket update, PO, etc.)
 - "unknown": Cannot determine intent
+
+Intent guidelines:
+- "request_service": Customer wants something fixed, installed, or serviced
+- "ask_question": Customer has a question about their system or our services
+- "complaint": Customer is unhappy and expressing dissatisfaction
+- "follow_up": Continuing a previous conversation or checking on status
+- "schedule": Wants to set up an appointment or change a schedule
+- "escalation": Issue has been ongoing, customer wants it elevated
+- "feedback": Positive or negative feedback about completed work
+- "provide_info": Sending information we requested or FYI
+- "purchase_order": Sending a PO or order-related communication
+- "other": None of the above
 
 Urgency guidelines:
 - "critical": System down, security issue, business-impacting
@@ -231,7 +333,7 @@ async function generateReply(email, analysis, customer, config) {
   }
 
   // Otherwise generate a new one
-  const model = getGenAI().getGenerativeModel({ model: 'gemini-2.5-flash' });
+  const model = getGenAI().getGenerativeModel({ model: 'gemini-3-flash-preview' });
 
   const prompt = `${config.systemPrompt}
 
@@ -298,6 +400,7 @@ module.exports = {
   shouldIgnoreEmail,
   lookupCustomer,
   isReplyToNotification,
+  isCalendarOrAutoReply,
   analyzeEmail,
   generateReply,
 };

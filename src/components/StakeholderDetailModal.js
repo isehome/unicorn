@@ -78,7 +78,6 @@ const StakeholderDetailModal = ({
           .ilike('recipient_email', normalizedEmail)
           .order('sent_at', { ascending: false })
           .limit(50);
-
         (notifications || []).forEach((n) => {
           events.push({
             type: 'notification',

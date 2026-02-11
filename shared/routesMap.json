@@ -1,0 +1,330 @@
+{
+  "generated_at": "2026-02-07T15:19:03.691Z",
+  "version": "1.0",
+  "total_routes": 57,
+  "routes": {
+    "/login": {
+      "component": "Login",
+      "primary": "src/components/Login.js",
+      "related": []
+    },
+    "/auth/callback": {
+      "component": "AuthCallback",
+      "primary": "src/components/AuthCallback.js",
+      "related": []
+    },
+    "/": {
+      "component": "TechnicianDashboard",
+      "primary": "src/components/TechnicianDashboard.js",
+      "related": []
+    },
+    "/pm-dashboard": {
+      "component": "PMDashboard",
+      "primary": "src/components/PMDashboard.js",
+      "related": []
+    },
+    "/project/:id": {
+      "component": "ProjectDetailView",
+      "primary": "src/components/ProjectDetailView.js",
+      "related": []
+    },
+    "/pm/project/:projectId": {
+      "component": "PMProjectView",
+      "primary": "src/components/PMProjectView.js",
+      "related": []
+    },
+    "/pm-project/:projectId": {
+      "component": "PMProjectView",
+      "primary": "src/components/PMProjectView.js",
+      "related": []
+    },
+    "/project/:projectId/pm-issues": {
+      "component": "PMIssuesPage",
+      "primary": "src/components/PMIssuesPage.js",
+      "related": []
+    },
+    "/project/:id/issues/:issueId": {
+      "component": "IssueDetail",
+      "primary": "src/components/IssueDetail.js",
+      "related": []
+    },
+    "/people": {
+      "component": "PeopleManagement",
+      "primary": "src/components/PeopleManagement.js",
+      "related": []
+    },
+    "/contacts/:contactId": {
+      "component": "ContactDetailPage",
+      "primary": "src/components/ContactDetailPage.js",
+      "related": []
+    },
+    "/parts": {
+      "component": "PartsListPage",
+      "primary": "src/components/PartsListPage.js",
+      "related": [
+        "src/services/partsService.js",
+        "src/services/equipmentService.js"
+      ]
+    },
+    "/parts/:partId": {
+      "component": "PartDetailPage",
+      "primary": "src/components/PartDetailPage.js",
+      "related": []
+    },
+    "/parts/ai-lookup": {
+      "component": "PartsAILookupPage",
+      "primary": "src/components/PartsAILookupPage.js",
+      "related": [
+        "src/services/partsService.js",
+        "src/services/equipmentService.js"
+      ]
+    },
+    "/global-parts": {
+      "component": "GlobalPartsManager",
+      "primary": "src/components/GlobalPartsManager.js",
+      "related": [
+        "src/services/partsService.js",
+        "src/services/equipmentService.js"
+      ]
+    },
+    "/wire-drops": {
+      "component": "WireDropsHub",
+      "primary": "src/components/WireDropsHub.js",
+      "related": [
+        "src/services/wireDropService.js"
+      ]
+    },
+    "/wire-drops-list": {
+      "component": "WireDropsList",
+      "primary": "src/components/WireDropsList.js",
+      "related": [
+        "src/services/wireDropService.js"
+      ]
+    },
+    "/prewire-mode": {
+      "component": "PrewireMode",
+      "primary": "src/components/PrewireMode.js",
+      "related": []
+    },
+    "/wire-drops/new": {
+      "component": "WireDropNew",
+      "primary": "src/components/WireDropNew.js",
+      "related": [
+        "src/services/wireDropService.js"
+      ]
+    },
+    "/wire-drops/:id": {
+      "component": "WireDropDetail",
+      "primary": "src/components/WireDropDetail.js",
+      "related": [
+        "src/services/wireDropService.js"
+      ]
+    },
+    "/projects/:projectId/wire-drops/:wireDropId/head-end-tools": {
+      "component": "HeadEndToolsPage",
+      "primary": "src/components/HeadEndToolsPage.js",
+      "related": []
+    },
+    "/projects/:projectId/floor-plan": {
+      "component": "FloorPlanViewer",
+      "primary": "src/pages/FloorPlanViewer.jsx",
+      "related": []
+    },
+    "/projects/:projectId/equipment": {
+      "component": "EquipmentListPage",
+      "primary": "src/components/EquipmentListPage.js",
+      "related": [
+        "src/services/equipmentService.js"
+      ]
+    },
+    "/projects/:projectId/inventory": {
+      "component": "InventoryPage",
+      "primary": "src/pages/InventoryPage.js",
+      "related": []
+    },
+    "/projects/:projectId/receiving": {
+      "component": "PartsReceivingPage",
+      "primary": "src/components/PartsReceivingPage.js",
+      "related": [
+        "src/services/partsService.js",
+        "src/services/equipmentService.js"
+      ]
+    },
+    "/projects/:projectId/procurement": {
+      "component": "PMProcurementPage",
+      "primary": "src/components/PMOrderEquipmentPage.js",
+      "related": []
+    },
+    "/projects/:projectId/secure-data": {
+      "component": "SecureDataPage",
+      "primary": "src/components/SecureDataPage.js",
+      "related": []
+    },
+    "/projects/:projectId/reports": {
+      "component": "ProjectReportsPage",
+      "primary": "src/pages/ProjectReportsPage.js",
+      "related": []
+    },
+    "/projects/:projectId/shades": {
+      "component": "ShadeManager",
+      "primary": "src/components/Shades/ShadeManager.js",
+      "related": []
+    },
+    "/projects/:projectId/shades/:shadeId": {
+      "component": "ShadeDetailPage",
+      "primary": "src/components/Shades/ShadeDetailPage.js",
+      "related": []
+    },
+    "/projects/:projectId/home-assistant": {
+      "component": "HomeAssistantPage",
+      "primary": "src/pages/HomeAssistantPage.js",
+      "related": [
+        "src/services/homeAssistantService.js"
+      ]
+    },
+    "/projects/:projectId/rack-layout": {
+      "component": "RackLayoutPage",
+      "primary": "src/pages/RackLayoutPage.js",
+      "related": [
+        "src/services/rackService.js"
+      ]
+    },
+    "/vendors": {
+      "component": "VendorManagement",
+      "primary": "src/components/VendorManagement.js",
+      "related": []
+    },
+    "/settings": {
+      "component": "SettingsPage",
+      "primary": "src/components/SettingsPage.js",
+      "related": []
+    },
+    "/settings/knowledge": {
+      "component": "KnowledgeManagementPanel",
+      "primary": "src/components/knowledge/KnowledgeManagementPanel.js",
+      "related": []
+    },
+    "/issues": {
+      "component": "IssuesListPage",
+      "primary": "src/components/IssuesListPage.js",
+      "related": []
+    },
+    "/todos": {
+      "component": "TodosListPage",
+      "primary": "src/components/TodosListPage.js",
+      "related": []
+    },
+    "/projects/:projectId/todos/:todoId": {
+      "component": "TodoDetailPage",
+      "primary": "src/components/TodoDetailPage.js",
+      "related": []
+    },
+    "/service": {
+      "component": "ServiceDashboard",
+      "primary": "src/components/Service/ServiceDashboard.js",
+      "related": [
+        "src/services/serviceTicketService.js"
+      ]
+    },
+    "/service/tickets/new": {
+      "component": "NewTicketForm",
+      "primary": "src/components/Service/NewTicketForm.js",
+      "related": []
+    },
+    "/service/tickets/:id": {
+      "component": "ServiceTicketDetail",
+      "primary": "src/components/Service/ServiceTicketDetail.js",
+      "related": [
+        "src/services/serviceTicketService.js"
+      ]
+    },
+    "/service/weekly-planning": {
+      "component": "WeeklyPlanning",
+      "primary": "src/pages/WeeklyPlanning.js",
+      "related": []
+    },
+    "/service/reports": {
+      "component": "ServiceReports",
+      "primary": "src/pages/ServiceReports.js",
+      "related": [
+        "src/services/serviceTicketService.js"
+      ]
+    },
+    "/service/ai-test": {
+      "component": "ServiceAITest",
+      "primary": "src/pages/ServiceAITest.js",
+      "related": [
+        "src/services/serviceTicketService.js"
+      ]
+    },
+    "/lucid-test": {
+      "component": "LucidDiagnostic",
+      "primary": "src/components/LucidDiagnostic.js",
+      "related": []
+    },
+    "/scan-tag": {
+      "component": "ScanTagPage",
+      "primary": "src/components/ScanTagPage.js",
+      "related": []
+    },
+    "/unifi-test": {
+      "component": "UnifiTestPage",
+      "primary": "src/components/UnifiTestPage.js",
+      "related": []
+    },
+    "/debug-unifi": {
+      "component": "UnifiDebug",
+      "primary": "src/components/UnifiDebug.js",
+      "related": []
+    },
+    "/voice-test": {
+      "component": "VoiceTestPanel",
+      "primary": "src/components/Admin/VoiceTestPanel.js",
+      "related": []
+    },
+    "/admin": {
+      "component": "AdminPage",
+      "primary": "src/pages/AdminPage.js",
+      "related": []
+    },
+    "/company-settings": {
+      "component": "CompanySettingsPage",
+      "primary": "src/pages/CompanySettingsPage.js",
+      "related": []
+    },
+    "/my-hr": {
+      "component": "MyHRPage",
+      "primary": "src/pages/MyHRPage.js",
+      "related": [
+        "src/services/careerDevelopmentService.js"
+      ]
+    },
+    "/career": {
+      "component": "CareerDevelopmentPage",
+      "primary": "src/pages/CareerDevelopmentPage.js",
+      "related": [
+        "src/services/careerDevelopmentService.js"
+      ]
+    },
+    "/team-reviews": {
+      "component": "TeamReviewsPage",
+      "primary": "src/pages/TeamReviewsPage.js",
+      "related": []
+    },
+    "/public/issues/:token": {
+      "component": "PublicIssuePortal",
+      "primary": "src/pages/PublicIssuePortal.js",
+      "related": []
+    },
+    "/public/po/:token": {
+      "component": "PublicPurchaseOrderPortal",
+      "primary": "src/pages/PublicPurchaseOrderPortal.js",
+      "related": []
+    },
+    "/shade-portal/:token": {
+      "component": "PublicShadePortal",
+      "primary": "src/pages/PublicShadePortal.js",
+      "related": []
+    }
+  }
+}

@@ -774,10 +774,9 @@ export const contactSecureDataService = {
                      actionType;
 
       const { error } = await supabase
-        .from('contact_secure_data_audit_log')
+        .from('secure_data_audit_log')
         .insert([{
           secure_data_id: secureDataId,
-          contact_id: contactId,
           action: action,
           performed_by: userId,
           performed_at: new Date().toISOString(),
@@ -796,10 +795,20 @@ export const contactSecureDataService = {
     try {
       if (!supabase || !contactId) return [];
 
+      // First get all secure_data IDs for this contact
+      const { data: secureItems } = await supabase
+        .from('contact_secure_data')
+        .select('id')
+        .eq('contact_id', contactId);
+
+      if (!secureItems || secureItems.length === 0) return [];
+
+      const secureDataIds = secureItems.map(s => s.id);
+
       const { data, error } = await supabase
-        .from('contact_secure_data_audit_log')
+        .from('secure_data_audit_log')
         .select('*')
-        .eq('contact_id', contactId)
+        .in('secure_data_id', secureDataIds)
         .order('performed_at', { ascending: false })
         .limit(100);
 
