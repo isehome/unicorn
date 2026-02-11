@@ -58,6 +58,33 @@ gh pr list --repo isehome/unicorn --state open --search "[Bug]"
 - Lint: `npm run lint`
 - Deploy: `vercel` or push to main
 
+## Git Branching (CRITICAL - EVERY SESSION MUST DO THIS)
+
+**NEVER commit directly to main.** Each Claude session works on its own branch.
+
+### Session Start (FIRST THING YOU DO)
+```bash
+source scripts/git-branch-session.sh "short-description-of-task"
+# Example: source scripts/git-branch-session.sh "fix-email-agent"
+# Creates: claude/2026-02-11-fix-email-agent
+# Exports GIT_DIR and GIT_WORK_TREE (handles index.lock automatically)
+```
+After sourcing, all git commands use your isolated branch. Commit and push freely.
+
+### When Done — Push Your Branch
+```bash
+git push origin claude/2026-02-11-your-branch-name
+```
+Do **NOT** push to main. Steve (or a merge session) combines branches.
+
+### Merging Branches to Main (Steve or designated session only)
+```bash
+scripts/git-merge-branches.sh --list              # See all branches
+scripts/git-merge-branches.sh --dry-run --all     # Preview merges
+scripts/git-merge-branches.sh --all               # Merge everything
+scripts/git-merge-branches.sh claude/2026-02-11-x # Merge one branch
+```
+
 ## Git Safety (CRITICAL - NEVER SKIP)
 
 **Problem:** Git plumbing (read-tree, update-index, write-tree, commit-tree) can silently DELETE files if you don't add them back to the tree. Commit 7c4d067 deleted 47 files this way.
@@ -141,7 +168,7 @@ UPDATE bug_reports SET status = 'fixed',
 WHERE bug_report_id = 'BR-...';
 ```
 
-**STEP 2: Fix the bug** — implement the fix, commit, push to main
+**STEP 2: Fix the bug** — implement the fix, commit, push to your session branch (NOT main)
 
 **STEP 3: Mark pending_review in Supabase** (don't try to call the Vercel API):
 ```sql
