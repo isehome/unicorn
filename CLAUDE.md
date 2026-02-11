@@ -58,6 +58,36 @@ gh pr list --repo isehome/unicorn --state open --search "[Bug]"
 - Lint: `npm run lint`
 - Deploy: `vercel` or push to main
 
+## Git Safety (CRITICAL - NEVER SKIP)
+
+**Problem:** Git plumbing (read-tree, update-index, write-tree, commit-tree) can silently DELETE files if you don't add them back to the tree. Commit 7c4d067 deleted 47 files this way.
+
+**Before ANY git commit (plumbing or porcelain):**
+1. Run `git diff --stat HEAD` to verify you're not accidentally deleting files
+2. If using git plumbing, use `scripts/git-safe-commit.sh` wrapper instead of raw `git commit-tree`
+3. **NEVER** use `git read-tree HEAD` and then selectively add files — this DELETES everything you don't add
+4. Instead:
+   - `git read-tree HEAD` to load the current tree
+   - `git update-index --add` your changed files on top of it
+   - Verify with `git diff-tree HEAD <new-tree>` before committing
+5. A commit that deletes more than 3 files requires explicit user confirmation
+6. A commit that deletes more than 500 lines of code requires explicit user confirmation
+
+**Example safe workflow:**
+```bash
+# Load current state
+git read-tree HEAD
+git update-index --add src/components/MyComponent.tsx src/utils/helper.ts
+
+# Verify before committing
+NEW_TREE=$(git write-tree)
+git diff-tree HEAD "$NEW_TREE"
+
+# Use the safe commit wrapper
+COMMIT=$(scripts/git-safe-commit.sh "$NEW_TREE" "HEAD" "Fix: xyz issue")
+git reset --soft "$COMMIT"
+```
+
 ---
 
 ## Autonomous Workflow Rules (NEVER BREAK THESE)
