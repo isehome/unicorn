@@ -12,7 +12,7 @@ import {
   TOKEN_CONFIG,
   AUTH_ERRORS
 } from '../config/authConfig';
-import { supabase } from '../lib/supabase';
+import { supabase, setSupabaseSessionFromMSAL } from '../lib/supabase';
 
 // Clear stale MSAL interaction state on page load if no auth hash is present.
 // This prevents the hash_empty_error that occurs when MSAL expects a redirect
@@ -136,6 +136,13 @@ export function AuthProvider({ children }) {
       if (response?.accessToken) {
         setAccessToken(response.accessToken);
         scheduleTokenRefresh(response.expiresOn);
+
+        // Bridge MSAL → Supabase: exchange the MSAL token for a Supabase JWT
+        // so that auth.uid() resolves in RLS policies.
+        setSupabaseSessionFromMSAL(response.accessToken).catch(err =>
+          console.warn('[Auth] Supabase token exchange failed (non-blocking):', err.message)
+        );
+
         return response.accessToken;
       }
 
@@ -395,6 +402,11 @@ export function AuthProvider({ children }) {
             scheduleTokenRefresh(response.expiresOn);
           }
 
+          // Bridge MSAL → Supabase session on redirect login
+          setSupabaseSessionFromMSAL(response.accessToken).catch(err =>
+            console.warn('[Auth] Supabase token exchange failed (non-blocking):', err.message)
+          );
+
           const userProfile = await loadUserProfile(response.accessToken);
           if (userProfile) {
             setAuthState(AUTH_STATES.AUTHENTICATED);
@@ -529,6 +541,11 @@ export function AuthProvider({ children }) {
       if (response.expiresOn) {
         scheduleTokenRefresh(response.expiresOn);
       }
+
+      // Bridge MSAL → Supabase session on first login
+      setSupabaseSessionFromMSAL(response.accessToken).catch(err =>
+        console.warn('[Auth] Supabase token exchange failed (non-blocking):', err.message)
+      );
 
       const userProfile = await loadUserProfile(response.accessToken);
       if (userProfile) {

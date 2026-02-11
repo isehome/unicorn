@@ -211,6 +211,51 @@ export function slugifySegment(input, max = 60) {
   return trimmed || 'item'
 }
 
+// --- Supabase session from custom JWT (MSAL → Supabase bridge) ---
+
+/**
+ * Exchange an MSAL access token for a Supabase JWT via /api/auth/supabase-token,
+ * then set it as the active Supabase session so that auth.uid() works in RLS.
+ *
+ * Returns the access_token string on success, or null on failure.
+ */
+export async function setSupabaseSessionFromMSAL(msalAccessToken) {
+  if (!supabase || !msalAccessToken) return null
+
+  try {
+    const res = await fetch('/api/auth/supabase-token', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${msalAccessToken}` },
+    })
+
+    if (!res.ok) {
+      console.warn('[Supabase] Token exchange failed:', res.status)
+      return null
+    }
+
+    const { access_token } = await res.json()
+
+    // setSession accepts { access_token, refresh_token }.
+    // We pass the same token as refresh_token because we handle
+    // refresh ourselves via MSAL; Supabase will never use it.
+    const { error } = await supabase.auth.setSession({
+      access_token,
+      refresh_token: access_token,
+    })
+
+    if (error) {
+      console.warn('[Supabase] setSession error:', error.message)
+      return null
+    }
+
+    console.log('[Supabase] Session set — auth.uid() now resolves to Azure OID')
+    return access_token
+  } catch (err) {
+    console.warn('[Supabase] Token exchange error:', err.message)
+    return null
+  }
+}
+
 // --- Auth helpers ---
 // Note: These are primarily for backward compatibility
 // New code should use AuthContext directly
