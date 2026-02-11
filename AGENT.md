@@ -9389,6 +9389,20 @@ Run in Supabase SQL Editor:
 - Update ServiceTimeEntryModal with labor type field
 - Create QBO Items sync endpoint for mapping
 
+### 2026-02-11 - Stakeholder Notification Fixes & Detail Modal
+
+**What:** Fixed notification emails to send FROM the logged-in user (not the system account) with CC to system email, preventing spam flagging. Fixed portal links for external stakeholders — Notify All now force-regenerates tokens so every external recipient gets a fresh portal URL + OTP code. Created `issue_notification_log` table to track all notification sends. Built StakeholderDetailModal in project stakeholders section — clicking a stakeholder opens a detail view with contact info, edit/delete (delete only visible in edit mode), and a collapsible engagement history showing: notifications sent, comments made, and portal access timestamps.
+
+**Why:** System account emails were getting flagged as spam; emails should come from the human user. External stakeholders weren't getting portal links (tokens are hashed, can't be recovered from existing links). No visibility into whether stakeholders received emails — now tracked in notification log and visible in stakeholder detail modal.
+
+**Files:**
+- `api/send-issue-notification.js` - Sends from user via `/me/sendMail` when `sendAsUser: true`, falls back to system account
+- `src/components/IssueDetail.js` - `generateExternalPortalLinks` now accepts `forceRegenerate` option, used by Notify All
+- `src/services/issueNotificationService.js` - Added `logNotificationSend()`, imports supabase, logs each send to `issue_notification_log`
+- `src/components/StakeholderDetailModal.js` - **NEW** - Detail modal with contact info, edit/delete, collapsible engagement history
+- `src/components/ProjectDetailView.js` - Integrated StakeholderDetailModal, simplified StakeholderCard (click opens modal)
+- **Migration:** `create_issue_notification_log` - New table with indexes for issue/stakeholder/project queries
+
 ### 2026-02-11 - Notify Stakeholders & MSAL Auth Fix (BR-2026-02-09-0001)
 
 **What:** Added "Notify All" button to the Issues Stakeholders section that sends a branded email to all tagged stakeholders (internal + external) with issue summary, status, priority, and portal links. Fixed MSAL `hash_empty_error` by enhancing pre-emptive clearing of stale interaction state on page load. Added portal access tracking (`last_accessed_at`, `access_count`) for stakeholder engagement reporting.

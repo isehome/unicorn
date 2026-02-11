@@ -1,19 +1,57 @@
 import { companySettingsService } from './companySettingsService';
+import { supabase } from '../lib/supabase';
 
 const NOTIFICATION_ENDPOINT = '/api/send-issue-notification';
 const SYSTEM_EMAIL = 'unicorn@isehome.com';
 
+/**
+ * Log a notification send to issue_notification_log for engagement tracking.
+ * Non-blocking — failures are silently caught so they don't break notification flow.
+ */
+const logNotificationSend = async ({
+  issueId,
+  projectId,
+  stakeholderTagId,
+  recipientEmail,
+  recipientName,
+  notificationType = 'bulk_notify',
+  subject,
+  sentBy,
+  deliveryStatus = 'sent',
+  errorMessage = null,
+  metadata = {}
+}) => {
+  try {
+    if (!supabase) return;
+    await supabase.from('issue_notification_log').insert({
+      issue_id: issueId,
+      project_id: projectId,
+      stakeholder_tag_id: stakeholderTagId || null,
+      recipient_email: recipientEmail,
+      recipient_name: recipientName || null,
+      notification_type: notificationType,
+      subject: subject || null,
+      sent_by: sentBy || null,
+      delivery_status: deliveryStatus,
+      error_message: errorMessage,
+      metadata
+    });
+  } catch (err) {
+    console.warn('[IssueNotificationService] Failed to log notification:', err.message);
+  }
+};
+
 // Whitelist notice to include in first-contact emails
 const WHITELIST_NOTICE_HTML = `
   <p style="margin-top:20px;padding:12px;background:#f0f9ff;border-left:4px solid #0ea5e9;font-size:13px;color:#0369a1;">
-    <strong>Important:</strong> Future updates will come from <strong>${SYSTEM_EMAIL}</strong>.
+    <strong>Important:</strong> Some automated updates may come from <strong>${SYSTEM_EMAIL}</strong>.
     Please add this address to your contacts or whitelist to ensure you receive all notifications.
   </p>
 `;
 
 const WHITELIST_NOTICE_TEXT = `
 ---
-Important: Future updates will come from ${SYSTEM_EMAIL}.
+Important: Some automated updates may come from ${SYSTEM_EMAIL}.
 Please add this address to your contacts or whitelist to ensure you receive all notifications.
 `;
 
@@ -584,6 +622,22 @@ View Issue: ${issueUrl || '#'}${textFooter}`;
         { authToken: options?.authToken }
       );
       sent += internalRecipients.length;
+
+      // Log each internal recipient notification
+      for (const s of internalStakeholders) {
+        if (!s?.email) continue;
+        logNotificationSend({
+          issueId: issue?.id,
+          projectId: project?.id,
+          stakeholderTagId: s?.tag_id || s?.id,
+          recipientEmail: s.email.trim(),
+          recipientName: s?.contact_name || s?.displayName || s?.role_name,
+          notificationType: 'bulk_notify',
+          subject,
+          sentBy: options?.userId,
+          metadata: { channel: 'internal' }
+        });
+      }
     }
   }
 
@@ -637,6 +691,19 @@ ${WHITELIST_NOTICE_TEXT}${textFooter}`;
       { authToken: options?.authToken }
     );
     sent++;
+
+    // Log external stakeholder notification
+    logNotificationSend({
+      issueId: issue?.id,
+      projectId: project?.id,
+      stakeholderTagId: tagId,
+      recipientEmail: email,
+      recipientName: recipientName !== 'there' ? recipientName : null,
+      notificationType: 'bulk_notify',
+      subject,
+      sentBy: options?.userId,
+      metadata: { channel: 'external', hasPortalLink: !!portalUrl }
+    });
   }
 
   console.log(`[IssueNotificationService] notifyAllStakeholders complete: ${sent} emails sent`);

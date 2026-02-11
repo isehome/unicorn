@@ -463,10 +463,12 @@ const IssueDetail = () => {
     }
   }, [tags]);
 
-  // Generate portal links for external stakeholders (for comment notifications)
-  // Only returns new portal URLs for stakeholders who don't already have links.
-  // Stakeholders with existing links keep their original portal URL (not regenerated).
-  const generateExternalPortalLinks = useCallback(async (issueId, stakeholderList) => {
+  // Generate portal links for external stakeholders (for notifications).
+  // When forceRegenerate is true (used by Notify All), regenerates links so every
+  // external stakeholder gets a fresh portal URL + OTP in their email.
+  // When false (used by comment notifications), only creates links for stakeholders
+  // who don't have one yet, to avoid invalidating existing portal URLs.
+  const generateExternalPortalLinks = useCallback(async (issueId, stakeholderList, { forceRegenerate = false } = {}) => {
     const portalLinks = {};
     if (!issueId || !Array.isArray(stakeholderList)) return portalLinks;
 
@@ -480,18 +482,17 @@ const IssueDetail = () => {
       if (!tagId) continue;
 
       try {
-        // ensureLink checks for existing valid links first.
-        // If a link exists, returns { linkExists: true } without regenerating.
-        // Only creates new links for stakeholders who don't have one yet.
+        // forceRegenerate: true → always create a new token + OTP (for bulk Notify All)
+        // forceRegenerate: false → only create if no existing link (for comment notifications)
         const result = await issuePublicAccessService.ensureLink({
           issueId,
           projectId,
           stakeholderTagId: tagId,
-          stakeholder
+          stakeholder,
+          forceRegenerate
         });
 
-        // Only include in notifications if this is a NEW link (has token)
-        // Existing links don't return a token since we can't recover the hashed value
+        // Include in notifications if we got a token (new or regenerated link)
         if (result?.token) {
           const portalUrl = `${window.location.origin}/public/issues/${result.token}`;
           portalLinks[tagId] = {
@@ -1126,8 +1127,8 @@ const IssueDetail = () => {
         ? `${window.location.origin}/project/${projectId}/issues/${activeIssueId}`
         : '');
 
-      // Generate portal links for external stakeholders
-      const externalPortalLinks = await generateExternalPortalLinks(activeIssueId, tags);
+      // Force-regenerate portal links so every external stakeholder gets a fresh URL + OTP
+      const externalPortalLinks = await generateExternalPortalLinks(activeIssueId, tags, { forceRegenerate: true });
 
       const result = await notifyAllStakeholders(
         {
@@ -1138,7 +1139,7 @@ const IssueDetail = () => {
           issueUrl: link,
           externalPortalLinks
         },
-        { authToken: graphToken }
+        { authToken: graphToken, userId: user?.id }
       );
 
       // Record when bulk notification was sent
