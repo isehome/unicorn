@@ -4139,6 +4139,18 @@ The application needs a proper user capabilities/roles system to control access 
 
 ## 2026-02-11
 
+### Supabase Security — MSAL→Supabase Token Exchange + RLS Enforcement
+**What:** Added token exchange endpoint and enabled RLS on all unprotected tables.
+**Why:** Supabase Security Advisor flagged 35 errors — 14 tables had no RLS. With MSAL as auth provider, auth.uid() was always null, making RLS unusable. Token exchange bridges the gap so RLS policies can actually enforce access.
+**Details:**
+- New `/api/auth/supabase-token` endpoint: validates MSAL token via Graph API, mints Supabase JWT with Azure OID as `sub`
+- AuthContext calls exchange on login, redirect, and token refresh (non-blocking)
+- `supabase.js` exports `setSupabaseSessionFromMSAL()` helper
+- Migration enables RLS on 12 unprotected tables + fixes 2 tables with orphaned policies + adds policy to `role_types`
+- Security Advisor errors reduced from 35 → 21 (remaining 21 are security_definer views)
+**Requires:** `SUPABASE_JWT_SECRET` env var in Vercel before deploy
+**Files:** `api/auth/supabase-token.js`, `src/contexts/AuthContext.js`, `src/lib/supabase.js`, `database/migrations/20260211_enable_rls_unprotected_tables.sql`
+
 ### Email Agent — Ticket Creation Bug Fixes
 **What:** Fixed 4 cascading bugs preventing the email agent from auto-creating service tickets
 **Why:** Support emails (e.g., WiFi issues) were classified correctly (confidence 1.0, urgency high) but action_taken stayed "pending_review" — no ticket was created.
