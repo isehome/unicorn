@@ -25,7 +25,7 @@
 | **PART 3: AI & Voice Copilot** | 2722-3100 | Gemini, AppStateContext, 5 meta-tools |
 | **PART 4: External Portals** | 3139-3280 | Public pages, standalone pattern |
 | **PART 5: TODO / Known Issues** | 3283-3700 | Current bugs, planned work |
-| **PART 6: Changelog** | 3740+ | All changes (ADD NEW ENTRIES HERE) |
+| **PART 6: Changelog** | 4138+ | All changes (ADD NEW ENTRIES HERE) |
 
 ---
 
@@ -1113,19 +1113,81 @@ An AI-powered email agent that reads the `unicorn@isehome.com` inbox, classifies
    - Check ignore list (noreply, mailer-daemon)
    - **Customer lookup** in `contacts` table (NOT `global_contacts`)
    - Internal domain check — known clients from internal domains ARE processed
-   - AI classification via Gemini 3 Flash (support, sales, spam, internal, unknown)
+   - AI classification via Gemini 3 Flash (support, sales, vendor, billing, scheduling, spam, internal, unknown)
+   - **Enriched AI analysis** returns: intent, topics, entities, department, routing reasoning, priority reasoning
    - Action based on classification + confidence:
      - **High confidence support** → Auto-create service ticket + auto-reply
-     - **Low confidence** → Forward to `email_agent_forward_email` for human review
+     - **Low confidence** (below `require_review_threshold`) → Forward to `email_agent_forward_email` for human review
+     - **`requires_human_review` flag** (e.g., sender name mismatch with CRM) → Still creates ticket, but skips auto-reply
      - **Spam/internal** → Ignore
-4. Records everything in `processed_emails` table
+4. Records everything in `processed_emails` table (including enriched AI metadata)
 5. Marks original email as read in Graph
+
+##### Ticket Creation Details
+
+When creating a service ticket from an email:
+- `status`: Must be `'open'` (NOT `'new'` — violates CHECK constraint)
+- `source_reference`: Email ID from Microsoft Graph
+- `initial_customer_comment`: Full email body content
+- `ai_triage_notes`: Formatted summary with classification, confidence, urgency, and action items
+- `priority`: Mapped from AI urgency (critical→urgent, high→high, medium→medium, low→low)
+- `category`: From AI's `ticket_category` field
+
+**CRITICAL**: The `service_tickets` table has a CHECK constraint on `status`. Valid values: `open`, `triaged`, `scheduled`, `in_progress`, `waiting_parts`, `waiting_customer`, `work_complete_needs_invoice`, `problem`, `closed`
+
+##### Ticket Creation Gating Logic
+
+```javascript
+const lowConfidence = analysis.confidence < config.reviewThreshold;
+const needsReview = lowConfidence || analysis.requires_human_review;
+
+// Ticket creation: only blocked by LOW CONFIDENCE (not human review flag)
+if (analysis.should_create_ticket && config.autoCreateTickets && !lowConfidence) {
+  // Creates ticket even if requires_human_review is true
+}
+
+// Auto-reply: blocked by EITHER low confidence or human review
+if (config.autoReply && !needsReview) {
+  // Only replies when fully confident AND no review needed
+}
+```
+
+##### AI Classification Schema
+
+The AI returns enriched metadata for each email (stored in `processed_emails`):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `classification` | text | support, sales, vendor, billing, scheduling, spam, internal, unknown |
+| `confidence` | float | 0.0–1.0 confidence score |
+| `urgency` | text | critical, high, medium, low |
+| `intent` | text | request_service, complaint, follow_up, schedule, escalation, information, vendor_quote, etc. |
+| `topics` | text[] | Tags: wifi, network, home_theater, camera, audio, security, lighting, shades, etc. |
+| `department` | text | service, sales, project_management, admin, billing |
+| `suggested_assignee_role` | text | service_tech, project_manager, sales_rep, office_admin, owner |
+| `routing_reasoning` | text | Why AI chose this classification and department |
+| `priority_reasoning` | text | Why AI chose this urgency level |
+| `entities` | jsonb | `{systems_mentioned, locations_mentioned, people_mentioned, dates_mentioned, project_references}` |
+
+##### Human Feedback Loop
+
+To evaluate and improve AI accuracy over time, `processed_emails` includes:
+
+| Column | Type | Purpose |
+|--------|------|---------|
+| `human_accuracy_rating` | integer (1-5) | How accurate was the AI classification? |
+| `human_correct_classification` | text | What should the classification have been? |
+| `human_feedback` | text | Free-form notes on AI performance |
+| `human_rated_by` | uuid | Who provided the rating |
+| `human_rated_at` | timestamptz | When the rating was given |
+
+**Future**: This data feeds into an ops manager routing capability where the AI reviews emails and forwards instructions to employees based on learned patterns.
 
 ##### Database Tables
 
 | Table | Purpose |
 |-------|---------|
-| `processed_emails` | Log of all processed emails with AI classification, action taken, confidence |
+| `processed_emails` | Log of all processed emails with AI classification, enriched metadata, action taken, confidence, human feedback |
 | `app_configuration` | Email agent config (keys prefixed `email_agent_*`) |
 
 ##### Config Keys (app_configuration)
@@ -4074,6 +4136,82 @@ The application needs a proper user capabilities/roles system to control access 
 ---
 
 # PART 6: CHANGELOG
+
+## 2026-02-11
+
+### Email Agent — Ticket Creation Bug Fixes
+**What:** Fixed 4 cascading bugs preventing the email agent from auto-creating service tickets
+**Why:** Support emails (e.g., WiFi issues) were classified correctly (confidence 1.0, urgency high) but action_taken stayed "pending_review" — no ticket was created.
+
+**Bug 1 — `requires_human_review` blocking ticket creation:**
+- AI flagged `requires_human_review: true` when sender name didn't match CRM record
+- Code gated ticket creation on `!needsReview` which included this flag
+- Fix: Separated `lowConfidence` from `needsReview` — tickets only blocked by low confidence
+
+**Bug 2 — `actionTaken` never updated:**
+- `actionTaken` was only set to `'ticket_created'` inside the reply block, not the ticket block
+- If no reply sent (because of review flag), action stayed `pending_review`
+- Fix: Set `actionTaken = 'ticket_created'` immediately after successful ticket insert
+
+**Bug 3 — `createServiceTicket` used invalid columns:**
+- Function used `metadata` (jsonb) and `created_by_email` which don't exist on `service_tickets`
+- Insert failed silently in try/catch
+- Fix: Replaced with `source_reference`, `initial_customer_comment`, `ai_triage_notes`
+
+**Bug 4 — `status: 'new'` violates CHECK constraint:**
+- `service_tickets` table has CHECK constraint; `'new'` is not a valid value
+- Fix: Changed to `status: 'open'`
+
+**Files:** `api/email/process-incoming.js`
+
+### Email Agent — Enriched AI Metadata
+**What:** Added rich AI analysis fields for future ops manager routing and human feedback loop
+**Why:** Enables evaluating AI accuracy over time and prepares for routing emails to specific employees
+
+**New AI fields:** intent, topics, entities, department, suggested_assignee_role, routing_reasoning, priority_reasoning
+**New human feedback fields:** human_accuracy_rating, human_correct_classification, human_feedback, human_rated_by, human_rated_at
+
+**Files:** `api/_emailAI.js`, `api/email/process-incoming.js`
+**Migration:** `add_email_agent_feedback_and_routing_metadata` (applied to Supabase)
+
+### Destructive Commit Recovery (7c4d067)
+**What:** Restored 47 files (10 deleted, 37 reverted) destroyed by a concurrent Claude session
+**Why:** Session doing stakeholder query fix used stale git plumbing, silently dropping all files it didn't know about
+
+**Root cause:** `git read-tree` + selective `update-index --add` without loading the full tree first = everything not explicitly added gets deleted. Git plumbing gives zero warnings.
+
+**Restored files include:** `api/_aiConfig.js`, `shared/aiConfig.js`, `api/cron/close-fixed-bugs.js`, `scripts/generate-routes-map.js`, `shared/routesMap.json`, `scripts/gh-cli.js`, 3 database migrations, all api/bugs/* enhancements, AGENT.md docs, CLAUDE.md rules, notification services, auth context changes, and more.
+
+**Files:** 47 files across the entire codebase
+
+### Git Safety Guard
+**What:** Added `scripts/git-safe-commit.sh` wrapper that validates commits before creation
+**Why:** Prevents repeat of 7c4d067 incident where concurrent session wiped 47 files
+
+- Aborts if >3 files would be deleted
+- Aborts if >500 net LOC would be deleted
+- Override with `--force` for intentional deletions
+- Added mandatory rules to CLAUDE.md
+
+**Files:** `scripts/git-safe-commit.sh`, `CLAUDE.md`
+
+### Git Session Branching Workflow
+**What:** Each Claude session now works on its own branch instead of pushing to main
+**Why:** Prevents concurrent sessions from overwriting each other's work; enables safe multitasking
+
+**How it works:**
+1. Session starts: `source scripts/git-branch-session.sh "task-description"`
+2. Creates branch: `claude/YYYY-MM-DD-task-description`
+3. Handles index.lock automatically (copies .git to /tmp, removes locks)
+4. Uses plumbing (symbolic-ref + read-tree) — no git checkout needed
+5. Session commits and pushes to its own branch
+6. Steve (or merge session) runs `scripts/git-merge-branches.sh --all` to combine
+
+**Merge script features:** `--list` shows all branches, `--dry-run` previews, deletion safety checks, conflict detection (aborts without auto-resolving), auto-creates local tracking branches from remotes.
+
+**Files:** `scripts/git-branch-session.sh`, `scripts/git-merge-branches.sh`, `CLAUDE.md`
+
+---
 
 ## 2026-02-07
 

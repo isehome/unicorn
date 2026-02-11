@@ -33,7 +33,8 @@ Stack: React 18 + Supabase + Azure MSAL + Tailwind + Vercel
 | Styling | 1700-1900 | `Read AGENT.md offset=1700 limit=200` |
 | Database | 2000-2400 | `Read AGENT.md offset=2000 limit=400` |
 | Voice AI | 2722-3100 | `Read AGENT.md offset=2722 limit=400` |
-| Changelog | 3800+ | `Read AGENT.md offset=3800 limit=200` |
+| Email Agent | 1076-1210 | `Read AGENT.md offset=1076 limit=140` |
+| Changelog | 4138+ | `Read AGENT.md offset=4138 limit=200` |
 
 ## After ANY Code Change
 
