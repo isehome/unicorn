@@ -2,7 +2,8 @@
  * Process Incoming Emails
  *
  * Main email processing endpoint. Called by cron job every 5 minutes.
- * Fetches unread emails, analyzes with AI, and takes appropriate action.
+ * Fetches unread emails from unicorn@isehome.com, classifies with AI, and takes action.
+ * Auto-creates service tickets for high-confidence support emails.
  *
  * Endpoint: POST /api/email/process-incoming
  */
