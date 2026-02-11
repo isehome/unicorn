@@ -334,7 +334,7 @@ async function createServiceTicket(email, analysis, customer) {
   const ticketData = {
     title: analysis.ticket_title || email.subject,
     description: analysis.ticket_description || analysis.summary,
-    status: 'new',
+    status: 'open',
     priority: mapUrgencyToPriority(analysis.urgency),
     source: 'email',
     source_reference: email.id,
