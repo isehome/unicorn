@@ -8,7 +8,7 @@
  * Components explicitly tell this context what they're showing.
  */
 
-import React, { createContext, useContext, useState, useCallback, useRef } from 'react';
+import React, { createContext, useContext, useState, useCallback, useRef, useMemo } from 'react';
 
 // Initial state structure
 const initialState = {
@@ -68,9 +68,20 @@ export const AppStateProvider = ({ children }) => {
      */
     const publishState = useCallback((updates) => {
         setAppState(prev => {
-            const next = { ...prev, ...updates };
-            console.log('[AppState] State updated:', Object.keys(updates).join(', '));
-            return next;
+            // Skip update if nothing actually changed (prevents infinite render loops)
+            const keys = Object.keys(updates);
+            const hasChange = keys.some(k => {
+                const oldVal = prev[k];
+                const newVal = updates[k];
+                if (oldVal === newVal) return false;
+                // Shallow compare for arrays/objects
+                if (typeof oldVal === 'object' && typeof newVal === 'object' && oldVal !== null && newVal !== null) {
+                    return JSON.stringify(oldVal) !== JSON.stringify(newVal);
+                }
+                return true;
+            });
+            if (!hasChange) return prev; // Return same reference — React skips re-render
+            return { ...prev, ...updates };
         });
     }, []);
     
@@ -78,14 +89,15 @@ export const AppStateProvider = ({ children }) => {
      * Set the current view
      */
     const setView = useCallback((view, additionalState = {}) => {
-        setAppState(prev => ({
-            ...prev,
-            view,
-            ...additionalState,
-            // Clear contextual state when changing views
-            ...(view !== prev.view ? { modal: null, activeField: null } : {}),
-        }));
-        console.log('[AppState] View changed to:', view);
+        setAppState(prev => {
+            if (prev.view === view && Object.keys(additionalState).length === 0) return prev;
+            return {
+                ...prev,
+                view,
+                ...additionalState,
+                ...(view !== prev.view ? { modal: null, activeField: null } : {}),
+            };
+        });
     }, []);
     
     /**
@@ -125,9 +137,8 @@ export const AppStateProvider = ({ children }) => {
      */
     const registerActions = useCallback((handlers) => {
         actionHandlers.current = { ...actionHandlers.current, ...handlers };
-        console.log('[AppState] Actions registered:', Object.keys(handlers).join(', '));
     }, []);
-    
+
     /**
      * Unregister action handlers (cleanup)
      */
@@ -135,7 +146,6 @@ export const AppStateProvider = ({ children }) => {
         handlerNames.forEach(name => {
             delete actionHandlers.current[name];
         });
-        console.log('[AppState] Actions unregistered:', handlerNames.join(', '));
     }, []);
     
     /**
@@ -155,7 +165,6 @@ export const AppStateProvider = ({ children }) => {
         }
         
         try {
-            console.log(`[AppState] Executing action: ${actionName}`, params);
             const result = await handler(params);
             return { success: true, ...result };
         } catch (error) {
@@ -186,29 +195,24 @@ export const AppStateProvider = ({ children }) => {
         actionHandlers.current = {};
     }, []);
     
-    const value = {
-        // State
+    // Memoize context value to prevent unnecessary consumer re-renders.
+    // Only appState changes between renders — all callbacks are stable (useCallback []).
+    const value = useMemo(() => ({
         appState,
         getState,
-        
-        // State setters
         publishState,
         setView,
         setProject,
         setShade,
         updateFormField,
         setActiveField,
-        
-        // Action system
         registerActions,
         unregisterActions,
         executeAction,
         getAvailableActions,
-        
-        // Utilities
         resetState,
-    };
-    
+    }), [appState, getState, publishState, setView, setProject, setShade, updateFormField, setActiveField, registerActions, unregisterActions, executeAction, getAvailableActions, resetState]);
+
     return (
         <AppStateContext.Provider value={value}>
             {children}
