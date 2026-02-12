@@ -2665,6 +2665,139 @@ ALTER TABLE table ADD COLUMN IF NOT EXISTS col type;
 
 ---
 
+## Security Architecture & Audit Procedures
+
+### Overview
+
+Supabase project: `dpteljnierdubqsqxfye` (unicorn-app)
+
+**Auth model:** Microsoft MSAL (Azure AD) → Token Exchange → Supabase JWT
+- Frontend authenticates via MSAL (Azure AD OAuth)
+- `/api/auth/supabase-token` validates the MSAL token against Microsoft Graph, then mints a Supabase-compatible JWT with the Azure OID as `sub`
+- `AuthContext.js` calls the exchange on login, redirect, and token refresh (non-blocking)
+- Once exchanged, `auth.uid()` resolves to the user's Azure OID inside RLS policies
+
+**Key files:**
+- `api/auth/supabase-token.js` — Token exchange endpoint (HS256 signing, no external deps)
+- `src/lib/supabase.js` — `setSupabaseSessionFromMSAL()` helper
+- `src/contexts/AuthContext.js` — Calls token exchange in 3 places
+
+### Current Security State (as of 2026-02-11)
+
+| Metric | Status |
+|--------|--------|
+| Security Advisor errors | **0** (was 35) |
+| Security Advisor warnings | 418 |
+| RLS enabled | All public tables ✅ |
+| RLS policies | `USING (true)` placeholder — open access for `anon, authenticated` |
+| Views | All SECURITY INVOKER ✅ (was SECURITY DEFINER) |
+| JWT signing | Legacy HS256 (migrated to new key management, not yet rotated to ES256) |
+| `decrypt_field()` | SECURITY DEFINER (intentional — accesses `vault.decrypted_secrets`) |
+
+### Warning Breakdown (418 total)
+
+| Warning | Count | Notes |
+|---------|-------|-------|
+| `rls_policy_always_true` | 268 | Intentional placeholder — all policies use `USING (true)`. Tighten after token exchange is verified in production. |
+| `function_search_path_mutable` | 145 | Functions without explicit `search_path`. Low priority — add `SET search_path = public` to functions when editing them. |
+| `extension_in_public` | 1 | Extension installed in public schema. Supabase default. |
+| `materialized_view_in_api` | 1 | Materialized view exposed via API. Review if sensitive. |
+| `auth_otp_long_expiry` | 1 | OTP expiry is long. Not relevant (we use MSAL, not Supabase Auth OTP). |
+| `auth_leaked_password_protection` | 1 | Leaked password detection disabled. Not relevant (we use MSAL). |
+| `vulnerable_postgres_version` | 1 | Supabase manages PG version. Check dashboard for available upgrades. |
+
+### Rules for New Tables
+
+When creating a new table, ALWAYS:
+1. Enable RLS: `ALTER TABLE public.new_table ENABLE ROW LEVEL SECURITY;`
+2. Add a placeholder policy:
+```sql
+CREATE POLICY "authenticated_full_access" ON public.new_table
+FOR ALL TO anon, authenticated
+USING (true) WITH CHECK (true);
+```
+3. Run `get_advisors` via Supabase MCP to confirm no new errors
+
+### Rules for New Views
+
+When creating a new view, ALWAYS:
+1. Use SECURITY INVOKER (the PostgreSQL default in PG15+, but be explicit):
+```sql
+CREATE VIEW public.my_view
+WITH (security_invoker = on)
+AS SELECT ...;
+```
+2. NEVER use `SECURITY DEFINER` on views unless the view itself needs elevated privileges (rare — if a function it calls is already SECURITY DEFINER, the view doesn't need to be)
+
+### Rules for New Functions
+
+- Functions that access `vault.decrypted_secrets` or other privileged objects: use `SECURITY DEFINER`
+- All other functions: use `SECURITY INVOKER` (default)
+- Always add `SET search_path = public` to avoid `function_search_path_mutable` warnings:
+```sql
+CREATE OR REPLACE FUNCTION public.my_function()
+RETURNS void LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path = public
+AS $$ ... $$;
+```
+
+### JWT Signing Keys
+
+| Key | Type | Status |
+|-----|------|--------|
+| Current | Legacy HS256 | Active — used by `api/auth/supabase-token.js` |
+| Standby | ECC P-256 | Inactive — ready for future rotation |
+
+**Before rotating keys:**
+1. Update `api/auth/supabase-token.js` to sign with ES256 using the new private key (or use JWKS)
+2. Deploy and verify the token exchange works with the new signing method
+3. Only then click "Rotate keys" in Supabase dashboard (Settings → API → JWT Signing Keys)
+4. After rotation, the old HS256 key becomes invalid — there is no rollback
+
+### Security Audit Schedule
+
+**Run the Supabase Security Advisor regularly.** Use these commands:
+
+```
+# Via Supabase MCP
+get_advisors(project_id: "dpteljnierdubqsqxfye", type: "security")
+get_advisors(project_id: "dpteljnierdubqsqxfye", type: "performance")
+```
+
+**When to audit:**
+- After any migration that creates tables, views, or functions
+- After any RLS policy changes
+- At least once per week during active development
+- Before any production deployment with schema changes
+
+**Audit process:**
+1. Run both security and performance advisors
+2. Parse results — count errors vs warnings
+3. **Errors = must fix immediately** (no exceptions)
+4. **Warnings = track and fix opportunistically** (update this section's warning table)
+5. Document any new warnings that are intentional (like `rls_policy_always_true`)
+6. Update the "Current Security State" table above with new counts
+
+**Target:** 0 errors at all times. Warnings should trend downward over time.
+
+### Future Security Roadmap
+
+1. **Tighten RLS policies** — Replace `USING (true)` with `auth.uid()` checks once token exchange is deployed and verified in production. Start with sensitive tables (`project_secure_data`, `contact_secure_data`, `profiles`).
+2. **Rotate JWT keys to ES256** — Update token exchange to asymmetric signing, then rotate in Supabase dashboard.
+3. **Fix `function_search_path_mutable`** — Add `SET search_path = public` to functions as they are edited. Don't bulk-fix (risk of breaking something).
+4. **Review `decrypt_field` access** — Currently callable by `anon` and `authenticated`. Consider restricting to `authenticated` only after token exchange is live.
+5. **Add per-table policies** — Different tables may need different access levels (e.g., `profiles` read-only for non-owners, `bug_reports` writable by all authenticated).
+
+### Applied Security Migrations
+
+| Migration | Date | What |
+|-----------|------|------|
+| `20260211_enable_rls_unprotected_tables.sql` | 2026-02-11 | Enabled RLS on 14 tables, added placeholder policies |
+| `20260211_convert_security_definer_views_to_invoker.sql` | 2026-02-11 | Converted 21 views from SECURITY DEFINER to INVOKER |
+
+---
+
 ## Documentation Rules
 
 ### MANDATORY: Update Docs After Every Change
@@ -2731,6 +2864,7 @@ export const myService = new MyService();
 ## Environment Variables
 
 ```bash
+# Frontend (exposed to browser — REACT_APP_ prefix)
 REACT_APP_SUPABASE_URL=
 REACT_APP_SUPABASE_ANON_KEY=
 REACT_APP_AZURE_CLIENT_ID=
@@ -2738,6 +2872,11 @@ REACT_APP_AZURE_TENANT_ID=
 REACT_APP_UNIFI_API_KEY=        # Optional
 REACT_APP_LUCID_CLIENT_ID=      # Optional
 REACT_APP_LUCID_CLIENT_SECRET=  # Optional
+
+# Server-side only (Vercel serverless functions — NOT exposed to browser)
+SUPABASE_URL=                   # Same as REACT_APP_SUPABASE_URL
+SUPABASE_SERVICE_ROLE_KEY=      # Full admin access — API routes only
+SUPABASE_JWT_SECRET=            # HS256 signing key for token exchange (api/auth/supabase-token.js)
 
 # QuickBooks Online Integration
 QBO_CLIENT_ID=                  # From QuickBooks Developer Portal
@@ -4137,7 +4276,69 @@ The application needs a proper user capabilities/roles system to control access 
 
 # PART 6: CHANGELOG
 
+## 2026-02-12
+
+### Email Agent — Ticket Priority Fix + Auto-Reply Confidence Slider
+**What:** Fixed ticket creation failing due to invalid priority value; added confidence slider for auto-reply gating.
+**Why:** `mapUrgencyToPriority('medium')` returned `'normal'` which violates `service_tickets` CHECK constraint (allowed: low, medium, high, urgent). Also needed user-configurable auto-reply threshold.
+**Details:**
+- Fixed `mapUrgencyToPriority`: `medium → medium` (was `normal`), default `medium` (was `normal`)
+- Added error persistence: ticket creation errors saved to `processed_emails.error_message` and `action_details`
+- New `email_agent_auto_reply_threshold` config value (default 0.98)
+- Auto-reply now gated by `meetsReplyThreshold` check (separate from `reviewThreshold` for ticket creation)
+- Config loader (`_emailAI.js`) loads `autoReplyThreshold` alongside existing settings
+**Files:** `api/email/process-incoming.js`, `api/_emailAI.js`, `api/email/config.js`
+
+### Email Agent Settings — Simplify UI + Fix Slider
+**What:** Removed duplicate elements from Email Agent settings page; fixed confidence slider visibility.
+**Why:** Stats, header, and Process Now button were duplicated between the parent page and settings component. Auto-reply confidence slider wasn't appearing when toggle was on.
+**Details:**
+- Removed duplicate stats grid (parent `EmailAgentPage.js` already shows 5 stat cards above tabs)
+- Removed duplicate header + Process Now button (parent has both)
+- Removed redundant "Recent Processed Emails" section (Inbox tab already shows this)
+- Fixed slider conditional with robust `autoReplyOn` helper (handles undefined, string 'true'/'false')
+- Slider visually nested under Auto Reply toggle with violet left border
+- Switched all `blue-500` to `violet-500` for brand consistency
+- Extracted reusable `ToggleRow` component
+- Reduced from 494 → 337 lines
+**Files:** `src/components/Admin/EmailAgentSettings.js`
+
 ## 2026-02-11
+
+### Supabase Security — MSAL→Supabase Token Exchange + RLS Enforcement
+**What:** Added token exchange endpoint and enabled RLS on all unprotected tables.
+**Why:** Supabase Security Advisor flagged 35 errors — 14 tables had no RLS. With MSAL as auth provider, auth.uid() was always null, making RLS unusable. Token exchange bridges the gap so RLS policies can actually enforce access.
+**Details:**
+- New `/api/auth/supabase-token` endpoint: validates MSAL token via Graph API, mints Supabase JWT with Azure OID as `sub`
+- AuthContext calls exchange on login, redirect, and token refresh (non-blocking)
+- `supabase.js` exports `setSupabaseSessionFromMSAL()` helper
+- Migration enables RLS on 12 unprotected tables + fixes 2 tables with orphaned policies + adds policy to `role_types`
+- Security Advisor errors reduced from 35 → 21 (remaining 21 are security_definer views)
+**Env:** `SUPABASE_JWT_SECRET` added to Vercel (all environments) ✅
+**Files:** `api/auth/supabase-token.js`, `src/contexts/AuthContext.js`, `src/lib/supabase.js`, `database/migrations/20260211_enable_rls_unprotected_tables.sql`
+
+### Supabase JWT Signing Keys Migration
+**What:** Migrated project from legacy JWT secret to new JWT signing keys system.
+**Why:** Supabase prompted migration to their updated key management infrastructure. Required for long-term compatibility and eventual upgrade to asymmetric (ES256) signing.
+**Details:**
+- Imported existing HS256 secret into new JWT signing keys system via Supabase dashboard
+- Added `SUPABASE_JWT_SECRET` to Vercel environment variables (all environments)
+- Did NOT rotate to asymmetric keys — rotation would switch to ECC P-256 and break the HS256 token exchange endpoint
+- Verified app loads and authenticates correctly post-migration
+**Current key state:** CURRENT = Legacy HS256, STANDBY = ECC P-256 (not active)
+**Future:** When ready to rotate, update `api/auth/supabase-token.js` to use ES256/JWKS signing before clicking "Rotate keys" in Supabase dashboard
+**Files:** No code changes — dashboard + Vercel config only
+
+### Security Definer Views → Security Invoker (21 views)
+**What:** Converted all 21 SECURITY DEFINER views to SECURITY INVOKER using `ALTER VIEW ... SET (security_invoker = on)`.
+**Why:** Supabase Security Advisor flagged all 21 as ERROR — SECURITY DEFINER views bypass RLS, running queries as the view creator instead of the querying user.
+**Details:**
+- 18 plain views (joins/aggregates only) — converted directly, no risk
+- 3 decrypted views (`project_secure_data_decrypted`, `contact_secure_data_decrypted`, `project_home_assistant_decrypted`) — safe because they call `decrypt_field()` which is itself SECURITY DEFINER, preserving vault access through the function
+- PG17's `ALTER VIEW SET (security_invoker)` — no drop/recreate needed
+- All 21 views verified returning data post-migration
+- **Security Advisor errors: 35 → 0** (all errors resolved across both migrations)
+**Files:** `database/migrations/20260211_convert_security_definer_views_to_invoker.sql`
 
 ### Email Agent — Ticket Creation Bug Fixes
 **What:** Fixed 4 cascading bugs preventing the email agent from auto-creating service tickets
