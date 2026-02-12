@@ -4163,6 +4163,17 @@ The application needs a proper user capabilities/roles system to control access 
 **Future:** When ready to rotate, update `api/auth/supabase-token.js` to use ES256/JWKS signing before clicking "Rotate keys" in Supabase dashboard
 **Files:** No code changes — dashboard + Vercel config only
 
+### Security Definer Views → Security Invoker (21 views)
+**What:** Converted all 21 SECURITY DEFINER views to SECURITY INVOKER using `ALTER VIEW ... SET (security_invoker = on)`.
+**Why:** Supabase Security Advisor flagged all 21 as ERROR — SECURITY DEFINER views bypass RLS, running queries as the view creator instead of the querying user.
+**Details:**
+- 18 plain views (joins/aggregates only) — converted directly, no risk
+- 3 decrypted views (`project_secure_data_decrypted`, `contact_secure_data_decrypted`, `project_home_assistant_decrypted`) — safe because they call `decrypt_field()` which is itself SECURITY DEFINER, preserving vault access through the function
+- PG17's `ALTER VIEW SET (security_invoker)` — no drop/recreate needed
+- All 21 views verified returning data post-migration
+- **Security Advisor errors: 35 → 0** (all errors resolved across both migrations)
+**Files:** `database/migrations/20260211_convert_security_definer_views_to_invoker.sql`
+
 ### Email Agent — Ticket Creation Bug Fixes
 **What:** Fixed 4 cascading bugs preventing the email agent from auto-creating service tickets
 **Why:** Support emails (e.g., WiFi issues) were classified correctly (confidence 1.0, urgency high) but action_taken stayed "pending_review" — no ticket was created.
