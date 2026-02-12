@@ -14,9 +14,12 @@ Stack: React 18 + Supabase + Azure MSAL + Tailwind + Vercel
 - Theme: `zinc-*` not `gray-*`, always include `dark:` variants
 - Primary: `violet-500`
 
-### Auth
+### Auth & Security
 - Use `useAuth()` from AuthContext - **NEVER** `supabase.auth.getUser()` (always null)
 - RLS policies: `FOR ALL TO anon, authenticated` (we use MSAL)
+- New tables: ALWAYS enable RLS + add placeholder policy
+- New views: ALWAYS use `security_invoker = on`
+- After schema changes: run Supabase security advisor, fix any errors
 
 ### Code Patterns
 - Services only: `import { projectService } from '../services/projectService'`
@@ -32,9 +35,10 @@ Stack: React 18 + Supabase + Azure MSAL + Tailwind + Vercel
 | **Brand colors** | 1604-1700 | `Read AGENT.md offset=1604 limit=100` |
 | Styling | 1700-1900 | `Read AGENT.md offset=1700 limit=200` |
 | Database | 2000-2400 | `Read AGENT.md offset=2000 limit=400` |
-| Voice AI | 2722-3100 | `Read AGENT.md offset=2722 limit=400` |
+| **Security/RLS** | 2668-2800 | `Read AGENT.md offset=2668 limit=135` |
+| Voice AI | 2850-3230 | `Read AGENT.md offset=2850 limit=380` |
 | Email Agent | 1076-1210 | `Read AGENT.md offset=1076 limit=140` |
-| Changelog | 4138+ | `Read AGENT.md offset=4138 limit=200` |
+| Changelog | 4270+ | `Read AGENT.md offset=4270 limit=200` |
 
 ## After ANY Code Change
 
