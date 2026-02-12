@@ -160,10 +160,11 @@ module.exports = async (req, res) => {
         let replyEmailId = null;
         let forwardedTo = null;
 
-        // Check confidence threshold
-        // needsReview gates auto-reply (sending emails to customers) but NOT ticket creation
-        // Tickets are internal and safe to create even when human review is flagged
+        // Check confidence thresholds
+        // reviewThreshold (default 0.7): below this, flag for human review + block ticket creation
+        // autoReplyThreshold (default 0.98): confidence must be >= this for auto-replies
         const lowConfidence = analysis.confidence < config.reviewThreshold;
+        const meetsReplyThreshold = analysis.confidence >= (config.autoReplyThreshold || 0.98);
         const needsReview = lowConfidence || analysis.requires_human_review;
 
         // Create ticket if needed
@@ -185,10 +186,11 @@ module.exports = async (req, res) => {
         }
 
         // Send reply if needed
-        // When a ticket was just created, always send the acknowledgment reply (safe - just confirming receipt)
-        // For standalone replies without a ticket, gate by needsReview to avoid sending uncertain responses
+        // Auto-reply requires: AI says should_reply + autoReply enabled + confidence >= autoReplyThreshold
+        // When a ticket was just created AND meets threshold, always reply (safe - just confirming receipt)
         const ticketJustCreated = actionTaken === 'ticket_created';
-        if (analysis.should_reply && config.autoReply && (ticketJustCreated || !needsReview)) {
+        const canAutoReply = meetsReplyThreshold && (ticketJustCreated || !needsReview);
+        if (analysis.should_reply && config.autoReply && canAutoReply) {
           try {
             const replyBody = await generateReply(email, analysis, customer, config);
 

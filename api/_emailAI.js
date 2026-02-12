@@ -50,6 +50,7 @@ async function getAgentConfig() {
     ccEmail: config.cc_email || '',
     forwardEmail: config.forward_email || '',
     reviewThreshold: parseFloat(config.require_review_threshold) || 0.7,
+    autoReplyThreshold: parseFloat(config.auto_reply_threshold) || 0.98,
     internalDomains: (config.internal_domains || 'isehome.com').split(',').map(d => d.trim().toLowerCase()),
     ignoreDomains: (config.ignore_domains || '').split(',').map(d => d.trim().toLowerCase()).filter(Boolean),
     systemPrompt: config.system_prompt || 'You are a helpful customer service AI assistant.',

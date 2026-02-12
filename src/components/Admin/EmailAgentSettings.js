@@ -307,23 +307,71 @@ const EmailAgentSettings = ({ mode = 'light' }) => {
           </p>
         </div>
 
-        {/* Confidence Threshold */}
+        {/* Auto-Reply Confidence Slider */}
+        {editedConfig.auto_reply !== 'false' && (
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-sm font-medium" style={styles.text.secondary}>
+                Auto-Reply Confidence Threshold
+              </label>
+              <span
+                className="text-lg font-bold tabular-nums px-3 py-1 rounded-lg"
+                style={{
+                  backgroundColor: isDark ? '#27272a' : '#f4f4f5',
+                  color: '#8b5cf6',
+                }}
+              >
+                {Math.round((parseFloat(editedConfig.auto_reply_threshold) || 0.98) * 100)}%
+              </span>
+            </div>
+            <div className="relative pt-1">
+              <input
+                type="range"
+                min="0.90"
+                max="1.00"
+                step="0.01"
+                value={editedConfig.auto_reply_threshold || '0.98'}
+                onChange={(e) => updateField('auto_reply_threshold', e.target.value)}
+                className="w-full h-2 rounded-lg appearance-none cursor-pointer"
+                style={{
+                  background: `linear-gradient(to right, #8b5cf6 ${((parseFloat(editedConfig.auto_reply_threshold || 0.98) - 0.90) / 0.10) * 100}%, ${isDark ? '#3f3f46' : '#e4e4e7'} ${((parseFloat(editedConfig.auto_reply_threshold || 0.98) - 0.90) / 0.10) * 100}%)`,
+                  accentColor: '#8b5cf6',
+                }}
+              />
+              <div className="flex justify-between mt-1">
+                <span className="text-xs" style={styles.text.secondary}>90%</span>
+                <span className="text-xs" style={styles.text.secondary}>95%</span>
+                <span className="text-xs" style={styles.text.secondary}>100%</span>
+              </div>
+            </div>
+            <p className="text-xs mt-2" style={styles.text.secondary}>
+              Only auto-reply when AI confidence is at or above this level. Lower values reply more often; higher values are more cautious.
+            </p>
+          </div>
+        )}
+
+        {/* Review Threshold (for ticket creation / human review) */}
         <div>
           <label className="block text-sm font-medium mb-2" style={styles.text.secondary}>
-            Review Threshold (0-1)
+            Review Threshold
           </label>
-          <input
-            type="number"
-            min="0"
-            max="1"
-            step="0.1"
-            value={editedConfig.require_review_threshold || '0.7'}
-            onChange={(e) => updateField('require_review_threshold', e.target.value)}
-            className="w-32 px-3 py-2 rounded-lg border focus:outline-none focus:ring-2 focus:ring-blue-500"
-            style={styles.input}
-          />
+          <div className="flex items-center gap-3">
+            <input
+              type="number"
+              min="0"
+              max="1"
+              step="0.05"
+              value={editedConfig.require_review_threshold || '0.7'}
+              onChange={(e) => updateField('require_review_threshold', e.target.value)}
+              className="w-24 px-3 py-2 rounded-lg border focus:outline-none focus:ring-2 focus:ring-blue-500"
+              style={styles.input}
+            />
+            <span className="text-sm" style={styles.text.secondary}>
+              ({Math.round((parseFloat(editedConfig.require_review_threshold) || 0.7) * 100)}%)
+            </span>
+          </div>
           <p className="text-xs mt-1" style={styles.text.secondary}>
-            Emails with AI confidence below this will require human review
+            Emails below this confidence won't create tickets and will be flagged for human review
           </p>
         </div>
 
