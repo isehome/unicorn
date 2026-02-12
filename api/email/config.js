@@ -24,10 +24,15 @@ module.exports = async (req, res) => {
 
 async function getConfig(req, res) {
   try {
-    const { data: configs } = await supabase
+    const { data: configs, error } = await supabase
       .from('app_configuration')
       .select('key, value, description')
       .like('key', 'email_agent_%');
+
+    if (error) {
+      console.error('[EmailConfig] GET error:', error);
+      return res.status(500).json({ error: error.message });
+    }
 
     const config = {};
     configs?.forEach(c => {
@@ -40,6 +45,7 @@ async function getConfig(req, res) {
 
     res.json({ success: true, config });
   } catch (error) {
+    console.error('[EmailConfig] GET exception:', error);
     res.status(500).json({ error: error.message });
   }
 }
@@ -49,24 +55,43 @@ async function updateConfig(req, res) {
     const updates = req.body;
 
     if (!updates || typeof updates !== 'object') {
+      console.error('[EmailConfig] Invalid body:', typeof updates, updates);
       return res.status(400).json({ error: 'Invalid updates' });
     }
 
-    // Update each config key
+    const errors = [];
+    let savedCount = 0;
+
     for (const [key, value] of Object.entries(updates)) {
       const fullKey = key.startsWith('email_agent_') ? key : `email_agent_${key}`;
 
-      await supabase
+      const { error } = await supabase
         .from('app_configuration')
-        .upsert({
-          key: fullKey,
-          value: value,
+        .update({
+          value: String(value),
           updated_at: new Date().toISOString(),
-        }, { onConflict: 'key' });
+        })
+        .eq('key', fullKey);
+
+      if (error) {
+        console.error(`[EmailConfig] Update failed for ${fullKey}:`, error);
+        errors.push(`${fullKey}: ${error.message}`);
+      } else {
+        savedCount++;
+      }
     }
 
-    res.json({ success: true, message: 'Configuration updated' });
+    if (errors.length > 0) {
+      console.error('[EmailConfig] Save errors:', errors);
+      return res.status(500).json({
+        error: `Failed to save ${errors.length} config(s): ${errors.join('; ')}`,
+        saved: savedCount,
+      });
+    }
+
+    res.json({ success: true, message: `${savedCount} settings saved` });
   } catch (error) {
+    console.error('[EmailConfig] POST exception:', error);
     res.status(500).json({ error: error.message });
   }
 }
