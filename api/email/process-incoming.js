@@ -156,6 +156,7 @@ module.exports = async (req, res) => {
         // Determine action based on analysis
         let actionTaken = 'pending_review';
         let ticketId = null;
+        let ticketCreationError = null;
         let replyEmailId = null;
         let forwardedTo = null;
 
@@ -178,12 +179,16 @@ module.exports = async (req, res) => {
           } catch (ticketError) {
             console.error('[EmailAgent] Ticket creation failed:', ticketError);
             results.errors.push(`Ticket creation failed: ${ticketError.message}`);
+            // Persist error so it's visible in the DB, not just console logs
+            ticketCreationError = ticketError.message;
           }
         }
 
         // Send reply if needed
-        // Auto-reply IS gated by needsReview - we don't auto-respond when human review is flagged
-        if (analysis.should_reply && config.autoReply && !needsReview) {
+        // When a ticket was just created, always send the acknowledgment reply (safe - just confirming receipt)
+        // For standalone replies without a ticket, gate by needsReview to avoid sending uncertain responses
+        const ticketJustCreated = actionTaken === 'ticket_created';
+        if (analysis.should_reply && config.autoReply && (ticketJustCreated || !needsReview)) {
           try {
             const replyBody = await generateReply(email, analysis, customer, config);
 
@@ -269,10 +274,12 @@ module.exports = async (req, res) => {
           action_taken: actionTaken,
           action_details: {
             ticket_created: !!ticketId,
+            ticket_creation_error: ticketCreationError || undefined,
             reply_sent: results.replies_sent > 0,
             forwarded: !!forwardedTo,
           },
           ticket_id: ticketId,
+          error_message: ticketCreationError || null,
           forwarded_to: forwardedTo,
           processing_time_ms: processingTime,
           status: needsReview ? 'pending_review' : 'processed',
@@ -373,11 +380,12 @@ async function createServiceTicket(email, analysis, customer) {
  * Map AI urgency to ticket priority
  */
 function mapUrgencyToPriority(urgency) {
+  // Priority CHECK constraint allows: low, medium, high, urgent
   const map = {
     critical: 'urgent',
     high: 'high',
-    medium: 'normal',
+    medium: 'medium',
     low: 'low',
   };
-  return map[urgency] || 'normal';
+  return map[urgency] || 'medium';
 }
