@@ -5,12 +5,17 @@
  * Sends a test email to verify the system account is working
  */
 
+const { requireAuth } = require('../_authMiddleware');
 const { systemSendMail, getSystemAccountEmail } = require('../_systemGraph');
 
 module.exports = async (req, res) => {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
+
+  // Auth required for internal system-account endpoints
+  const user = await requireAuth(req, res);
+  if (!user) return;
 
   try {
     const { to } = req.body;

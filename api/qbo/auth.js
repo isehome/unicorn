@@ -3,11 +3,13 @@
  * Returns the authorization URL for QuickBooks OAuth2 flow
  */
 
+import { requireAuth } from '../_authMiddleware.js';
+
 export default async function handler(req, res) {
   // Enable CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
@@ -16,6 +18,10 @@ export default async function handler(req, res) {
   if (req.method !== 'GET') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
+
+  // Auth required for QBO endpoints
+  const user = await requireAuth(req, res);
+  if (!user) return;
 
   // Check for required environment variables
   if (!process.env.QBO_CLIENT_ID || !process.env.QBO_CLIENT_SECRET) {

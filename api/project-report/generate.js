@@ -6,6 +6,7 @@
  * This is the same calculation logic as the frontend milestoneService.js.
  */
 
+const { requireAuth } = require('../_authMiddleware');
 const { createClient } = require('@supabase/supabase-js');
 const crypto = require('crypto');
 const { systemSendMail } = require('../_systemGraph');
@@ -114,6 +115,10 @@ module.exports = async (req, res) => {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
+
+  // Auth required for report generation
+  const user = await requireAuth(req, res);
+  if (!user) return;
 
   try {
     const { projectId, includeTodos = false, sendEmail = false, recipientEmails = [] } = req.body;

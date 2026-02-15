@@ -3,6 +3,8 @@
  * Keeps the API key secure on the backend
  */
 
+const { requireAuth } = require('./_authMiddleware');
+
 // TODO: Replace with actual Ubiquity API base URL
 const UBIQUITY_API_BASE_URL = 'https://api.ubiquity.example.com';
 
@@ -21,6 +23,10 @@ export default async function handler(req, res) {
   if (req.method !== 'GET' && req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
+
+  // Auth required for proxy endpoints
+  const user = await requireAuth(req, res);
+  if (!user) return;
 
   // Get API key from environment
   const apiKey = process.env.REACT_APP_UBIQUITY_API_KEY;

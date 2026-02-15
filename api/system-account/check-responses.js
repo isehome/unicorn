@@ -11,6 +11,7 @@
  *   - scheduleIds: Array of schedule IDs to check (if omitted, checks all pending)
  */
 
+const { requireAuth } = require('../_authMiddleware');
 const { processCalendarResponses } = require('../_calendarResponseProcessor');
 
 module.exports = async (req, res) => {
@@ -18,6 +19,10 @@ module.exports = async (req, res) => {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
+
+  // Auth required for internal system-account endpoints
+  const user = await requireAuth(req, res);
+  if (!user) return;
 
   console.log('[CheckResponses] Manual check triggered');
 

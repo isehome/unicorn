@@ -3,6 +3,7 @@
  * Keeps the API key secure on the backend
  */
 
+const { requireAuth } = require('./_authMiddleware');
 const https = require('https');
 const { URL } = require('url');
 
@@ -22,6 +23,10 @@ module.exports = async function handler(req, res) {
   if (req.method !== 'GET' && req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
+
+  // Auth required for proxy endpoints
+  const user = await requireAuth(req, res);
+  if (!user) return;
 
   // Allow API key from header (for local testing) or environment variable (for production)
   const apiKey = req.headers['x-unifi-api-key'] || process.env.UNIFI_API_KEY;

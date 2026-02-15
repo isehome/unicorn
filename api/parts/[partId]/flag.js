@@ -6,6 +6,8 @@
  * POST /api/parts/[partId]/flag
  */
 
+const { requireAuth } = require('../../_authMiddleware');
+const { strictRateLimit } = require('../../_rateLimiter');
 const { createClient } = require('@supabase/supabase-js');
 
 let supabase;
@@ -33,6 +35,11 @@ module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
+
+  // Auth + strict rate limit for admin endpoints
+  if (!strictRateLimit(req, res)) return;
+  const user = await requireAuth(req, res);
+  if (!user) return;
 
   const { partId } = req.query;
   const { reason, flaggedAt } = req.body;

@@ -3,6 +3,7 @@
  * Creates an invoice in QuickBooks from a service ticket
  */
 
+import { requireAuth } from '../_authMiddleware.js';
 import { createClient } from '@supabase/supabase-js';
 
 // Helper to get fresh OAuth client with valid tokens
@@ -171,6 +172,10 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
+
+  // Auth required for QBO endpoints
+  const user = await requireAuth(req, res);
+  if (!user) return;
 
   const { ticketId } = req.body;
 

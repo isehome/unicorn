@@ -7,6 +7,8 @@
  * Fetches sensor.unifi_connection_status from HA and upserts clients
  */
 const { createClient } = require('@supabase/supabase-js');
+const { requireAuth } = require('../_authMiddleware');
+const { rateLimit } = require('../_rateLimiter');
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -25,6 +27,11 @@ module.exports = async (req, res) => {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
+
+  // Auth check
+  const user = await requireAuth(req, res);
+  if (!user) return;
+  if (!rateLimit(req, res)) return;
 
   const { projectId } = req.body || {};
 

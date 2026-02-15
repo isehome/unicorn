@@ -1,4 +1,5 @@
 require('dotenv').config();
+const { requireAuth } = require('./_authMiddleware');
 const puppeteer = require('puppeteer-core');
 // const fetch = require('node-fetch'); // Native fetch is available in Node 18+
 // Lazy load chromium to avoid initialization errors locally
@@ -127,6 +128,10 @@ module.exports = async (req, res) => {
     if (req.method !== 'POST') {
         return res.status(405).json({ error: 'Method not allowed' });
     }
+
+    // Auth required for knowledge endpoints
+    const user = await requireAuth(req, res);
+    if (!user) return;
 
     const { action } = req.body;
 

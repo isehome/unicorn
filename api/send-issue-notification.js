@@ -5,6 +5,7 @@
 // Falls back to the system account if no user token is available.
 
 const { systemSendMail, getSystemAccountEmail } = require('./_systemGraph');
+const { requireAuth } = require('./_authMiddleware');
 
 const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
 
@@ -67,6 +68,10 @@ module.exports = async (req, res) => {
     res.status(405).json({ error: 'Method not allowed' });
     return;
   }
+
+  // Auth required
+  const user = await requireAuth(req, res);
+  if (!user) return;
 
   try {
     const { to, cc, subject, html, text, sendAsUser } = req.body || {};

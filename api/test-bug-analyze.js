@@ -3,7 +3,13 @@
  * GET /api/test-bug-analyze
  */
 
+const { requireAuth } = require('./_authMiddleware');
+
 module.exports = async (req, res) => {
+  // Auth required
+  const user = await requireAuth(req, res);
+  if (!user) return;
+
   const steps = [];
 
   try {

@@ -20,6 +20,7 @@
  * Body: { partId: string }
  */
 
+const { requireAuth } = require('./_authMiddleware');
 const { createClient } = require('@supabase/supabase-js');
 
 // Use Gemini 3 Pro for document research - most intelligent model
@@ -61,6 +62,10 @@ module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
+
+  // Auth required for parts enrichment
+  const user = await requireAuth(req, res);
+  if (!user) return;
 
   const { partId } = req.body;
 

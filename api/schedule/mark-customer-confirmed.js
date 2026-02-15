@@ -6,12 +6,17 @@
  * Used when staff confirms on behalf of customer
  */
 
+const { requireAuth } = require('../_authMiddleware');
 const { markCustomerConfirmed } = require('../_calendarResponseProcessor');
 
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
+
+  // Auth required for schedule endpoints
+  const user = await requireAuth(req, res);
+  if (!user) return;
 
   const { scheduleId, confirmedBy } = req.body;
 

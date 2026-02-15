@@ -8,6 +8,8 @@
  * Body: { query, manufacturer?, limit? }
  */
 
+const { requireAuth } = require('./_authMiddleware');
+
 const AZURE_SEARCH_SERVICE = process.env.AZURE_SEARCH_SERVICE_NAME || 'unicorn-rag';
 const AZURE_SEARCH_API_KEY = process.env.AZURE_SEARCH_API_KEY;
 const AZURE_SEARCH_INDEX = process.env.AZURE_SEARCH_INDEX_NAME || 'sharepoint-knowledge-index';
@@ -17,7 +19,7 @@ module.exports = async (req, res) => {
     // CORS headers
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
     if (req.method === 'OPTIONS') {
         return res.status(200).end();
@@ -26,6 +28,10 @@ module.exports = async (req, res) => {
     if (req.method !== 'POST') {
         return res.status(405).json({ error: 'Method not allowed' });
     }
+
+    // Auth required for knowledge endpoints
+    const user = await requireAuth(req, res);
+    if (!user) return;
 
     // Check configuration
     if (!AZURE_SEARCH_API_KEY) {

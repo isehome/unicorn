@@ -5,6 +5,7 @@
  * Endpoint: POST /api/service/identify
  * Body: { phone } - phone number from call metadata
  */
+const { requireAuth } = require('../_authMiddleware');
 const { createClient } = require('@supabase/supabase-js');
 
 const supabase = createClient(
@@ -20,6 +21,10 @@ module.exports = async (req, res) => {
 
     if (req.method === 'OPTIONS') return res.status(200).end();
     if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+
+    // Auth required — called from frontend ServiceAITest page with MSAL token
+    const user = await requireAuth(req, res);
+    if (!user) return;
 
     try {
         // Log raw body for debugging

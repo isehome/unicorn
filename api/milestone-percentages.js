@@ -26,6 +26,7 @@
  */
 
 const { calculateAllMilestones } = require('./_milestoneCalculations');
+const { requireAuth } = require('./_authMiddleware');
 
 module.exports = async function handler(req, res) {
   // CORS headers
@@ -40,6 +41,10 @@ module.exports = async function handler(req, res) {
   if (req.method !== 'GET') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
+
+  // Auth required
+  const user = await requireAuth(req, res);
+  if (!user) return;
 
   const { projectId } = req.query;
 

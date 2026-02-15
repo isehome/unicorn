@@ -5,17 +5,23 @@
  * Visit: https://your-app.vercel.app/api/test-notion
  */
 
+const { requireAuth } = require('./_authMiddleware');
+
 const NOTION_API_BASE = 'https://api.notion.com/v1';
 const NOTION_VERSION = '2022-06-28';
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
+
+  // Auth required
+  const user = await requireAuth(req, res);
+  if (!user) return;
 
   // Check if API key is configured
   const apiKey = process.env.NOTION_API_KEY;

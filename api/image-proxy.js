@@ -1,6 +1,8 @@
 // Vercel serverless function: Proxies SharePoint images with server-side authentication
 // This allows images to be embedded without requiring user authentication
 
+const { requireAuth } = require('./_authMiddleware')
+
 const TENANT = process.env.AZURE_TENANT_ID
 const CLIENT_ID = process.env.AZURE_CLIENT_ID
 const CLIENT_SECRET = process.env.AZURE_CLIENT_SECRET
@@ -44,6 +46,10 @@ module.exports = async (req, res) => {
     res.status(405).json({ error: 'Method not allowed' })
     return
   }
+
+  // Auth required for proxy endpoints
+  const user = await requireAuth(req, res)
+  if (!user) return
 
   try {
     const { url: rawUrl } = req.query

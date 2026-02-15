@@ -11,6 +11,7 @@
  */
 
 require('dotenv').config();
+const { requireAuth } = require('./_authMiddleware');
 const TurndownService = require('turndown');
 
 // Lazy load puppeteer/chromium
@@ -383,6 +384,10 @@ module.exports = async (req, res) => {
     if (req.method !== 'POST') {
         return res.status(405).json({ error: 'Method not allowed' });
     }
+
+    // Auth required for knowledge endpoints
+    const user = await requireAuth(req, res);
+    if (!user) return;
 
     const { action } = req.body;
 

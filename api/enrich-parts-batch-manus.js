@@ -12,6 +12,7 @@
  * If limit provided: caps the number of parts processed
  */
 
+const { requireAuth } = require('./_authMiddleware');
 const { createClient } = require('@supabase/supabase-js');
 
 const MANUS_API_URL = 'https://api.manus.ai/v1/tasks';
@@ -47,6 +48,10 @@ module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
+
+  // Auth required for parts enrichment
+  const user = await requireAuth(req, res);
+  if (!user) return;
 
   // Check API key
   if (!MANUS_API_KEY) {

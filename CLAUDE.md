@@ -14,9 +14,12 @@ Stack: React 18 + Supabase + Azure MSAL + Tailwind + Vercel
 - Theme: `zinc-*` not `gray-*`, always include `dark:` variants
 - Primary: `violet-500`
 
-### Auth
+### Auth & Security
 - Use `useAuth()` from AuthContext - **NEVER** `supabase.auth.getUser()` (always null)
 - RLS policies: `FOR ALL TO anon, authenticated` (we use MSAL)
+- New tables: ALWAYS enable RLS + add placeholder policy
+- New views: ALWAYS use `security_invoker = on`
+- After schema changes: run Supabase security advisor, fix any errors
 
 ### Code Patterns
 - Services only: `import { projectService } from '../services/projectService'`
@@ -32,19 +35,19 @@ Stack: React 18 + Supabase + Azure MSAL + Tailwind + Vercel
 | **Brand colors** | 1604-1700 | `Read AGENT.md offset=1604 limit=100` |
 | Styling | 1700-1900 | `Read AGENT.md offset=1700 limit=200` |
 | Database | 2000-2400 | `Read AGENT.md offset=2000 limit=400` |
-| Voice AI | 2722-3100 | `Read AGENT.md offset=2722 limit=400` |
+| **Security/RLS** | 2668-2800 | `Read AGENT.md offset=2668 limit=135` |
+| Voice AI | 2850-3230 | `Read AGENT.md offset=2850 limit=380` |
 | Email Agent | 1076-1210 | `Read AGENT.md offset=1076 limit=140` |
-| Changelog | 4138+ | `Read AGENT.md offset=4138 limit=200` |
+| Changelog | 4270+ | `Read AGENT.md offset=4270 limit=200` |
 
 ## After ANY Code Change
 
-**Auto-update changelog in AGENT.md (line 3800+):**
-```markdown
-### YYYY-MM-DD - [Feature Name]
-**What:** [Brief description]
-**Why:** [Business value]
-**Files:** `src/...`, `api/...`
-```
+**Read and follow the project-intelligence skill:**
+`Read ~/Desktop/DEV/.claude/skills/project-intelligence/SKILL.md`
+
+Update AGENT.md — not just changelog, but ALL relevant sections.
+Capture real-world context from Stephe's messages (the "why").
+See the skill for the full checklist of what to update.
 
 ## Bug Reports
 
@@ -53,10 +56,25 @@ Bugs are GitHub PRs with `[Bug]` prefix:
 gh pr list --repo isehome/unicorn --state open --search "[Bug]"
 ```
 
+## Local Dev (Claude executes all of this — Stephe just says "test it")
+- Launch `vercel dev` via Mac Control → opens locally with full env vars + API routes
+- Never use `npm start` — it has no access to Vercel env vars or API routes
+- Env sync: pull from Vercel via Mac Control when vars change
+- Linked to Vercel project: `isehomes-projects/unicorn`
+
+### Git (Cowork Mode)
+- Local git ops (add, commit, branch, diff) run in Bash normally
+- **Push/Pull requires Mac Control** (osascript) — sandbox can't reach GitHub
+- Remote is HTTPS: `https://github.com/isehome/unicorn.git`
+- Auth handled by macOS Keychain (credential.helper = osxkeychain)
+- Push command: `do shell script "cd ~/Desktop/DEV/unicorn && git push 2>&1"`
+- Pull command: `do shell script "cd ~/Desktop/DEV/unicorn && git pull 2>&1"`
+
 ## Commands
 
 - Build: `npm run build`
 - Lint: `npm run lint`
+- Dev: `vercel dev` (preferred over `npm start`)
 - Deploy: `vercel` or push to main
 
 ## Git Branching (CRITICAL - EVERY SESSION MUST DO THIS)
@@ -124,11 +142,11 @@ Steve's goal is **hands-free automation**. Every time you stop to prompt the use
 
 ### Chrome / Browser Recovery
 If the Chrome extension connection is lost, **do NOT stop and ask**. Auto-recover:
-1. `osascript: tell application "Google Chrome" to quit`
-2. Wait 3 seconds
-3. `osascript: tell application "Google Chrome" to activate`
-4. Retry `tabs_context_mcp`
-5. Only alert Steve if recovery fails after 2 attempts
+1. **NEVER quit Chrome** — this triggers the "Login to Claude in Chrome" popup that requires Stephe to intervene
+2. Retry `tabs_context_mcp` (try 2-3 times with short delays)
+3. If that fails, try `switch_browser` to re-establish the connection
+4. If still failing, use **Mac Control** (`osascript`) as a fallback for browser tasks (open URLs, get page titles)
+5. Only alert Stephe as absolute last resort
 
 ### MCP Fallback Priority
 Before prompting Steve, exhaust all available tools in this order:

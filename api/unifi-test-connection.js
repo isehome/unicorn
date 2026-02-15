@@ -3,6 +3,7 @@
  * Useful for debugging connection issues before attempting actual API calls
  */
 
+const { requireAuth } = require('./_authMiddleware');
 const https = require('https');
 const { URL } = require('url');
 
@@ -20,6 +21,10 @@ module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
+
+  // Auth required for proxy endpoints
+  const user = await requireAuth(req, res);
+  if (!user) return;
 
   const { controllerUrl, apiKey } = req.body;
 

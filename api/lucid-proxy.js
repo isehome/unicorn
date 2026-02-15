@@ -3,6 +3,8 @@
  * This keeps the API key secure on the backend 
  */
 
+const { requireAuth } = require('./_authMiddleware');
+
 const LUCID_API_BASE_URL = 'https://api.lucid.co';
 const LUCID_API_VERSION = '1';
 
@@ -21,6 +23,10 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
+
+  // Auth required for proxy endpoints
+  const user = await requireAuth(req, res);
+  if (!user) return;
 
   // Get the API key from environment variable
   const apiKey = process.env.REACT_APP_LUCID_API_KEY;

@@ -11,6 +11,7 @@
  * }
  */
 
+const { requireAuth } = require('./_authMiddleware');
 const { createClient } = require('@supabase/supabase-js');
 
 const MANUS_API_URL = 'https://api.manus.ai/v1';
@@ -39,6 +40,10 @@ module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
+
+  // Auth required for parts enrichment
+  const user = await requireAuth(req, res);
+  if (!user) return;
 
   const { limit = 10, dryRun = false } = req.body || {};
   const maxLimit = Math.min(limit, 20); // Cap at 20 parallel tasks

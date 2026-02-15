@@ -18,6 +18,7 @@
  */
 
 const { createClient } = require('@supabase/supabase-js');
+const { requireCron } = require('../_authMiddleware');
 
 // Lazy load these modules to avoid initialization errors
 let analyzeWithGemini, generateMarkdown, commitBugReport, sendGraphEmail;
@@ -349,6 +350,10 @@ module.exports = async (req, res) => {
   if (req.method !== 'POST' && req.method !== 'GET') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
+
+  // Cron auth required — validates CRON_SECRET
+  const authorized = await requireCron(req, res);
+  if (!authorized) return;
 
   console.log('[Cron] Starting bug reports processing job...');
 

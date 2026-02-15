@@ -5,6 +5,7 @@
 
 const { createClient } = require('@supabase/supabase-js');
 const { getAppToken, getSystemAccountEmail } = require('./_systemGraph');
+const { requireAuth } = require('./_authMiddleware');
 
 const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
 
@@ -16,6 +17,10 @@ function getSupabase() {
 }
 
 module.exports = async (req, res) => {
+  // Auth required
+  const user = await requireAuth(req, res);
+  if (!user) return;
+
   const { scheduleId } = req.query;
 
   if (!scheduleId) {

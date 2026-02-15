@@ -2,6 +2,7 @@
 // Called by authenticated internal users when they view an issue
 const { createClient } = require('@supabase/supabase-js');
 const { systemSendMail } = require('./_systemGraph');
+const { requireAuth } = require('./_authMiddleware');
 
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.REACT_APP_SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -33,12 +34,14 @@ module.exports = async (req, res) => {
     return;
   }
 
+  // Auth required
+  const user = await requireAuth(req, res);
+  if (!user) return;
+
   if (!supabase) {
     res.status(500).json({ error: 'Supabase not configured' });
     return;
   }
-
-  // Note: Using system account email - no user auth required for sending
 
   try {
     const { issueId } = req.body || {};

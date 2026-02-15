@@ -1,11 +1,12 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
+const { requireAuth } = require('./_authMiddleware');
 
 module.exports = async (req, res) => {
-    // 1. Basic Security Check (ensure internal call or auth, for prototype we allow same-origin)
-    // Ideally verify MSAL token header here.
+    // Auth required — CRITICAL: this endpoint returns API keys
+    const user = await requireAuth(req, res);
+    if (!user) return;
 
-    // 2. Return Key (for client-side WebSocket connection)
-    // WARNING: In production, use a proxy. For internal prototype, this is acceptable.
+    // Return Key (for client-side WebSocket connection)
     const apiKey = process.env.GEMINI_API_KEY;
 
     if (!apiKey) {

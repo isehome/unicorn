@@ -6,6 +6,7 @@
  *   POST /api/service/tickets - Create a ticket
  *   GET /api/service/tickets - List tickets (with optional filters)
  */
+const { requireAuth } = require('../_authMiddleware');
 const { createClient } = require('@supabase/supabase-js');
 
 const supabase = createClient(
@@ -19,6 +20,10 @@ module.exports = async (req, res) => {
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
     if (req.method === 'OPTIONS') return res.status(200).end();
+
+    // Auth required — called from frontend ServiceAITest page with MSAL token
+    const user = await requireAuth(req, res);
+    if (!user) return;
 
     try {
         if (req.method === 'POST') {

@@ -7,6 +7,8 @@
  * Categories: audio, lighting, climate, shades, security, sensors, network, other
  */
 const { createClient } = require('@supabase/supabase-js');
+const { requireAuth } = require('../_authMiddleware');
+const { rateLimit } = require('../_rateLimiter');
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -35,6 +37,11 @@ module.exports = async (req, res) => {
 
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
+
+  // Auth check
+  const user = await requireAuth(req, res);
+  if (!user) return;
+  if (!rateLimit(req, res)) return;
 
   const { project_id, domain, category } = req.query;
 

@@ -3,6 +3,7 @@
  * Search and create customers in QuickBooks
  */
 
+import { requireAuth } from '../_authMiddleware.js';
 import OAuthClient from 'intuit-oauth';
 import { createClient } from '@supabase/supabase-js';
 
@@ -75,6 +76,10 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
+
+  // Auth required for QBO endpoints
+  const user = await requireAuth(req, res);
+  if (!user) return;
 
   try {
     const { client, realmId } = await getAuthenticatedClient();

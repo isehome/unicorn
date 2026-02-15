@@ -12,6 +12,8 @@
  * Used by the Gemini Voice Copilot to answer technician questions.
  */
 
+const { requireAuth } = require('./_authMiddleware');
+
 const NOTION_API_BASE = 'https://api.notion.com/v1';
 const NOTION_VERSION = '2022-06-28';
 
@@ -63,6 +65,10 @@ module.exports = async (req, res) => {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
+
+  // Auth required for knowledge endpoints
+  const user = await requireAuth(req, res);
+  if (!user) return;
 
   // Check if Notion is configured
   if (!process.env.NOTION_API_KEY) {

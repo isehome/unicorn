@@ -8,6 +8,7 @@
  */
 
 require('dotenv').config();
+const { requireAuth } = require('./_authMiddleware');
 const { createClient } = require('@supabase/supabase-js');
 
 const supabase = createClient(
@@ -24,6 +25,10 @@ module.exports = async (req, res) => {
     if (req.method === 'OPTIONS') {
         return res.status(200).end();
     }
+
+    // Auth required for knowledge endpoints
+    const user = await requireAuth(req, res);
+    if (!user) return;
 
     try {
         switch (req.method) {

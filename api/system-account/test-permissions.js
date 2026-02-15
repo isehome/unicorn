@@ -5,6 +5,7 @@
  * Tests all application permissions to verify Azure AD setup is correct.
  */
 
+const { requireAuth } = require('../_authMiddleware');
 const { createClient } = require('@supabase/supabase-js');
 
 const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
@@ -63,6 +64,10 @@ module.exports = async (req, res) => {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
+
+  // Auth required for internal system-account endpoints
+  const user = await requireAuth(req, res);
+  if (!user) return;
 
   const results = {
     timestamp: new Date().toISOString(),

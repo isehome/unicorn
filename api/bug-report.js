@@ -1,5 +1,6 @@
 const { systemSendMail } = require('./_systemGraph');
 const { createClient } = require('@supabase/supabase-js');
+const { optionalAuth } = require('./_authMiddleware');
 
 const BUG_REPORT_EMAIL = process.env.BUG_REPORT_EMAIL || 'stephe@isehome.com';
 
@@ -14,6 +15,9 @@ module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
+
+  // Optional auth — bugs can come from unauthenticated users
+  const user = await optionalAuth(req, res);
 
   try {
     const {

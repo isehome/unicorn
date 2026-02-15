@@ -5,6 +5,7 @@
  * Updates the system account email in app_configuration
  */
 
+const { requireAuth } = require('../_authMiddleware');
 const { createClient } = require('@supabase/supabase-js');
 const { clearCaches, getSystemAccountStatus } = require('../_systemGraph');
 
@@ -17,6 +18,10 @@ module.exports = async (req, res) => {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
+
+  // Auth required for internal system-account endpoints
+  const user = await requireAuth(req, res);
+  if (!user) return;
 
   try {
     const { email } = req.body;

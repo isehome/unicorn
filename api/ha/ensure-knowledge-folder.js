@@ -7,6 +7,9 @@
  * sites/Unicorn/Knowledge/Home Assistant/
  */
 
+const { requireAuth } = require('../_authMiddleware');
+const { rateLimit } = require('../_rateLimiter');
+
 const TENANT = process.env.AZURE_TENANT_ID;
 const CLIENT_ID = process.env.AZURE_CLIENT_ID;
 const CLIENT_SECRET = process.env.AZURE_CLIENT_SECRET;
@@ -68,6 +71,11 @@ module.exports = async (req, res) => {
 
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+
+  // Auth check
+  const user = await requireAuth(req, res);
+  if (!user) return;
+  if (!rateLimit(req, res)) return;
 
   try {
     if (!TENANT || !CLIENT_ID || !CLIENT_SECRET) {

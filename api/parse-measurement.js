@@ -1,11 +1,12 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
+const { requireAuth } = require('./_authMiddleware');
 
 // Function to handle the Vercel API request
 module.exports = async (req, res) => {
     // Enable CORS for local development if needed, though usually handled by Vercel/Next.js dev server
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
     if (req.method === 'OPTIONS') {
         res.status(200).end();
@@ -15,6 +16,10 @@ module.exports = async (req, res) => {
     if (req.method !== 'POST') {
         return res.status(405).json({ error: 'Method not allowed' });
     }
+
+    // Auth required
+    const user = await requireAuth(req, res);
+    if (!user) return;
 
     try {
         const { transcript, context } = req.body;

@@ -6,6 +6,7 @@
  * Body: { external_call_id, caller_phone, caller_name, summary, ... }
  */
 
+const { requireAuth } = require('../_authMiddleware');
 const { createClient } = require('@supabase/supabase-js');
 
 const supabase = createClient(
@@ -16,10 +17,14 @@ const supabase = createClient(
 module.exports = async (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
     if (req.method === 'OPTIONS') return res.status(200).end();
     if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+
+    // Auth required — called from frontend ServiceAITest page with MSAL token
+    const user = await requireAuth(req, res);
+    if (!user) return;
 
     try {
         const {
