@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-02-07T15:19:03.691Z",
+  "generated_at": "2026-02-15T18:54:55.613Z",
   "version": "1.0",
-  "total_routes": 57,
+  "total_routes": 58,
   "routes": {
     "/login": {
       "component": "Login",
@@ -290,6 +290,11 @@
     "/company-settings": {
       "component": "CompanySettingsPage",
       "primary": "src/pages/CompanySettingsPage.js",
+      "related": []
+    },
+    "/admin/email-agent": {
+      "component": "EmailAgentPage",
+      "primary": "src/pages/EmailAgentPage.js",
       "related": []
     },
     "/my-hr": {

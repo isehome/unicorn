@@ -12,6 +12,7 @@
  */
 
 const { createClient } = require('@supabase/supabase-js');
+const { requireAuth } = require('../_authMiddleware');
 
 const supabase = createClient(
   process.env.SUPABASE_URL || process.env.REACT_APP_SUPABASE_URL,
@@ -32,6 +33,9 @@ module.exports = async (req, res) => {
   if (req.method !== 'GET') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
+
+  const user = await requireAuth(req, res);
+  if (!user) return;
 
   try {
     const {

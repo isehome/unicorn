@@ -8,6 +8,7 @@
 
 const { createClient } = require('@supabase/supabase-js');
 const { deleteBugReport, getBugReportContent, getBugScreenshot } = require('./github');
+const { requireAuth } = require('../_authMiddleware');
 
 const supabase = createClient(
   process.env.SUPABASE_URL || process.env.REACT_APP_SUPABASE_URL,
@@ -24,6 +25,9 @@ module.exports = async (req, res) => {
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
+
+  const user = await requireAuth(req, res);
+  if (!user) return;
 
   const { id } = req.query;
 

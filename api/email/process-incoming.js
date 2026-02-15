@@ -8,6 +8,7 @@
  * Endpoint: POST /api/email/process-incoming
  */
 
+const { requireCron } = require('../_authMiddleware');
 const { createClient } = require('@supabase/supabase-js');
 const { getUnreadEmails, markEmailAsRead, replyToEmail, forwardEmail } = require('../_systemGraphEmail');
 const { systemSendMail, getSystemAccountEmail, clearCaches } = require('../_systemGraph');
@@ -31,6 +32,8 @@ module.exports = async (req, res) => {
   if (req.method !== 'POST' && req.method !== 'GET') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
+
+  if (!requireCron(req, res)) return;
 
   const startTime = Date.now();
   const results = {

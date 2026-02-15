@@ -7,6 +7,7 @@
  * POST /api/email/processed/:emailId/reprocess
  */
 
+const { requireAuth } = require('../../../_authMiddleware');
 const { createClient } = require('@supabase/supabase-js');
 const { replyToEmail, forwardEmail } = require('../../../_systemGraphEmail');
 const { getAgentConfig } = require('../../../_emailAI');
@@ -20,6 +21,9 @@ module.exports = async (req, res) => {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
+
+  const user = await requireAuth(req, res);
+  if (!user) return;
 
   const { emailId } = req.query;
 

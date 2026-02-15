@@ -17,6 +17,7 @@
  * This avoids false positives from unrelated file changes.
  */
 
+const { requireCron } = require('../_authMiddleware');
 const { createClient } = require('@supabase/supabase-js');
 
 // Lazy load GitHub module
@@ -220,6 +221,8 @@ module.exports = async (req, res) => {
   if (req.method !== 'POST' && req.method !== 'GET') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
+
+  if (!requireCron(req, res)) return;
 
   console.log('[CloseBugs] Starting close-fixed-bugs job...');
 

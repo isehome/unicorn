@@ -5,6 +5,7 @@
  * POST: Update configuration
  */
 
+const { requireAuth } = require('../_authMiddleware');
 const { createClient } = require('@supabase/supabase-js');
 
 const supabase = createClient(
@@ -13,12 +14,17 @@ const supabase = createClient(
 );
 
 module.exports = async (req, res) => {
+  if (req.method !== 'GET' && req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  const user = await requireAuth(req, res);
+  if (!user) return;
+
   if (req.method === 'GET') {
     return getConfig(req, res);
-  } else if (req.method === 'POST') {
-    return updateConfig(req, res);
   } else {
-    return res.status(405).json({ error: 'Method not allowed' });
+    return updateConfig(req, res);
   }
 };
 

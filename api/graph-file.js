@@ -1,6 +1,8 @@
 // Vercel serverless function: Manages existing SharePoint files via Microsoft Graph
 // Currently supports deleting files by drive/item ID.
 
+const { requireAuth } = require('./_authMiddleware');
+
 const TENANT = process.env.AZURE_TENANT_ID;
 const CLIENT_ID = process.env.AZURE_CLIENT_ID;
 const CLIENT_SECRET = process.env.AZURE_CLIENT_SECRET;
@@ -65,6 +67,8 @@ module.exports = async (req, res) => {
     res.status(405).json({ error: 'Method not allowed' });
     return;
   }
+
+  const user = await requireAuth(req, res); if (!user) return;
 
   if (!TENANT || !CLIENT_ID || !CLIENT_SECRET) {
     res.status(500).json({ error: 'Server missing Azure credentials' });

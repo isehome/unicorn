@@ -8,6 +8,8 @@
  * Output: File blob with appropriate content type
  */
 
+const { requireAuth } = require('./_authMiddleware');
+
 const TENANT = process.env.AZURE_TENANT_ID;
 const CLIENT_ID = process.env.AZURE_CLIENT_ID;
 const CLIENT_SECRET = process.env.AZURE_CLIENT_SECRET;
@@ -71,6 +73,8 @@ module.exports = async (req, res) => {
   if (req.method !== 'GET') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
+
+  const user = await requireAuth(req, res); if (!user) return;
 
   const { driveId, itemId } = req.query;
 

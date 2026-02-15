@@ -5,11 +5,15 @@
  */
 
 const { getBugReportContent } = require('./github');
+const { requireAuth } = require('../_authMiddleware');
 
 module.exports = async (req, res) => {
   if (req.method !== 'GET') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
+
+  const user = await requireAuth(req, res);
+  if (!user) return;
 
   try {
     const { path } = req.query;

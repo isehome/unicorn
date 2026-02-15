@@ -2,6 +2,8 @@
 // Input: JSON { rootUrl, subPath, filename, fileBase64, contentType }
 // Auth: App-only (client credentials). Set env: AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET
 
+const { requireAuth } = require('./_authMiddleware');
+
 const TENANT = process.env.AZURE_TENANT_ID
 const CLIENT_ID = process.env.AZURE_CLIENT_ID
 const CLIENT_SECRET = process.env.AZURE_CLIENT_SECRET
@@ -104,6 +106,8 @@ module.exports = async (req, res) => {
     res.status(405).json({ error: 'Method not allowed' })
     return
   }
+
+  const user = await requireAuth(req, res); if (!user) return;
 
   try {
     const { rootUrl, subPath, filename, fileBase64, contentType } = req.body || {}

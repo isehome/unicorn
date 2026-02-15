@@ -1,3 +1,4 @@
+const { requireAuth } = require('./_authMiddleware');
 const { systemSendMail } = require('./_systemGraph');
 
 const PARTS_REQUEST_EMAIL = process.env.PARTS_REQUEST_EMAIL || 'stephe@isehome.com';
@@ -6,6 +7,8 @@ module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
+
+  const user = await requireAuth(req, res); if (!user) return;
 
   try {
     const {

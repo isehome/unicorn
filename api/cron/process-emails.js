@@ -7,10 +7,14 @@
  * Schedule: every 5 minutes (cron: 0/5 * * * *)
  */
 
+const { requireCron } = require('../_authMiddleware');
+
 module.exports = async (req, res) => {
   if (req.method !== 'POST' && req.method !== 'GET') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
+
+  if (!requireCron(req, res)) return;
 
   console.log('[Cron] Starting email processing job...');
 

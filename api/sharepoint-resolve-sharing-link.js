@@ -2,6 +2,8 @@
 // Input: JSON { sharingUrl: "https://tenant.sharepoint.com/:f:/s/site/..." }
 // Returns: { webUrl: "https://tenant.sharepoint.com/sites/site/Shared Documents/Folder" }
 
+const { requireAuth } = require('./_authMiddleware');
+
 const TENANT = process.env.AZURE_TENANT_ID
 const CLIENT_ID = process.env.AZURE_CLIENT_ID
 const CLIENT_SECRET = process.env.AZURE_CLIENT_SECRET
@@ -62,6 +64,8 @@ module.exports = async (req, res) => {
     res.status(405).json({ error: 'Method not allowed' })
     return
   }
+
+  const user = await requireAuth(req, res); if (!user) return;
 
   try {
     const { sharingUrl } = req.body || {}

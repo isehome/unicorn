@@ -28,6 +28,7 @@
  * - user_guide_urls: Official user guide links
  */
 
+const { requireCron } = require('../_authMiddleware');
 const { createClient } = require('@supabase/supabase-js');
 
 // Configuration
@@ -65,6 +66,8 @@ module.exports = async function handler(req, res) {
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
+
+  if (!requireCron(req, res)) return;
 
   console.log('[PartsEnrichment] Starting enrichment cron job...');
 

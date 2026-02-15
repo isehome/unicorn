@@ -10,6 +10,7 @@
  * - DELETE: Remove a subscription
  */
 
+const { requireAuth } = require('./_authMiddleware');
 const { createClient } = require('@supabase/supabase-js');
 const crypto = require('crypto');
 
@@ -189,6 +190,8 @@ module.exports = async (req, res) => {
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
+
+  const user = await requireAuth(req, res); if (!user) return;
 
   try {
     const token = await getAppToken();

@@ -4,6 +4,7 @@
  * GET /api/email/processed?page=1&limit=20&status=pending_review
  */
 
+const { requireAuth } = require('../_authMiddleware');
 const { createClient } = require('@supabase/supabase-js');
 
 const supabase = createClient(
@@ -15,6 +16,9 @@ module.exports = async (req, res) => {
   if (req.method !== 'GET') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
+
+  const user = await requireAuth(req, res);
+  if (!user) return;
 
   try {
     const page = parseInt(req.query.page) || 1;
