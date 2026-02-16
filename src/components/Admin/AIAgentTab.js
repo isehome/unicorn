@@ -28,22 +28,23 @@ import { getAllRoutes, PAGE_REGISTRY } from '../../config/pageRegistry';
 const GEMINI_INPUT_SAMPLE_RATE = 16000;
 const GEMINI_OUTPUT_SAMPLE_RATE = 24000;
 
-// Available models - Gemini 3 is now the default
+// Available models - only models that support bidiGenerateContent (Live API)
 const AVAILABLE_MODELS = [
   {
-    id: 'gemini-3-flash-preview',
-    name: 'Gemini 3 Flash',
-    description: 'Default - 40-60% faster latency, better reasoning',
+    id: 'gemini-2.5-flash-native-audio-preview-12-2025',
+    name: 'Gemini 2.5 Flash Native Audio',
+    description: 'Default - excellent audio quality, proven stable',
     recommended: true,
     status: 'default'
   },
   {
-    id: 'gemini-2.5-flash-native-audio-preview-12-2025',
-    name: 'Gemini 2.5 Flash Native Audio',
-    description: 'Fallback - excellent audio quality, proven stable',
+    id: 'gemini-2.5-flash-exp-native-audio-thinking-dialog',
+    name: 'Gemini 2.5 Flash Native Audio (Thinking)',
+    description: 'Experimental - native audio with thinking/reasoning',
     recommended: false,
-    status: 'stable'
+    status: 'experimental'
   }
+  // Note: gemini-3-flash-preview removed - not supported by Live API (bidiGenerateContent)
   // Note: gemini-2.0-flash-live-001 removed - deprecated, retiring March 3, 2026
 ];
 

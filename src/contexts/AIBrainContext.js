@@ -6,6 +6,7 @@
 import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppState } from './AppStateContext';
+import { useAuth } from './AuthContext';
 import { supabase } from '../lib/supabase';
 import { pageContextService } from '../services/pageContextService';
 import { getPatternRoute, PAGE_REGISTRY } from '../config/pageRegistry';
@@ -20,15 +21,16 @@ const GEMINI_OUTPUT_SAMPLE_RATE = 24000;
 const VERBOSE_LOGGING = true;
 
 // Default model - user can override in settings
-// Upgraded to Gemini 3 Flash (40-60% faster latency, better reasoning)
-// Fallback: gemini-2.5-flash-native-audio-preview-12-2025
-const DEFAULT_MODEL = 'gemini-3-flash-preview';
+// Must be a model that supports bidiGenerateContent (Live API)
+// See: https://ai.google.dev/gemini-api/docs/models
+const DEFAULT_MODEL = 'gemini-2.5-flash-native-audio-preview-12-2025';
 
 const AIBrainContext = createContext(null);
 
 export const AIBrainProvider = ({ children }) => {
     const navigate = useNavigate();
     const { executeAction, getAvailableActions, getState } = useAppState();
+    const { user: authUser } = useAuth();
 
     const [status, setStatus] = useState('idle');
     const [error, setError] = useState(null);
@@ -606,8 +608,7 @@ ${buildContextString(state)}`;
     };
 
     const handleQuickCreate = async ({ type, title, description, priority, projectId, dueDate }) => {
-        const user = supabase.auth.getUser ? (await supabase.auth.getUser())?.data?.user : null;
-        const userId = user?.id;
+        const userId = authUser?.id;
 
         // Get current project context if not provided
         let currentProjectId = projectId;
@@ -1403,15 +1404,19 @@ ${buildContextString(state)}`;
                 // Get model from settings or use default
                 // IMPORTANT: Validate that the model is supported for bidiGenerateContent (Live API)
                 // Only native-audio models work with the Live API
+                // Only models that support bidiGenerateContent (Live API / WebSocket)
                 const VALID_LIVE_MODELS = [
                     'gemini-2.0-flash-exp',
                     'gemini-2.5-flash-native-audio-preview-12-2025',
+                    'gemini-2.5-flash-exp-native-audio-thinking-dialog',
+                    'gemini-2.5-flash-preview-native-audio-dialog',
                 ];
+                const LIVE_API_FALLBACK = 'gemini-2.5-flash-native-audio-preview-12-2025';
                 let selectedModel = localStorage.getItem('ai_model') || DEFAULT_MODEL;
-                // If stored model isn't valid for Live API, use default
+                // If stored model isn't valid for Live API, fall back to known-good model
                 if (!VALID_LIVE_MODELS.includes(selectedModel)) {
-                    addDebugLog(`Model "${selectedModel}" not valid for Live API, using default`);
-                    selectedModel = DEFAULT_MODEL;
+                    addDebugLog(`Model "${selectedModel}" not valid for Live API, falling back to ${LIVE_API_FALLBACK}`);
+                    selectedModel = LIVE_API_FALLBACK;
                 }
                 const setupConfig = {
                     setup: {

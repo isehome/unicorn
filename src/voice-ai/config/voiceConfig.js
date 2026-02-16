@@ -31,9 +31,9 @@ export const MODELS = {
     provider: PROVIDERS.GEMINI,
     id: 'gemini-3-flash-preview',
     name: 'Gemini 3 Flash',
-    description: 'Latest model - 40-60% faster latency, better reasoning',
-    status: 'preview',
-    recommended: true,
+    description: '⚠️ NOT supported by Live API (bidiGenerateContent) - do not use for voice',
+    status: 'unsupported',
+    recommended: false,
     capabilities: {
       realtime: true,
       videoInput: true,
@@ -60,9 +60,9 @@ export const MODELS = {
     provider: PROVIDERS.GEMINI,
     id: 'gemini-2.5-flash-native-audio-preview-12-2025',
     name: 'Gemini 2.5 Flash Native Audio',
-    description: 'Current stable - excellent audio quality',
+    description: 'Default - excellent audio quality, proven stable for Live API',
     status: 'stable',
-    recommended: false,
+    recommended: true,
     capabilities: {
       realtime: true,
       videoInput: true,
@@ -259,8 +259,8 @@ export const DEFAULT_CONFIG = {
   // Primary provider - change this to switch providers
   provider: PROVIDERS.GEMINI,
 
-  // Primary model - Gemini 3 Flash is now default (40-60% faster)
-  model: 'gemini-3-flash', // Key from MODELS
+  // Primary model - must support bidiGenerateContent (Live API)
+  model: 'gemini-2.5-flash-native', // Key from MODELS
 
   // Fallback chain - Gemini only (no OpenAI)
   fallbackChain: [
