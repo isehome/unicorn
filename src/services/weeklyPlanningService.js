@@ -438,6 +438,44 @@ export const weeklyPlanningService = {
   },
 
   /**
+   * Get completed/closed service tickets (for the sidebar completed section)
+   * Returns tickets with done statuses, limited to recent ones (last 90 days)
+   */
+  async getCompletedTickets({ technicianId = null, limit = 50 } = {}) {
+    if (!supabase) return [];
+
+    try {
+      const DONE_STATUSES = ['completed', 'closed', 'resolved', 'cancelled'];
+      const ninetyDaysAgo = new Date();
+      ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+
+      let query = supabase
+        .from('service_tickets')
+        .select('*')
+        .in('status', DONE_STATUSES)
+        .gte('updated_at', ninetyDaysAgo.toISOString())
+        .order('updated_at', { ascending: false })
+        .limit(limit);
+
+      if (technicianId && technicianId !== 'all') {
+        query = query.eq('assigned_to', technicianId);
+      }
+
+      const { data: tickets, error } = await query;
+
+      if (error) {
+        console.error('[WeeklyPlanningService] Failed to fetch completed tickets:', error);
+        return [];
+      }
+
+      return tickets || [];
+    } catch (error) {
+      console.error('[WeeklyPlanningService] Exception fetching completed tickets:', error);
+      return [];
+    }
+  },
+
+  /**
    * Check for buffer conflicts with existing schedules
    */
   async checkBufferConflicts(technicianId, date, startTime, endTime, excludeScheduleId = null) {

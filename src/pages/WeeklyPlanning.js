@@ -30,12 +30,30 @@ const priorityColors = {
 // Status colors
 const statusColors = {
   new: '#3b82f6',
+  open: '#3b82f6',
   triaged: '#8b5cf6',
   scheduled: '#f59e0b',
   in_progress: '#f97316',
+  waiting_parts: '#f59e0b',
+  waiting_customer: '#06b6d4',
+  work_complete_needs_invoice: '#94AF32',
+  problem: '#ef4444',
   completed: '#94AF32',
   closed: '#71717a'
 };
+
+// All ticket statuses for the dropdown
+const ALL_STATUSES = [
+  { value: 'open', label: 'Open' },
+  { value: 'triaged', label: 'Triaged' },
+  { value: 'scheduled', label: 'Scheduled' },
+  { value: 'in_progress', label: 'In Progress' },
+  { value: 'waiting_parts', label: 'Waiting Parts' },
+  { value: 'waiting_customer', label: 'Waiting Customer' },
+  { value: 'work_complete_needs_invoice', label: 'Work Complete - Needs Invoice' },
+  { value: 'problem', label: 'Problem (Escalation)' },
+  { value: 'closed', label: 'Closed' }
+];
 
 /**
  * Format date to YYYY-MM-DD (using local timezone, not UTC)
@@ -98,6 +116,7 @@ const WeeklyPlanning = () => {
   // Unscheduled tickets
   const [unscheduledTickets, setUnscheduledTickets] = useState([]);
   const [allScheduledTickets, setAllScheduledTickets] = useState([]); // For panel sidebar
+  const [completedTickets, setCompletedTickets] = useState([]); // Completed/closed tickets
   const [loadingTickets, setLoadingTickets] = useState(false);
 
   // Conflict checking modal
@@ -412,15 +431,19 @@ const WeeklyPlanning = () => {
       const nextWeekData = await loadWeekSchedules(nextWeekStart, selectedTechnician);
       setWeeks([weekData, nextWeekData]);
 
-      // Refresh both unscheduled and all scheduled tickets
-      const [unscheduled, allScheduled] = await Promise.all([
+      // Refresh unscheduled, scheduled, and completed tickets
+      const [unscheduled, allScheduled, completed] = await Promise.all([
         weeklyPlanningService.getUnscheduledTickets({
           technicianId: selectedTechnician
         }),
-        weeklyPlanningService.getAllActiveSchedules(selectedTechnician)
+        weeklyPlanningService.getAllActiveSchedules(selectedTechnician),
+        weeklyPlanningService.getCompletedTickets({
+          technicianId: selectedTechnician
+        })
       ]);
       setUnscheduledTickets(unscheduled || []);
       setAllScheduledTickets(allScheduled || []);
+      setCompletedTickets(completed || []);
     } catch (err) {
       console.error('[WeeklyPlanning] Refresh failed:', err);
     } finally {
@@ -1206,6 +1229,29 @@ const WeeklyPlanning = () => {
     window.open(`/service/tickets/${ticketId}`, '_blank');
   };
 
+  // Update ticket status from the quick-look modal
+  const handleUpdateTicketStatus = async (ticketId, newStatus) => {
+    try {
+      const updateData = { status: newStatus };
+      // Add timestamp tracking for completed/closed
+      if (newStatus === 'closed' || newStatus === 'completed') {
+        updateData.completed_at = new Date().toISOString();
+        updateData.completed_by = user?.id || user?.localAccountId || null;
+      }
+      await serviceTicketService.update(ticketId, updateData);
+      // Update modal state
+      setTicketDetailModal(prev => prev ? ({
+        ...prev,
+        ticket: { ...prev.ticket, status: newStatus }
+      }) : null);
+      // Refresh the panels
+      await handleRefresh();
+    } catch (err) {
+      console.error('[WeeklyPlanning] Failed to update ticket status:', err);
+      setError('Failed to update ticket status');
+    }
+  };
+
   // Loading state
   if (loading) {
     return (
@@ -1269,6 +1315,7 @@ const WeeklyPlanning = () => {
           <UnscheduledTicketsPanel
             tickets={unscheduledTickets}
             scheduledTickets={allScheduledTickets}
+            completedTickets={completedTickets}
             technicians={technicians}
             selectedTechnician={selectedTechnician}
             onOpenTicket={handleOpenTicket}
@@ -1383,12 +1430,28 @@ const WeeklyPlanning = () => {
                 >
                   {ticketDetailModal.ticket?.priority || 'normal'}
                 </span>
-                <span
-                  className="px-2 py-0.5 rounded text-xs font-medium text-white"
-                  style={{ backgroundColor: statusColors[ticketDetailModal.ticket?.status] || statusColors.new }}
+                <select
+                  value={ticketDetailModal.ticket?.status || 'open'}
+                  onChange={(e) => {
+                    if (ticketDetailModal.ticket?.id) {
+                      handleUpdateTicketStatus(ticketDetailModal.ticket.id, e.target.value);
+                    }
+                  }}
+                  className="px-2 py-0.5 rounded text-xs font-medium text-white border-0 cursor-pointer focus:ring-2 focus:ring-violet-500 appearance-none pr-6"
+                  style={{
+                    backgroundColor: statusColors[ticketDetailModal.ticket?.status] || statusColors.open,
+                    backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`,
+                    backgroundRepeat: 'no-repeat',
+                    backgroundPosition: 'right 4px center'
+                  }}
+                  onClick={(e) => e.stopPropagation()}
                 >
-                  {ticketDetailModal.ticket?.status?.replace('_', ' ') || 'new'}
-                </span>
+                  {ALL_STATUSES.map(s => (
+                    <option key={s.value} value={s.value} style={{ backgroundColor: '#27272a', color: 'white' }}>
+                      {s.label}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div className="flex items-center gap-2">
                 <button

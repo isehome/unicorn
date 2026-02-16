@@ -8,7 +8,7 @@
  */
 
 import { memo, useState, useMemo } from 'react';
-import { Clock, AlertCircle, Search, ExternalLink, GripVertical, Calendar, ChevronDown, ArrowUpDown } from 'lucide-react';
+import { Clock, AlertCircle, Search, ExternalLink, GripVertical, Calendar, ChevronDown, ArrowUpDown, CheckCircle } from 'lucide-react';
 import { setDragEstimatedHours, resetDragEstimatedHours } from './WeekCalendarGrid';
 import TechnicianDropdown from './TechnicianDropdown';
 
@@ -313,6 +313,7 @@ ScheduledTicketCard.displayName = 'ScheduledTicketCard';
 const UnscheduledTicketsPanel = ({
   tickets = [],           // Unscheduled tickets
   scheduledTickets = [],  // Scheduled tickets (from all weeks)
+  completedTickets = [],  // Completed/closed tickets
   technicians = [],
   selectedTechnician,
   onOpenTicket,
@@ -326,6 +327,7 @@ const UnscheduledTicketsPanel = ({
   const [sortBy, setSortBy] = useState('oldest');
   const [isDragOver, setIsDragOver] = useState(false);
   const [showScheduled, setShowScheduled] = useState(true);
+  const [showCompleted, setShowCompleted] = useState(false); // Defaults to collapsed
 
   // Handle drag over for drop zone
   const handleDragOver = (e) => {
@@ -370,7 +372,7 @@ const UnscheduledTicketsPanel = ({
   };
 
   // Combine and filter all tickets
-  const { filteredUnscheduled, filteredScheduled, totalHours } = useMemo(() => {
+  const { filteredUnscheduled, filteredScheduled, filteredCompleted, totalHours } = useMemo(() => {
     console.log('[UnscheduledPanel] Filtering with:', {
       ticketsCount: tickets.length,
       sortBy,
@@ -492,22 +494,43 @@ const UnscheduledTicketsPanel = ({
       }))
     });
 
+    // Filter completed tickets
+    let completed = [...completedTickets];
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      const matchesSearch = (t) =>
+        (t.customer_name?.toLowerCase().includes(query)) ||
+        (t.title?.toLowerCase().includes(query)) ||
+        (t.ticket_number?.toString().includes(query));
+      completed = completed.filter(matchesSearch);
+    }
+    if (priorityFilter !== 'all') {
+      completed = completed.filter(t => t.priority === priorityFilter);
+    }
+    if (categoryFilter !== 'all') {
+      completed = completed.filter(t => t.category === categoryFilter);
+    }
+    if (selectedTechnician && selectedTechnician !== 'all') {
+      completed = completed.filter(t => t.assigned_to === selectedTechnician);
+    }
+
     // Calculate total estimated hours for unscheduled
     const hours = sortedUnscheduled.reduce((sum, t) => sum + (parseFloat(t.estimated_hours) || 2), 0);
 
     return {
       filteredUnscheduled: sortedUnscheduled,
       filteredScheduled: sortedScheduled,
+      filteredCompleted: completed,
       totalHours: hours
     };
-  }, [tickets, scheduledTickets, searchQuery, priorityFilter, categoryFilter, selectedTechnician, sortBy]);
+  }, [tickets, scheduledTickets, completedTickets, searchQuery, priorityFilter, categoryFilter, selectedTechnician, sortBy]);
 
   // Get unique categories from all tickets
   const categories = useMemo(() => {
-    const allTickets = [...tickets, ...scheduledTickets.map(s => s.ticket || s)];
+    const allTickets = [...tickets, ...scheduledTickets.map(s => s.ticket || s), ...completedTickets];
     const cats = new Set(allTickets.map(t => t?.category).filter(Boolean));
     return Array.from(cats);
-  }, [tickets, scheduledTickets]);
+  }, [tickets, scheduledTickets, completedTickets]);
 
   return (
     <div
@@ -673,6 +696,58 @@ const UnscheduledTicketsPanel = ({
                             />
                           );
                         })}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Completed tickets section - collapsible, defaults to closed */}
+                {filteredCompleted.length > 0 && (
+                  <div className="border-t border-zinc-700">
+                    <button
+                      onClick={() => setShowCompleted(!showCompleted)}
+                      className="w-full flex items-center justify-between px-3 py-2 text-xs text-zinc-400 hover:bg-zinc-700/50 transition-colors"
+                    >
+                      <div className="flex items-center gap-1">
+                        <CheckCircle size={12} style={{ color: '#94AF32' }} />
+                        <span>Completed ({filteredCompleted.length})</span>
+                      </div>
+                      <ChevronDown
+                        size={14}
+                        className={`transition-transform ${showCompleted ? 'rotate-180' : ''}`}
+                      />
+                    </button>
+
+                    {showCompleted && (
+                      <div className="px-2 pb-2 space-y-1">
+                        {filteredCompleted.map(ticket => (
+                          <button
+                            key={ticket.id}
+                            onClick={() => onOpenTicket?.(ticket)}
+                            className="w-full text-left px-2 py-1.5 rounded-md bg-zinc-700/30 hover:bg-zinc-700/60 transition-colors group"
+                          >
+                            <div className="flex items-center gap-2">
+                              <CheckCircle size={12} style={{ color: '#94AF32' }} className="flex-shrink-0" />
+                              <div className="flex-1 min-w-0">
+                                <div className="text-xs text-zinc-300 truncate">
+                                  {ticket.customer_name || ticket.title || 'Service Ticket'}
+                                </div>
+                                <div className="text-[10px] text-zinc-500 flex items-center gap-1">
+                                  <span>#{ticket.ticket_number}</span>
+                                  <span>·</span>
+                                  <span className="capitalize">{ticket.status?.replace(/_/g, ' ')}</span>
+                                  {ticket.updated_at && (
+                                    <>
+                                      <span>·</span>
+                                      <span>{new Date(ticket.updated_at).toLocaleDateString()}</span>
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+                              <ExternalLink size={12} className="text-zinc-500 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
+                            </div>
+                          </button>
+                        ))}
                       </div>
                     )}
                   </div>
