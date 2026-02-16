@@ -1232,13 +1232,7 @@ const WeeklyPlanning = () => {
   // Update ticket status from the quick-look modal
   const handleUpdateTicketStatus = async (ticketId, newStatus) => {
     try {
-      const updateData = { status: newStatus };
-      // Add timestamp tracking for completed/closed
-      if (newStatus === 'closed' || newStatus === 'completed') {
-        updateData.completed_at = new Date().toISOString();
-        updateData.completed_by = user?.id || user?.localAccountId || null;
-      }
-      await serviceTicketService.update(ticketId, updateData);
+      await serviceTicketService.update(ticketId, { status: newStatus });
       // Update modal state
       setTicketDetailModal(prev => prev ? ({
         ...prev,
