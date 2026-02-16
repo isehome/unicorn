@@ -64,6 +64,7 @@ const ContactDetailPage = () => {
     role: '',
     department: '',
     is_internal: false,
+    contact_type: 'person',
     address1: '',
     address2: '',
     city: '',
@@ -212,8 +213,10 @@ const ContactDetailPage = () => {
   useEffect(() => {
     if (!contact) return;
 
-    const contactName = contact.full_name || contact.name ||
-      `${contact.first_name || ''} ${contact.last_name || ''}`.trim() || 'Unknown';
+    const contactName = (contact.contact_type === 'company' && contact.company)
+      ? contact.company
+      : (contact.full_name || contact.name ||
+        `${contact.first_name || ''} ${contact.last_name || ''}`.trim() || contact.company || 'Unknown');
 
     publishState({
       view: 'contact-detail',
@@ -237,6 +240,21 @@ const ContactDetailPage = () => {
   }, [publishState, contact, secureData, projects]);
 
   // Contact edit handler (defined before AI actions that reference it)
+  // Auto-parse full name into first/last when user tabs out of first_name field
+  const handleFirstNameBlur = useCallback(() => {
+    const value = contactFormData.first_name.trim();
+    if (value.includes(' ') && !contactFormData.last_name) {
+      const parts = value.split(/\s+/);
+      const firstName = parts[0];
+      const lastName = parts.slice(1).join(' ');
+      setContactFormData(prev => ({
+        ...prev,
+        first_name: firstName,
+        last_name: lastName
+      }));
+    }
+  }, [contactFormData.first_name, contactFormData.last_name]);
+
   const handleEditContact = useCallback(() => {
     if (!contact) return;
     setContactFormData({
@@ -248,6 +266,7 @@ const ContactDetailPage = () => {
       role: contact.role || '',
       department: contact.department || '',
       is_internal: contact.is_internal || false,
+      contact_type: contact.contact_type || 'person',
       address1: contact.address1 || '',
       address2: contact.address2 || '',
       city: contact.city || '',
@@ -490,10 +509,15 @@ const ContactDetailPage = () => {
         addressParts.push(formatted);
       }
 
+      // For company contacts, use company name as the display name
+      const displayName = contactFormData.contact_type === 'company' && contactFormData.company
+        ? contactFormData.company
+        : (fullName || contactFormData.company || 'Unknown');
+
       const payload = {
         ...contactFormData,
-        full_name: fullName || 'Unknown',
-        name: fullName || 'Unknown',
+        full_name: displayName,
+        name: displayName,
         address: addressParts.join(', ')
       };
 
@@ -622,7 +646,9 @@ const ContactDetailPage = () => {
                 </Button>
               </div>
               <h2 className="text-xl font-bold" style={styles.textPrimary}>
-                {contact?.full_name || contact?.name || `${contact?.first_name} ${contact?.last_name}`}
+                {contact?.contact_type === 'company' && contact?.company
+                  ? contact.company
+                  : (contact?.full_name || contact?.name || `${contact?.first_name || ''} ${contact?.last_name || ''}`.trim() || contact?.company || 'Unknown')}
               </h2>
               <div className="flex items-center gap-2 mt-1">
                 {contact?.role && (
@@ -639,6 +665,14 @@ const ContactDetailPage = () => {
                 >
                   {contact?.is_internal ? 'Internal' : 'External'}
                 </span>
+                {contact?.contact_type === 'company' && (
+                  <span
+                    className="px-2 py-0.5 rounded-full text-xs font-medium bg-zinc-200 dark:bg-zinc-700"
+                    style={styles.textSecondary}
+                  >
+                    Company
+                  </span>
+                )}
               </div>
 
               <div className="mt-4 space-y-2">
@@ -964,12 +998,41 @@ const ContactDetailPage = () => {
             </div>
 
             <form onSubmit={handleSaveContact} className="space-y-4">
+              {/* Contact Type Toggle */}
+              <div className="flex rounded-lg overflow-hidden border border-zinc-300 dark:border-zinc-600">
+                <button
+                  type="button"
+                  onClick={() => setContactFormData({ ...contactFormData, contact_type: 'person' })}
+                  className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium transition-colors ${
+                    contactFormData.contact_type === 'person'
+                      ? 'bg-violet-600 text-white'
+                      : 'bg-zinc-100 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-600'
+                  }`}
+                >
+                  <User className="w-4 h-4" />
+                  Person
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setContactFormData({ ...contactFormData, contact_type: 'company' })}
+                  className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium transition-colors ${
+                    contactFormData.contact_type === 'company'
+                      ? 'bg-violet-600 text-white'
+                      : 'bg-zinc-100 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-600'
+                  }`}
+                >
+                  <Building className="w-4 h-4" />
+                  Company
+                </button>
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <input
                   type="text"
-                  placeholder="First Name"
+                  placeholder="First Name (or full name)"
                   value={contactFormData.first_name}
                   onChange={(e) => setContactFormData({ ...contactFormData, first_name: e.target.value })}
+                  onBlur={handleFirstNameBlur}
                   className="px-4 py-2 border rounded-lg dark:bg-zinc-700 dark:border-zinc-600"
                   style={styles.input}
                 />
@@ -1022,21 +1085,21 @@ const ContactDetailPage = () => {
                 </label>
               </div>
 
-              {contactFormData.is_internal ? (
+              <input
+                type="text"
+                placeholder={contactFormData.contact_type === 'company' ? "Company Name (required)" : "Company (optional)"}
+                value={contactFormData.company}
+                onChange={(e) => setContactFormData({ ...contactFormData, company: e.target.value })}
+                className="w-full px-4 py-2 border rounded-lg dark:bg-zinc-700 dark:border-zinc-600"
+                style={styles.input}
+              />
+
+              {contactFormData.is_internal && (
                 <input
                   type="text"
                   placeholder="Department"
                   value={contactFormData.department}
                   onChange={(e) => setContactFormData({ ...contactFormData, department: e.target.value })}
-                  className="w-full px-4 py-2 border rounded-lg dark:bg-zinc-700 dark:border-zinc-600"
-                  style={styles.input}
-                />
-              ) : (
-                <input
-                  type="text"
-                  placeholder="Company"
-                  value={contactFormData.company}
-                  onChange={(e) => setContactFormData({ ...contactFormData, company: e.target.value })}
                   className="w-full px-4 py-2 border rounded-lg dark:bg-zinc-700 dark:border-zinc-600"
                   style={styles.input}
                 />

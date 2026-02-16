@@ -106,8 +106,9 @@ export const ticketActivityService = {
       .limit(limit);
 
     if (error) {
-      console.error('[ticketActivityService] Error fetching activity:', error);
-      throw error;
+      const errorMessage = error?.message || error?.details || JSON.stringify(error);
+      console.error('[ticketActivityService] Error fetching activity:', errorMessage);
+      throw new Error(errorMessage);
     }
 
     return data || [];

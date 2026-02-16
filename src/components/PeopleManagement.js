@@ -67,6 +67,7 @@ const PeopleManagement = () => {
     company: '',
     role: '',
     is_internal: false,
+    contact_type: 'person',
     department: '',
     address: '',
     address1: '',
@@ -129,14 +130,18 @@ const PeopleManagement = () => {
 
       // Build full_name from first_name and last_name (required by database)
       const fullName = `${payload.first_name || ''} ${payload.last_name || ''}`.trim();
-      payload.full_name = fullName || payload.name || 'Unknown';
+      // For company contacts, use company name as the display name
+      const displayName = payload.contact_type === 'company' && payload.company
+        ? payload.company
+        : (fullName || payload.company || payload.name || 'Unknown');
+      payload.full_name = displayName;
       // Also set name for compatibility
-      payload.name = payload.name || fullName || 'Unknown';
+      payload.name = displayName;
 
       // Filter to only valid database columns (remove any extra fields like 'website' from business card scan)
       const validColumns = ['name', 'full_name', 'first_name', 'last_name', 'email', 'phone', 'company', 'role',
                            'address', 'address1', 'address2', 'city', 'state', 'zip', 'notes',
-                           'is_internal', 'is_active', 'department'];
+                           'is_internal', 'is_active', 'department', 'contact_type'];
       const cleanPayload = {};
       validColumns.forEach(col => {
         if (payload[col] !== undefined && payload[col] !== null) {
@@ -501,14 +506,19 @@ const PeopleManagement = () => {
                         style={{ backgroundColor: person.is_internal ? `${palette.accent}20` : `${palette.success}20` }}
                         title="Quick edit contact"
                       >
-                        <User className="w-8 h-8" style={{ color: person.is_internal ? palette.accent : palette.success }} />
+                        {person.contact_type === 'company'
+                          ? <Building className="w-8 h-8" style={{ color: person.is_internal ? palette.accent : palette.success }} />
+                          : <User className="w-8 h-8" style={{ color: person.is_internal ? palette.accent : palette.success }} />
+                        }
                       </button>
                       <div className="flex-1 min-w-0">
                         <h3 className="font-semibold text-zinc-900 dark:text-white">
-                          {person.name || `${person.first_name} ${person.last_name}`}
+                          {person.contact_type === 'company' && person.company
+                            ? person.company
+                            : (person.name || `${person.first_name || ''} ${person.last_name || ''}`.trim() || person.company || 'Unknown')}
                         </h3>
                         <p className="text-sm" style={{ color: person.is_internal ? palette.accent : palette.success }}>
-                          {person.role} {person.is_internal && person.department ? `• ${person.department}` : ''}
+                          {person.contact_type === 'company' ? 'Company' : ''}{person.role ? (person.contact_type === 'company' ? ' • ' : '') + person.role : ''} {person.is_internal && person.department ? `• ${person.department}` : ''}
                         </p>
                         <div className="mt-2 space-y-1">
                           {person.email && (
@@ -581,16 +591,58 @@ const PeopleManagement = () => {
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-4">
+              {/* Contact Type Toggle */}
+              <div className="flex rounded-lg overflow-hidden border border-zinc-300 dark:border-zinc-600">
+                <button
+                  type="button"
+                  onClick={() => setFormData({ ...formData, contact_type: 'person' })}
+                  className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium transition-colors ${
+                    formData.contact_type !== 'company'
+                      ? 'bg-violet-600 text-white'
+                      : 'bg-zinc-100 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-600'
+                  }`}
+                >
+                  <User className="w-4 h-4" />
+                  Person
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFormData({ ...formData, contact_type: 'company' })}
+                  className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium transition-colors ${
+                    formData.contact_type === 'company'
+                      ? 'bg-violet-600 text-white'
+                      : 'bg-zinc-100 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-600'
+                  }`}
+                >
+                  <Building className="w-4 h-4" />
+                  Company
+                </button>
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <input
                   type="text"
-                  placeholder="First Name"
+                  placeholder="First Name (or full name)"
                   value={formData.first_name}
                   onChange={(e) => setFormData({
                     ...formData,
                     first_name: e.target.value,
                     name: `${e.target.value} ${formData.last_name}`.trim()
                   })}
+                  onBlur={() => {
+                    const value = formData.first_name.trim();
+                    if (value.includes(' ') && !formData.last_name) {
+                      const parts = value.split(/\s+/);
+                      const firstName = parts[0];
+                      const lastName = parts.slice(1).join(' ');
+                      setFormData(prev => ({
+                        ...prev,
+                        first_name: firstName,
+                        last_name: lastName,
+                        name: `${firstName} ${lastName}`.trim()
+                      }));
+                    }
+                  }}
                   className="px-4 py-2 border rounded-lg dark:bg-zinc-700 dark:border-zinc-600"
                 />
                 <input
@@ -642,20 +694,20 @@ const PeopleManagement = () => {
                 </label>
               </div>
 
-              {formData.is_internal ? (
+              <input
+                type="text"
+                placeholder={formData.contact_type === 'company' ? "Company Name (required)" : "Company (optional)"}
+                value={formData.company}
+                onChange={(e) => setFormData({ ...formData, company: e.target.value })}
+                className="w-full px-4 py-2 border rounded-lg dark:bg-zinc-700 dark:border-zinc-600"
+              />
+
+              {formData.is_internal && (
                 <input
                   type="text"
                   placeholder="Department"
                   value={formData.department}
                   onChange={(e) => setFormData({ ...formData, department: e.target.value })}
-                  className="w-full px-4 py-2 border rounded-lg dark:bg-zinc-700 dark:border-zinc-600"
-                />
-              ) : (
-                <input
-                  type="text"
-                  placeholder="Company"
-                  value={formData.company}
-                  onChange={(e) => setFormData({ ...formData, company: e.target.value })}
                   className="w-full px-4 py-2 border rounded-lg dark:bg-zinc-700 dark:border-zinc-600"
                 />
               )}

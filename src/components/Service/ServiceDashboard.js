@@ -703,18 +703,42 @@ const ServiceDashboard = () => {
           <div className="mt-6 bg-zinc-800 rounded-lg p-4">
             <h2 className="font-semibold text-white mb-4">Tickets by Category</h2>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {/* Show All button to clear category filter */}
+              <button
+                onClick={() => {
+                  setFilters(prev => ({ ...prev, category: '' }));
+                }}
+                className={`p-3 rounded-lg transition-colors text-left flex items-center gap-3 ${
+                  !filters.category
+                    ? 'bg-violet-600/30 border border-violet-500/50'
+                    : 'bg-zinc-700/50 hover:bg-zinc-700'
+                }`}
+              >
+                <LayoutGrid size={18} className={!filters.category ? 'text-violet-400' : 'text-zinc-400'} />
+                <div>
+                  <div className="text-lg font-bold text-white">
+                    {Object.values(stats.byCategory).reduce((sum, c) => sum + c, 0)}
+                  </div>
+                  <div className={`text-sm ${!filters.category ? 'text-violet-400' : 'text-zinc-400'}`}>Show All</div>
+                </div>
+              </button>
               {Object.entries(stats.byCategory).map(([category, count]) => {
                 const Icon = categoryIcons[category] || Wrench;
+                const isActive = filters.category === category;
                 return (
                   <button
                     key={category}
-                    onClick={() => setFilters(prev => ({ ...prev, category }))}
-                    className="p-3 bg-zinc-700/50 rounded-lg hover:bg-zinc-700 transition-colors text-left flex items-center gap-3"
+                    onClick={() => setFilters(prev => ({ ...prev, category: isActive ? '' : category }))}
+                    className={`p-3 rounded-lg transition-colors text-left flex items-center gap-3 ${
+                      isActive
+                        ? 'bg-violet-600/30 border border-violet-500/50'
+                        : 'bg-zinc-700/50 hover:bg-zinc-700'
+                    }`}
                   >
-                    <Icon size={18} className="text-zinc-400" />
+                    <Icon size={18} className={isActive ? 'text-violet-400' : 'text-zinc-400'} />
                     <div>
                       <div className="text-lg font-bold text-white">{count}</div>
-                      <div className="text-sm text-zinc-400 capitalize">{category}</div>
+                      <div className={`text-sm capitalize ${isActive ? 'text-violet-400' : 'text-zinc-400'}`}>{category}</div>
                     </div>
                   </button>
                 );

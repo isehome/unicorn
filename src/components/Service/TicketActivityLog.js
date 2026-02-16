@@ -124,8 +124,9 @@ const TicketActivityLog = ({ ticketId, refreshTrigger = 0 }) => {
       setActivities(data);
       setHasLoaded(true);
     } catch (err) {
-      console.error('[TicketActivityLog] Error loading activities:', err);
-      setError('Failed to load activity history');
+      const errorMessage = err?.message || (typeof err === 'object' ? JSON.stringify(err) : String(err));
+      console.error('[TicketActivityLog] Error loading activities:', errorMessage);
+      setError(`Failed to load activity history: ${errorMessage}`);
     } finally {
       setLoading(false);
     }
