@@ -4276,6 +4276,39 @@ The application needs a proper user capabilities/roles system to control access 
 
 # PART 6: CHANGELOG
 
+## 2026-02-16
+
+### Service Dashboard — "Show All" Button in Tickets by Category
+**What:** Added a "Show All" card to the Tickets by Category grid on the Service Dashboard.
+**Why:** Users had no way to clear the category filter once a category was selected — they had to manually clear filters from the filter panel. Steve wanted a one-click way back to "all categories."
+**Details:**
+- New "Show All" card at the start of the category grid with LayoutGrid icon and total ticket count
+- Active category now visually highlighted with violet border/background
+- Category buttons are now togglable (click again to deselect)
+**Files:** `src/components/Service/ServiceDashboard.js`
+
+### Contacts — Name Auto-Parsing + Person/Company Toggle
+**What:** Added contact_type column (person/company) with toggle UI, and auto-parsing of full names into first/last fields.
+**Why:** Users were entering "Andrew Lynn" in the first name field and leaving last name blank. Also needed a way to create company contacts where the company name is the primary display name instead of showing "Unknown."
+**Details:**
+- DB migration: `contacts.contact_type` column (text, CHECK person/company, default person)
+- Existing contacts with company but no first/last name auto-set to 'company' type
+- Person/Company toggle (violet segmented button) at top of both ContactDetailPage and PeopleManagement edit forms
+- First name field auto-parses on blur: "Andrew Lynn" → first_name="Andrew", last_name="Lynn"
+- Company contacts display company name as primary name instead of first/last
+- Building icon shown for company contacts in People list (vs User icon for persons)
+- Company field always visible (not hidden behind is_internal toggle); shows "required" placeholder for company type
+- Display name fallback chain: company contacts → company name; person contacts → full_name → name → first+last → company → 'Unknown'
+**Files:** `src/components/ContactDetailPage.js`, `src/components/PeopleManagement.js`, DB migration `add_contact_type_column`
+
+### Activity Log — Error Message Fix
+**What:** Fixed [object Object] display when activity log fails to load.
+**Why:** Supabase error objects were being thrown/caught as-is, and when displayed in the UI they showed as `[object Object]` instead of a readable message.
+**Details:**
+- `ticketActivityService.getTicketActivity`: extracts `error.message` before throwing, wraps in proper `new Error()`
+- `TicketActivityLog` component: extracts `err.message` and shows descriptive error text
+**Files:** `src/services/ticketActivityService.js`, `src/components/Service/TicketActivityLog.js`
+
 ## 2026-02-12
 
 ### Email Agent — Ticket Priority Fix + Auto-Reply Confidence Slider
