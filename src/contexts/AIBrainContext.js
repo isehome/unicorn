@@ -12,6 +12,7 @@ import { pageContextService } from '../services/pageContextService';
 import { getPatternRoute, PAGE_REGISTRY } from '../config/pageRegistry';
 import { companySettingsService } from '../services/companySettingsService';
 import aiContextService from '../services/aiContextService';
+import { authFetch } from '../lib/authenticatedFetch';
 
 // Audio settings - Gemini expects 16kHz input, sends 24kHz output
 const GEMINI_INPUT_SAMPLE_RATE = 16000;
@@ -305,7 +306,8 @@ ${buildContextString(state)}`;
 
     const searchKnowledgeBase = async (query, manufacturer) => {
         try {
-            const response = await fetch('/api/azure-ai-search', {
+            // Use authFetch to include MSAL Bearer token — the API requires authentication
+            const response = await authFetch('/api/azure-ai-search', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ query, manufacturer, limit: 5 }),
