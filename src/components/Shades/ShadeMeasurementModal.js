@@ -5,7 +5,6 @@ import { useAppState } from '../../contexts/AppStateContext';
 import Button from '../ui/Button';
 import { projectShadeService } from '../../services/projectShadeService';
 import { supabase } from '../../lib/supabase';
-import { useShadeTools } from '../../hooks/useShadeTools';
 
 // Headrail style options
 const HEADRAIL_STYLES = ['Pocket', 'Fascia', 'Fascia + Top Back Cover', 'Top Back Cover'];
@@ -401,17 +400,6 @@ const ShadeMeasurementModal = ({ isOpen, onClose, shade, onSave, currentUser, av
         // Auto-save to database
         autoSaveField(field, value);
     }, [autoSaveField]);
-
-    // NEW: Global Copilot Tools
-    useShadeTools({
-        formData,
-        setFormData,
-        activeTab,
-        shade,
-        onClose,
-        onSave: () => handleSaveClick(),
-        setActiveField
-    });
 
     const handlePhotoUpload = async (e) => {
         const file = e.target.files?.[0];
