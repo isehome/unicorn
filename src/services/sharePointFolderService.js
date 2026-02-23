@@ -59,7 +59,7 @@ class SharePointFolderService {
    * @param {string} rootFolderUrl - SharePoint root folder URL (e.g., https://tenant.sharepoint.com/sites/SiteName/Shared Documents/ClientName)
    * @returns {Promise<Object>} Subfolder URLs
    */
-  async initializeProjectFolders(projectId, rootFolderUrl) {
+  async initializeProjectFolders(projectId, rootFolderUrl, authToken = null) {
     try {
       console.log(`Initializing SharePoint folders for project ${projectId}`);
 
@@ -79,11 +79,16 @@ class SharePointFolderService {
 
       // Call backend API to verify/create subfolders
       // Don't encode the URL here - the API will handle encoding
+      const headers = {
+        'Content-Type': 'application/json',
+      };
+      if (authToken) {
+        headers['Authorization'] = `Bearer ${authToken}`;
+      }
+
       const response = await fetch('/api/sharepoint-init-folders', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers,
         body: JSON.stringify({
           rootFolderUrl: normalizedRootUrl,
           subfolders: Object.values(STANDARD_SUBFOLDERS)
@@ -334,13 +339,18 @@ class SharePointFolderService {
    * @param {string} folderUrl - Folder URL to test
    * @returns {Promise<boolean>} True if accessible
    */
-  async testFolderAccess(folderUrl) {
+  async testFolderAccess(folderUrl, authToken = null) {
     try {
+      const headers = {
+        'Content-Type': 'application/json',
+      };
+      if (authToken) {
+        headers['Authorization'] = `Bearer ${authToken}`;
+      }
+
       const response = await fetch('/api/sharepoint-test-access', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers,
         body: JSON.stringify({ folderUrl })
       });
 

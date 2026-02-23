@@ -2795,6 +2795,7 @@ get_advisors(project_id: "dpteljnierdubqsqxfye", type: "performance")
 |-----------|------|------|
 | `20260211_enable_rls_unprotected_tables.sql` | 2026-02-11 | Enabled RLS on 14 tables, added placeholder policies |
 | `20260211_convert_security_definer_views_to_invoker.sql` | 2026-02-11 | Converted 21 views from SECURITY DEFINER to INVOKER |
+| `fix_global_parts_rls_allow_anon.sql` | 2026-02-23 | Fixed `global_parts` write policy: `authenticated` → `anon, authenticated` |
 
 ---
 
@@ -4275,6 +4276,62 @@ The application needs a proper user capabilities/roles system to control access 
 ---
 
 # PART 6: CHANGELOG
+
+## 2026-02-23
+
+### Lucid Proxy & SharePoint Init — 401 Auth Fix
+**What:** Fixed "Missing or malformed Authorization header" 401 errors on `/api/lucid-proxy` and `/api/sharepoint-init-folders` API routes.
+**Why:** Both `callLucidProxy()` and `sharePointFolderService.initializeProjectFolders()` were calling backend endpoints without the MSAL Bearer token. The backend's `requireAuth()` middleware rejected every request.
+**Details:**
+- `lucidApi.js`: `callLucidProxy` now accepts `authToken` param, sends `Authorization: Bearer` header. All exported functions (`fetchDocumentContents`, `fetchDocumentMetadata`, `exportDocumentPage`, `requestLucidEmbedToken`, `exportShapeFocusImage`) thread the token through.
+- `sharePointFolderService.js`: `initializeProjectFolders` and `testFolderAccess` now accept and send `authToken`.
+- `floorPlanProcessor.js`: Renamed misnamed `apiKey` param to `authToken`, fixed `exportDocumentPage` call signature.
+- All calling components (`PMProjectView`, `LucidChartCarousel`, `LucidImageDisplay`, `LucidDiagnostic`) now get `accessToken` from `useAuth()` and pass it.
+- `api/lucid-proxy.js`: Added `Authorization` to CORS `Access-Control-Allow-Headers`.
+**Files:** `src/services/lucidApi.js`, `src/services/sharePointFolderService.js`, `src/services/floorPlanProcessor.js`, `src/components/PMProjectView.js`, `src/components/LucidChartCarousel.js`, `src/components/LucidImageDisplay.js`, `src/components/LucidDiagnostic.js`, `api/lucid-proxy.js`
+
+### Global Parts — CSV Import RLS Fix
+**What:** Fixed new parts not being added to `global_parts` table during CSV import.
+**Why:** The `global_parts` RLS write policy only allowed the `authenticated` role. Since the app uses MSAL (not Supabase Auth), all client requests come in as `anon`. Inserts from `syncGlobalParts()` were silently denied by RLS.
+**Details:**
+- Dropped `global_parts_write_authenticated` policy (was `FOR ALL TO authenticated`)
+- Created `global_parts_write_all` policy (`FOR ALL TO anon, authenticated`) matching `project_equipment` pattern
+- Migration: `supabase/migrations/fix_global_parts_rls_allow_anon.sql`
+- Already applied to production database
+**Files:** `supabase/migrations/fix_global_parts_rls_allow_anon.sql`
+
+## 2026-02-16
+
+### Service Dashboard — "Show All" Button in Tickets by Category
+**What:** Added a "Show All" card to the Tickets by Category grid on the Service Dashboard.
+**Why:** Users had no way to clear the category filter once a category was selected — they had to manually clear filters from the filter panel. Steve wanted a one-click way back to "all categories."
+**Details:**
+- New "Show All" card at the start of the category grid with LayoutGrid icon and total ticket count
+- Active category now visually highlighted with violet border/background
+- Category buttons are now togglable (click again to deselect)
+**Files:** `src/components/Service/ServiceDashboard.js`
+
+### Contacts — Name Auto-Parsing + Person/Company Toggle
+**What:** Added contact_type column (person/company) with toggle UI, and auto-parsing of full names into first/last fields.
+**Why:** Users were entering "Andrew Lynn" in the first name field and leaving last name blank. Also needed a way to create company contacts where the company name is the primary display name instead of showing "Unknown."
+**Details:**
+- DB migration: `contacts.contact_type` column (text, CHECK person/company, default person)
+- Existing contacts with company but no first/last name auto-set to 'company' type
+- Person/Company toggle (violet segmented button) at top of both ContactDetailPage and PeopleManagement edit forms
+- First name field auto-parses on blur: "Andrew Lynn" → first_name="Andrew", last_name="Lynn"
+- Company contacts display company name as primary name instead of first/last
+- Building icon shown for company contacts in People list (vs User icon for persons)
+- Company field always visible (not hidden behind is_internal toggle); shows "required" placeholder for company type
+- Display name fallback chain: company contacts → company name; person contacts → full_name → name → first+last → company → 'Unknown'
+**Files:** `src/components/ContactDetailPage.js`, `src/components/PeopleManagement.js`, DB migration `add_contact_type_column`
+
+### Activity Log — Error Message Fix
+**What:** Fixed [object Object] display when activity log fails to load.
+**Why:** Supabase error objects were being thrown/caught as-is, and when displayed in the UI they showed as `[object Object]` instead of a readable message.
+**Details:**
+- `ticketActivityService.getTicketActivity`: extracts `error.message` before throwing, wraps in proper `new Error()`
+- `TicketActivityLog` component: extracts `err.message` and shows descriptive error text
+**Files:** `src/services/ticketActivityService.js`, `src/components/Service/TicketActivityLog.js`
 
 ## 2026-02-12
 
