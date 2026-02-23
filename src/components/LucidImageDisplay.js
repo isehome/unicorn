@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Loader, Download, RefreshCw, AlertCircle } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
+import { useAuth } from '../contexts/AuthContext';
 import { enhancedStyles } from '../styles/styleSystem';
 import { exportDocumentPage, fetchDocumentContents } from '../services/lucidApi';
 
@@ -17,8 +18,9 @@ const LucidImageDisplay = ({
   dpi = 72 // Lower DPI for faster loading, smaller files
 }) => {
   const { mode } = useTheme();
+  const { accessToken } = useAuth();
   const sectionStyles = enhancedStyles.sections[mode];
-  
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [pages, setPages] = useState([]);
@@ -43,7 +45,7 @@ const LucidImageDisplay = ({
       try {
         setLoading(true);
         setError(null);
-        const contents = await fetchDocumentContents(docId);
+        const contents = await fetchDocumentContents(docId, accessToken);
         if (contents.pages && contents.pages.length > 0) {
           setPages(contents.pages);
         } else {
@@ -71,14 +73,15 @@ const LucidImageDisplay = ({
         
         const page = pages[currentPage];
         const imageDataUrl = await exportDocumentPage(
-          docId, 
-          currentPage, 
+          docId,
+          currentPage,
           page.id,
           {
             format: 'png',
             dpi: dpi,
             forceProxy: true
-          }
+          },
+          accessToken
         );
         
         if (imageDataUrl) {

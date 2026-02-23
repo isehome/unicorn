@@ -291,7 +291,7 @@ const PMProjectViewEnhanced = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { mode } = useTheme();
-  const { user } = useAuth();
+  const { user, accessToken } = useAuth();
   const sectionStyles = enhancedStyles.sections[mode];
   const { publishState, registerActions, unregisterActions } = useAppState();
 
@@ -1278,9 +1278,6 @@ const PMProjectViewEnhanced = () => {
     try {
       console.log('[Milestone Update] Called:', { milestoneType, field, value });
 
-      // Get current user for tracking
-      const { data: { user } } = await supabase.auth.getUser();
-
       // Find existing milestone or create new one
       const existingMilestone = milestoneDates.find(m => m.milestone_type === milestoneType);
 
@@ -1452,7 +1449,8 @@ const PMProjectViewEnhanced = () => {
 
           const folderResult = await sharePointFolderService.initializeProjectFolders(
             projectId,
-            clientFolderUrlToSave
+            clientFolderUrlToSave,
+            accessToken
           );
 
           console.log('Folder initialization result:', folderResult);
@@ -1756,9 +1754,6 @@ const PMProjectViewEnhanced = () => {
 
         const permit = permits[0];
         console.log('[Initial Sync] Found permit:', permit);
-
-        // Get current user for tracking
-        const { data: { user } } = await supabase.auth.getUser();
 
         // Check rough_in_inspection milestone
         const roughInMilestone = milestoneDates.find(m => m.milestone_type === 'rough_in_inspection');
@@ -2203,7 +2198,7 @@ const PMProjectViewEnhanced = () => {
       }
 
       // Fetch document contents
-      const docData = await fetchDocumentContents(documentId);
+      const docData = await fetchDocumentContents(documentId, accessToken);
 
       // Extract shapes
       const shapes = extractShapes(docData);

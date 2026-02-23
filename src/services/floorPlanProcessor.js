@@ -36,10 +36,10 @@ async function getImageDimensions(blob) {
  * Process and cache all floor plans for a project
  * @param {string} projectId - Project UUID
  * @param {string} lucidDocumentId - Lucid document ID
- * @param {string} apiKey - Lucid API key (optional)
+ * @param {string} authToken - MSAL access token for API authentication (optional)
  * @returns {Promise<{pages: Array, shapes: Array}>}
  */
-export async function processAndCacheFloorPlans(projectId, lucidDocumentId, apiKey) {
+export async function processAndCacheFloorPlans(projectId, lucidDocumentId, authToken) {
   if (!projectId || !lucidDocumentId) {
     throw new Error('Project ID and Lucid document ID are required');
   }
@@ -47,7 +47,7 @@ export async function processAndCacheFloorPlans(projectId, lucidDocumentId, apiK
   try {
     // 1. Fetch document contents to get pages and shapes
     console.log('Fetching document contents...');
-    const docContents = await fetchDocumentContents(lucidDocumentId, apiKey);
+    const docContents = await fetchDocumentContents(lucidDocumentId, authToken);
     
     if (!docContents.pages || docContents.pages.length === 0) {
       throw new Error('No pages found in document');
@@ -76,7 +76,7 @@ export async function processAndCacheFloorPlans(projectId, lucidDocumentId, apiK
       try {
         // Export page as image
         console.log(`Exporting page ${i + 1} as image...`);
-        const imageBlob = await exportDocumentPage(lucidDocumentId, i, apiKey);
+        const imageBlob = await exportDocumentPage(lucidDocumentId, i, null, {}, authToken);
         
         // Get image dimensions
         const imageDimensions = await getImageDimensions(imageBlob);

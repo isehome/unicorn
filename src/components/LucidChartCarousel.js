@@ -15,6 +15,7 @@ import {
 } from '../services/lucidApi';
 import { preloadDocumentPages, getCachedPageImage } from '../services/lucidCacheService';
 import { useTheme } from '../contexts/ThemeContext';
+import { useAuth } from '../contexts/AuthContext';
 import { enhancedStyles } from '../styles/styleSystem';
 
 const THUMB_SCALE = 0.45;
@@ -92,6 +93,7 @@ const EmbedModal = ({ isOpen, onClose, documentId, page }) => {
 
 const LucidChartCarousel = ({ documentUrl, projectName }) => {
   const { mode } = useTheme();
+  const { accessToken } = useAuth();
   const sectionStyles = enhancedStyles.sections[mode];
   const [pages, setPages] = useState([]);
   const [thumbnails, setThumbnails] = useState({});
@@ -207,7 +209,7 @@ const LucidChartCarousel = ({ documentUrl, projectName }) => {
 
         let metadata = null;
         try {
-          metadata = await fetchDocumentMetadata(docId);
+          metadata = await fetchDocumentMetadata(docId, accessToken);
         } catch (metaError) {
           console.warn('Failed to fetch Lucid metadata, falling back to contents:', metaError);
         }
@@ -222,7 +224,7 @@ const LucidChartCarousel = ({ documentUrl, projectName }) => {
         }
 
         if (pageData.length === 0) {
-          const contents = await fetchDocumentContents(docId);
+          const contents = await fetchDocumentContents(docId, accessToken);
           if (!contents?.pages?.length) {
             throw new Error('This Lucid document does not have any pages.');
           }

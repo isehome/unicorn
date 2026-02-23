@@ -26,7 +26,7 @@ const isLucidBetaEnabled = () => {
   return true;
 };
 
-const callLucidProxy = async (payload = {}) => {
+const callLucidProxy = async (payload = {}, authToken = null) => {
   // The proxy endpoint can be either:
   // - A full URL (for local dev pointing to deployed proxy): https://unicorn-one.vercel.app/api/lucid-proxy
   // - A relative path (for production where API route is on same domain): /api/lucid-proxy
@@ -34,11 +34,16 @@ const callLucidProxy = async (payload = {}) => {
     throw new Error('Lucid proxy endpoint not configured.');
   }
 
+  const headers = {
+    'Content-Type': 'application/json'
+  };
+  if (authToken) {
+    headers['Authorization'] = `Bearer ${authToken}`;
+  }
+
   const response = await fetch(PROXY_ENDPOINT, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    },
+    headers,
     body: JSON.stringify(payload)
   });
 
@@ -70,7 +75,7 @@ const callLucidProxy = async (payload = {}) => {
  * @returns {Promise<Object>} Document contents with pages, shapes, lines, and groups
  * @throws {Error} If the API request fails
  */
-export const fetchDocumentContents = async (documentId) => {
+export const fetchDocumentContents = async (documentId, authToken = null) => {
   if (!documentId) {
     throw new Error('Document ID is required');
   }
@@ -132,7 +137,7 @@ export const fetchDocumentContents = async (documentId) => {
           includeProperties: useBeta,
           betaFeature: useBeta ? 'element-styles' : null
         }
-      });
+      }, authToken);
     }
   } catch (error) {
     // Re-throw errors with additional context
@@ -148,7 +153,7 @@ export const fetchDocumentContents = async (documentId) => {
  * @param {string} documentId - Lucid document ID
  * @returns {Promise<Object>} Metadata payload from Lucid
  */
-export const fetchDocumentMetadata = async (documentId) => {
+export const fetchDocumentMetadata = async (documentId, authToken = null) => {
   if (!documentId) {
     throw new Error('Document ID is required');
   }
@@ -172,7 +177,7 @@ export const fetchDocumentMetadata = async (documentId) => {
     return response.json();
   }
 
-  return callLucidProxy({ documentId, action: 'metadata' });
+  return callLucidProxy({ documentId, action: 'metadata' }, authToken);
 };
 
 /**
@@ -430,7 +435,7 @@ export const validateApiKeyFormat = (apiKey) => {
  * @param {string} pageId - Optional page ID from Lucid document
  * @returns {Promise<string>} - Base64 data URL of the image
  */
-export const exportDocumentPage = async (documentId, pageNumber = null, pageId = null, options = {}) => {
+export const exportDocumentPage = async (documentId, pageNumber = null, pageId = null, options = {}, authToken = null) => {
   if (!documentId) {
     throw new Error('Document ID is required');
   }
@@ -486,7 +491,7 @@ export const exportDocumentPage = async (documentId, pageNumber = null, pageId =
       payload.format = options.format;
     }
 
-    const data = await callLucidProxy(payload);
+    const data = await callLucidProxy(payload, authToken);
 
     if (data.image) {
       return data.image;
@@ -505,7 +510,7 @@ export const exportDocumentPage = async (documentId, pageNumber = null, pageId =
  * @param {Object} options - Additional embed options
  * @returns {Promise<Object>} - Embed token response
  */
-export const requestLucidEmbedToken = async (documentId, options = {}) => {
+export const requestLucidEmbedToken = async (documentId, options = {}, authToken = null) => {
   if (!documentId) {
     throw new Error('Document ID is required');
   }
@@ -546,7 +551,7 @@ export const requestLucidEmbedToken = async (documentId, options = {}) => {
     documentId,
     action: 'embedToken',
     embedOptions: options
-  });
+  }, authToken);
 
   if (!data || (!data.token && !data.embedToken && !data.accessToken)) {
     throw new Error('Proxy returned an empty embed token response');
@@ -562,13 +567,13 @@ export const requestLucidEmbedToken = async (documentId, options = {}) => {
  * @param {Object} options - { padding, scale, format }
  * @returns {Promise<string>} - Base64 data URL of the cropped image
  */
-export const exportShapeFocusImage = async (documentId, shapeId, options = {}) => {
+export const exportShapeFocusImage = async (documentId, shapeId, options = {}, authToken = null) => {
   if (!documentId || !shapeId) {
     throw new Error('Document ID and shape ID are required');
   }
 
   const { padding = 80, scale = 2, format = 'png' } = options;
-  const docData = await fetchDocumentContents(documentId);
+  const docData = await fetchDocumentContents(documentId, authToken);
 
   let targetPageId = null;
   let targetPageIndex = null;
@@ -597,7 +602,7 @@ export const exportShapeFocusImage = async (documentId, shapeId, options = {}) =
     crop,
     scale,
     format
-  });
+  }, authToken);
 };
 
 /**

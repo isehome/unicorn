@@ -9,6 +9,7 @@ import {
   Eye
 } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
+import { useAuth } from '../contexts/AuthContext';
 import { enhancedStyles } from '../styles/styleSystem';
 import {
   fetchDocumentMetadata,
@@ -21,6 +22,7 @@ import LucidImageDisplay from './LucidImageDisplay';
 
 const LucidDiagnostic = () => {
   const { mode } = useTheme();
+  const { accessToken } = useAuth();
   const sectionStyles = enhancedStyles.sections[mode];
   
   const [documentUrl, setDocumentUrl] = useState('');
@@ -79,7 +81,7 @@ const LucidDiagnostic = () => {
     setError(null);
 
     try {
-      const meta = await fetchDocumentMetadata(documentId);
+      const meta = await fetchDocumentMetadata(documentId, accessToken);
       setMetadata(meta);
       addTestResult('Fetch Metadata', true, `Retrieved metadata for "${meta.title || 'Untitled'}"`, meta);
     } catch (err) {
@@ -100,7 +102,7 @@ const LucidDiagnostic = () => {
     setError(null);
 
     try {
-      const data = await fetchDocumentContents(documentId);
+      const data = await fetchDocumentContents(documentId, accessToken);
       setContents(data);
       addTestResult(
         'Fetch Contents', 
@@ -130,7 +132,7 @@ const LucidDiagnostic = () => {
         scale: 2,
         format: 'png',
         forceProxy: true // Force using the proxy to bypass CORS
-      });
+      }, accessToken);
 
       if (!imageDataUrl) {
         throw new Error('No image data received');
@@ -207,12 +209,12 @@ const LucidDiagnostic = () => {
         // Step 2: Fetch metadata
         setLoading(true);
         try {
-          const meta = await fetchDocumentMetadata(extractedId);
+          const meta = await fetchDocumentMetadata(extractedId, accessToken);
           setMetadata(meta);
           addTestResult('Fetch Metadata', true, `Retrieved metadata for "${meta.title || 'Untitled'}"`, meta);
-          
+
           // Step 3: Fetch contents
-          const data = await fetchDocumentContents(extractedId);
+          const data = await fetchDocumentContents(extractedId, accessToken);
           setContents(data);
           addTestResult(
             'Fetch Contents',
