@@ -665,7 +665,7 @@ const BugTodosTab = () => {
                     {/* Fix Summary - shown for pending_review bugs */}
                     {bug.status === 'pending_review' && bug.fix_summary && (
                       <div
-                        className="mt-2 px-3 py-2 rounded-lg text-sm font-medium cursor-pointer transition-opacity hover:opacity-80"
+                        className="mt-2 px-3 py-2 rounded-lg text-sm cursor-pointer transition-opacity hover:opacity-80"
                         style={{
                           backgroundColor: '#94AF32',
                           color: 'white'
@@ -676,7 +676,33 @@ const BugTodosTab = () => {
                         }}
                         title="Click for fix details"
                       >
-                        Fix Summary: {bug.fix_summary}
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-medium truncate">Fix: {bug.fix_summary}</span>
+                          <div className="flex items-center gap-2 flex-shrink-0 text-xs opacity-80">
+                            {bug.fix_summary_source && (
+                              <span className="px-1.5 py-0.5 rounded" style={{ backgroundColor: 'rgba(255,255,255,0.2)' }}>
+                                {bug.fix_summary_source === 'claude_session' ? 'Claude' : bug.fix_summary_source === 'auto_detected' ? 'Auto' : bug.fix_summary_source}
+                              </span>
+                            )}
+                            {bug.fix_committed_sha && (
+                              <a
+                                href={`https://github.com/isehome/unicorn/commit/${bug.fix_committed_sha}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                className="underline"
+                                style={{ color: 'rgba(255,255,255,0.9)' }}
+                              >
+                                {bug.fix_committed_sha.slice(0, 7)}
+                              </a>
+                            )}
+                            {!bug.fix_summary_source && !bug.fix_committed_sha && (
+                              <span className="px-1.5 py-0.5 rounded italic" style={{ backgroundColor: 'rgba(255,255,255,0.15)' }}>
+                                Unverified
+                              </span>
+                            )}
+                          </div>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -1125,9 +1151,66 @@ const BugTodosTab = () => {
                 borderLeft: '4px solid #94AF32'
               }}
             >
-              <h4 className="text-xs font-medium mb-2" style={{ color: '#94AF32' }}>Fix Summary</h4>
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="text-xs font-medium" style={{ color: '#94AF32' }}>Fix Summary</h4>
+                <div className="flex items-center gap-2">
+                  {fixDetailsBug.fix_summary_source ? (
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                      fixDetailsBug.fix_summary_source === 'claude_session'
+                        ? 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300'
+                        : fixDetailsBug.fix_summary_source === 'auto_detected'
+                        ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
+                        : 'bg-zinc-100 text-zinc-600 dark:bg-zinc-700 dark:text-zinc-300'
+                    }`}>
+                      {fixDetailsBug.fix_summary_source === 'claude_session' ? 'Claude Session' : fixDetailsBug.fix_summary_source === 'auto_detected' ? 'Auto-Detected' : fixDetailsBug.fix_summary_source}
+                    </span>
+                  ) : (
+                    <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+                      Unverified Source
+                    </span>
+                  )}
+                </div>
+              </div>
               <p className={`text-sm ${textPrimary} whitespace-pre-wrap`}>{fixDetailsBug.fix_summary}</p>
             </div>
+
+            {/* Git provenance - commit and branch info */}
+            {(fixDetailsBug.fix_committed_sha || fixDetailsBug.fix_branch) && (
+              <div className={`p-3 rounded-lg mb-4 ${mode === 'dark' ? 'bg-zinc-700/50' : 'bg-zinc-100'}`}>
+                <h4 className={`text-xs font-medium ${textSecondary} mb-2`}>Code Changes</h4>
+                <div className="space-y-1">
+                  {fixDetailsBug.fix_committed_sha && (
+                    <div className="flex items-center gap-2 text-xs">
+                      <span className={textSecondary}>Commit:</span>
+                      <a
+                        href={`https://github.com/isehome/unicorn/commit/${fixDetailsBug.fix_committed_sha}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-mono text-violet-500 hover:underline"
+                      >
+                        {fixDetailsBug.fix_committed_sha.slice(0, 7)}
+                      </a>
+                      <span className={`${textSecondary} opacity-60`}>— click to view diff on GitHub</span>
+                    </div>
+                  )}
+                  {fixDetailsBug.fix_branch && (
+                    <div className="flex items-center gap-2 text-xs">
+                      <span className={textSecondary}>Branch:</span>
+                      <span className={`font-mono ${textPrimary}`}>{fixDetailsBug.fix_branch}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Warning if no provenance */}
+            {!fixDetailsBug.fix_committed_sha && !fixDetailsBug.fix_summary_source && (
+              <div className="p-3 rounded-lg mb-4 border" style={{ backgroundColor: 'rgba(251, 191, 36, 0.1)', borderColor: 'rgba(251, 191, 36, 0.3)' }}>
+                <p className="text-xs text-amber-600 dark:text-amber-400">
+                  This fix summary has no linked commit or verified source. It may have been written speculatively before the actual fix was implemented.
+                </p>
+              </div>
+            )}
 
             {/* Affected files if available */}
             {fixDetailsBug.ai_suggested_files?.length > 0 && (

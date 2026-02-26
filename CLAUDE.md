@@ -183,16 +183,34 @@ For each open bug you're about to fix, compare its `ai_summary` and `ai_suggeste
 ```sql
 UPDATE bug_reports SET status = 'fixed',
   fix_summary = 'Duplicate of BR-YYYY-MM-DD-NNNN — already fixed on [date]',
+  fix_summary_source = 'claude_session',
   fixed_at = NOW()
 WHERE bug_report_id = 'BR-...';
 ```
 
 **STEP 2: Fix the bug** — implement the fix, commit, push to your session branch (NOT main)
 
-**STEP 3: Mark pending_review in Supabase** (don't try to call the Vercel API):
+**STEP 3: Mark pending_review in Supabase with PROVENANCE (MANDATORY)**
+
+⚠️ **NEVER mark a bug as pending_review without a real commit SHA.** If you haven't committed code that fixes the bug, do NOT update the status. Speculative fixes (e.g., "likely fixed by..." without a specific commit) are NOT allowed.
+
+After committing, get the commit SHA: `git rev-parse HEAD`
+
 ```sql
-UPDATE bug_reports SET status = 'pending_review',
-  fix_summary = 'What was fixed and how'
+UPDATE bug_reports SET
+  status = 'pending_review',
+  fix_summary = 'Describe what was actually changed in the code',
+  fix_summary_source = 'claude_session',
+  fix_committed_sha = 'abc1234full_sha_here',
+  fix_branch = 'claude/2026-MM-DD-your-branch',
+  fixed_at = NOW()
 WHERE bug_report_id = 'BR-YYYY-MM-DD-NNNN';
 ```
-Steve approves fixes through the Unicorn UI (green summary box → modal → Approve).
+
+**Required fields when marking pending_review:**
+- `fix_summary` — What code was changed and why (must describe actual changes, not speculation)
+- `fix_summary_source` — Always `'claude_session'` for Claude fixes
+- `fix_committed_sha` — The actual git commit SHA containing the fix
+- `fix_branch` — The branch the fix was committed on
+
+Steve approves fixes through the Unicorn UI (green summary box → modal → Approve). The UI now shows the commit SHA as a clickable link to the GitHub diff, and flags summaries without provenance as "Unverified."

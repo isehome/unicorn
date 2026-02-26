@@ -36,14 +36,14 @@ const AI_MODELS = {
     capabilities: ['text', 'vision', 'json', 'code', 'audio'],
   },
 
-  // Best reasoning - for complex research tasks
+  // Best reasoning - Gemini 3.1 Pro (replaces 2.5 Pro)
   'gemini-pro': {
-    id: 'gemini-2.5-pro-preview-05-06',
-    name: 'Gemini 2.5 Pro',
-    description: 'Best reasoning, document research, grounding',
+    id: 'gemini-3.1-pro-preview',
+    name: 'Gemini 3.1 Pro',
+    description: 'Best reasoning, code analysis, deep multimodal understanding',
     status: 'preview',
     costTier: 'high',
-    capabilities: ['text', 'vision', 'json', 'code', 'grounding', 'long-context'],
+    capabilities: ['text', 'vision', 'json', 'code', 'grounding', 'long-context', 'thinking'],
   },
 
   // Native audio for real-time voice
@@ -82,12 +82,20 @@ const AI_MODELS = {
 // ================================
 
 const AI_SERVICES = {
-  // Bug report analysis with screenshot understanding
+  // Bug report initial triage - fast classification, severity, affected files
   BUG_ANALYZER: {
     model: 'gemini-flash-3',
-    description: 'Bug report analysis with screenshot understanding',
+    description: 'Bug report triage: severity, summary, affected files (step 1)',
     temperature: 0.2,
     maxTokens: 4096,
+  },
+
+  // Bug report deep analysis - detailed code fix recommendations for complex bugs
+  BUG_ANALYZER_DEEP: {
+    model: 'gemini-pro',
+    description: 'Deep code analysis for complex bugs: auth, data, API issues (step 2)',
+    temperature: 0.2,
+    maxTokens: 8192,
   },
 
   // Email classification and response generation

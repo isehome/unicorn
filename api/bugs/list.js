@@ -84,7 +84,14 @@ module.exports = async (req, res) => {
         initial_email_sent_at,
         analysis_email_sent_at,
         fix_summary,
-        fixed_at
+        fix_summary_source,
+        fix_committed_sha,
+        fix_branch,
+        fix_verified_at,
+        fix_verified_by,
+        fixed_at,
+        ai_analysis_model,
+        ai_deep_analysis_model
       `, { count: 'exact' })
       .order(sortColumn, { ascending })
       .range(offset, offset + limitNum - 1);
