@@ -2,7 +2,7 @@
  * Bug Report Single Item API
  *
  * GET /api/bugs/[id] - Get a single bug report with full details
- * DELETE /api/bugs/[id] - Delete a bug report (marks as fixed)
+ * DELETE /api/bugs/[id] - Archive a bug report (marks as fixed, closes GitHub PR)
  * POST /api/bugs/[id] - Reanalyze a bug report (resets to pending)
  */
 
@@ -82,7 +82,7 @@ module.exports = async (req, res) => {
       });
     }
 
-    // DELETE - Delete bug report (mark as fixed)
+    // DELETE - Archive bug report (mark as fixed, close GitHub PR)
     if (req.method === 'DELETE') {
       // First get the bug to get GitHub info
       const { data: bug, error: fetchError } = await supabase

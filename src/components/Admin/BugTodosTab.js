@@ -8,7 +8,7 @@ import {
   Bug, Clock, CheckCircle, AlertCircle, XCircle,
   Loader2, RefreshCw, Trash2, RotateCw,
   ChevronDown, ChevronUp, Github,
-  Copy, Check, Image, Code, Download
+  Copy, Check, Image, Code, Download, Archive
 } from 'lucide-react';
 import { useTheme } from '../../contexts/ThemeContext';
 import { authFetch } from '../../lib/authenticatedFetch';
@@ -26,7 +26,7 @@ const BugTodosTab = () => {
   const [copiedField, setCopiedField] = useState(null);
   const [bugDetails, setBugDetails] = useState({});
   const [loadingDetails, setLoadingDetails] = useState({});
-  const [deleteConfirm, setDeleteConfirm] = useState(null); // Bug ID to confirm deletion
+  const [archiveConfirm, setArchiveConfirm] = useState(null); // Bug ID to confirm archiving
   const [fixDetailsBug, setFixDetailsBug] = useState(null); // Bug to show fix details modal
 
   // Styles
@@ -88,38 +88,38 @@ const BugTodosTab = () => {
   }, [loadBugs]);
 
   /**
-   * Show delete confirmation modal
+   * Show archive confirmation modal
    */
-  const confirmDelete = (bugId) => {
-    console.log('[BugTodosTab] confirmDelete called with bugId:', bugId);
-    setDeleteConfirm(bugId);
+  const confirmArchive = (bugId) => {
+    console.log('[BugTodosTab] confirmArchive called with bugId:', bugId);
+    setArchiveConfirm(bugId);
   };
 
   /**
-   * Actually delete a bug report (called after confirmation)
+   * Archive a bug report — marks as fixed in DB, closes GitHub PR
    */
-  const handleDelete = async (bugId) => {
-    console.log('[BugTodosTab] handleDelete executing for bugId:', bugId);
-    setDeleteConfirm(null); // Close modal
+  const handleArchive = async (bugId) => {
+    console.log('[BugTodosTab] handleArchive executing for bugId:', bugId);
+    setArchiveConfirm(null); // Close modal
     setActionLoading(bugId);
     try {
       const response = await authFetch(`/api/bugs/${bugId}`, {
         method: 'DELETE'
       });
-      console.log('[BugTodosTab] Delete response status:', response.status);
+      console.log('[BugTodosTab] Archive response status:', response.status);
 
       if (!response.ok) {
         const data = await response.json();
-        console.error('[BugTodosTab] Delete failed:', data);
-        throw new Error(data.error || 'Failed to delete bug report');
+        console.error('[BugTodosTab] Archive failed:', data);
+        throw new Error(data.error || 'Failed to archive bug report');
       }
 
       const result = await response.json();
-      console.log('[BugTodosTab] Delete successful:', result);
+      console.log('[BugTodosTab] Archive successful:', result);
       await loadBugs();
     } catch (err) {
-      console.error('[BugTodosTab] Error deleting bug:', err);
-      alert('Failed to delete: ' + err.message);
+      console.error('[BugTodosTab] Error archiving bug:', err);
+      alert('Failed to archive: ' + err.message);
     } finally {
       setActionLoading(null);
     }
@@ -733,22 +733,24 @@ const BugTodosTab = () => {
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        confirmDelete(bug.id);
+                        confirmArchive(bug.id);
                       }}
                       disabled={actionLoading === bug.id}
-                      className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                        mode === 'dark'
-                          ? 'bg-red-500/10 text-red-400 hover:bg-red-500/20'
-                          : 'bg-red-50 text-red-600 hover:bg-red-100'
-                      } disabled:opacity-50`}
-                      title="Mark this bug as fixed and delete"
+                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors disabled:opacity-50"
+                      style={{
+                        backgroundColor: 'rgba(148, 175, 50, 0.1)',
+                        color: '#94AF32'
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(148, 175, 50, 0.2)'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'rgba(148, 175, 50, 0.1)'; }}
+                      title="Archive this bug report (mark as fixed)"
                     >
                       {actionLoading === bug.id ? (
                         <Loader2 className="w-3.5 h-3.5 animate-spin" />
                       ) : (
-                        <Trash2 className="w-3.5 h-3.5" />
+                        <Archive className="w-3.5 h-3.5" />
                       )}
-                      Fixed
+                      Archive
                     </button>
 
                     {bug.pr_url && (
@@ -1056,22 +1058,22 @@ const BugTodosTab = () => {
         )}
       </div>
 
-      {/* Delete Confirmation Modal */}
-      {deleteConfirm && (
+      {/* Archive Confirmation Modal */}
+      {archiveConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
           <div className={`${cardBg} rounded-xl border ${borderColor} p-6 max-w-md w-full shadow-xl`}>
             <div className="flex items-center gap-3 mb-4">
-              <div className="p-2 rounded-full bg-red-500/10">
-                <Trash2 className="w-6 h-6 text-red-500" />
+              <div className="p-2 rounded-full" style={{ backgroundColor: 'rgba(148, 175, 50, 0.1)' }}>
+                <Archive className="w-6 h-6" style={{ color: '#94AF32' }} />
               </div>
-              <h3 className={`text-lg font-semibold ${textPrimary}`}>Delete Bug Report?</h3>
+              <h3 className={`text-lg font-semibold ${textPrimary}`}>Archive Bug Report?</h3>
             </div>
             <p className={`${textSecondary} mb-6`}>
-              This will permanently delete the bug report and close any associated GitHub PR. This action cannot be undone.
+              This will mark the bug as fixed and close any associated GitHub PR. The report will be moved to the "Fixed" tab for your records.
             </p>
             <div className="flex gap-3 justify-end">
               <button
-                onClick={() => setDeleteConfirm(null)}
+                onClick={() => setArchiveConfirm(null)}
                 className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                   mode === 'dark'
                     ? 'bg-zinc-700 text-white hover:bg-zinc-600'
@@ -1081,10 +1083,11 @@ const BugTodosTab = () => {
                 Cancel
               </button>
               <button
-                onClick={() => handleDelete(deleteConfirm)}
-                className="px-4 py-2 rounded-lg text-sm font-medium bg-red-500 text-white hover:bg-red-600 transition-colors"
+                onClick={() => handleArchive(archiveConfirm)}
+                className="px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors hover:opacity-90"
+                style={{ backgroundColor: '#94AF32' }}
               >
-                Delete
+                Archive
               </button>
             </div>
           </div>
@@ -1154,12 +1157,12 @@ const BugTodosTab = () => {
               <button
                 onClick={() => {
                   setFixDetailsBug(null);
-                  confirmDelete(fixDetailsBug.id);
+                  confirmArchive(fixDetailsBug.id);
                 }}
                 className="px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors hover:opacity-90"
                 style={{ backgroundColor: '#94AF32' }}
               >
-                Approve Fix
+                Approve & Archive
               </button>
             </div>
           </div>
