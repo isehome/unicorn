@@ -1274,10 +1274,67 @@ export const timeLogsService = {
       console.error('Failed to get weekly time summary:', error);
       return [];
     }
+  },
+
+  async createManualEntry(projectId, { userEmail, userName, workDate, hours, notes, createdBy, createdByName }) {
+    if (!supabase) throw new Error('Supabase not configured');
+
+    const checkIn = new Date(workDate + 'T08:00:00');
+    const checkOut = new Date(checkIn.getTime() + (hours * 3600000));
+
+    const { data, error } = await supabase
+      .from('time_logs')
+      .insert([{
+        project_id: projectId,
+        user_email: userEmail,
+        user_name: userName,
+        check_in: checkIn.toISOString(),
+        check_out: checkOut.toISOString(),
+        duration_minutes: Math.round(hours * 60),
+        is_manual_entry: true,
+        work_date: workDate,
+        notes: notes || null,
+        created_by: createdBy || userEmail,
+        created_by_name: createdByName || userName
+      }])
+      .select()
+      .single();
+
+    if (error) throw new Error(error.message || 'Failed to create manual time entry');
+    return data;
+  },
+
+  async getProjectTimeLogs(projectId) {
+    if (!supabase) return [];
+
+    const { data, error } = await supabase
+      .from('time_logs')
+      .select('*')
+      .eq('project_id', projectId)
+      .order('work_date', { ascending: false, nullsFirst: false })
+      .order('check_in', { ascending: false });
+
+    if (error) {
+      console.error('[timeLogsService] Failed to get project time logs:', error);
+      return [];
+    }
+    return data || [];
+  },
+
+  async deleteManualEntry(entryId) {
+    if (!supabase) throw new Error('Supabase not configured');
+
+    const { error } = await supabase
+      .from('time_logs')
+      .delete()
+      .eq('id', entryId)
+      .eq('is_manual_entry', true);
+
+    if (error) throw new Error(error.message || 'Failed to delete time entry');
   }
 };
 
-// ============= PROJECT PROGRESS SERVICE =============  
+// ============= PROJECT PROGRESS SERVICE =============
 export const projectProgressService = {
   async getProjectProgress(projectId) {
     try {

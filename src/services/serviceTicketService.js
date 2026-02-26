@@ -59,7 +59,8 @@ export const serviceTicketService = {
       }
 
       if (filters.search) {
-        query = query.textSearch('search_vector', filters.search);
+        const term = `%${filters.search}%`;
+        query = query.or(`title.ilike.${term},description.ilike.${term},customer_name.ilike.${term},ticket_number.ilike.${term},customer_address.ilike.${term}`);
       }
 
       if (filters.dateFrom) {

@@ -50,6 +50,7 @@ import MilestoneGaugesDisplay from './MilestoneGaugesDisplay';
 import ProjectPermits from './ProjectPermits';
 import ProjectLinks from './project-detail/ProjectLinks';
 import IssuesSection from './project-detail/IssuesSection';
+import ProjectTimeLogSection from './project-detail/ProjectTimeLogSection';
 import StakeholderDetailModal from './StakeholderDetailModal';
 
 const importanceRanking = {
@@ -983,14 +984,25 @@ const ProjectDetailView = () => {
       }
     };
 
+    const [formError, setFormError] = useState('');
+
     const handleSubmit = async (event) => {
       event.preventDefault();
+      setFormError('');
       if (creatingContact) {
+        if (!selectedRoleId) {
+          setFormError('Please select a role before adding the stakeholder');
+          return;
+        }
         await handleCreateContact();
         return;
       }
-      if (!selectedContactId || selectedContactId === '__add_new__' || !selectedRoleId) {
-        alert('Please select both a contact and role');
+      if (!selectedContactId || selectedContactId === '__add_new__') {
+        setFormError('Please select a contact');
+        return;
+      }
+      if (!selectedRoleId) {
+        setFormError('Please select a role before adding the stakeholder');
         return;
       }
       await onAdd(selectedContactId, selectedRoleId);
@@ -1233,6 +1245,9 @@ const ProjectDetailView = () => {
                     <option value={`${CREATE_ROLE_OPTION}::external`}>+ Create new external role</option>
                   </optgroup>
                 </select>
+                {formError && formError.includes('role') && !selectedRoleId && (
+                  <p className="text-red-400 text-sm mt-1">{formError}</p>
+                )}
               </div>
 
               {creatingRole && (
@@ -1321,7 +1336,6 @@ const ProjectDetailView = () => {
               </button>
               <button
                 type="submit"
-                disabled={!selectedContactId || !selectedRoleId}
                 className="flex-1 py-2 px-4 rounded-xl text-white transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                 style={{ background: palette.accent }}
               >
@@ -2123,6 +2137,13 @@ const ProjectDetailView = () => {
           withAlpha={withAlpha}
           formatDate={formatDate}
           statusChipStyle={statusChipStyle}
+        />
+
+        {/* Time Logs Section */}
+        <ProjectTimeLogSection
+          projectId={id}
+          styles={styles}
+          palette={palette}
         />
 
         <div>

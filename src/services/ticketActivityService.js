@@ -106,8 +106,8 @@ export const ticketActivityService = {
       .limit(limit);
 
     if (error) {
-      console.error('[ticketActivityService] Error fetching activity:', error);
-      throw error;
+      console.error('[ticketActivityService] Error fetching activity:', error.message || error);
+      throw new Error(error.message || 'Failed to fetch ticket activity');
     }
 
     return data || [];
