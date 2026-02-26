@@ -6,6 +6,7 @@
  */
 
 import { graphConfig } from '../config/authConfig';
+import { authFetch } from '../lib/authenticatedFetch';
 
 const getToday = () => {
   const start = new Date();
@@ -1441,7 +1442,7 @@ export const sendMeetingInviteEmail = async (authContext, scheduleDetails) => {
 
     console.log('[Calendar] Sending meeting invite via system account to:', technicianEmail);
 
-    const response = await fetch('/api/system-account/send-meeting-invite', {
+    const response = await authFetch('/api/system-account/send-meeting-invite', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1504,7 +1505,7 @@ export const sendMeetingCancellationEmail = async (authContext, scheduleDetails)
 
     console.log('[Calendar] Sending cancellation via system account', eventId ? `for event ${eventId}` : `to ${technicianEmail}`);
 
-    const response = await fetch('/api/system-account/send-cancellation', {
+    const response = await authFetch('/api/system-account/send-cancellation', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

@@ -1,3 +1,4 @@
+const { authFetch } = require('../lib/authenticatedFetch');
 /**
  * Email Template Service for Purchase Orders
  *
@@ -313,7 +314,7 @@ ${emailData.attachments.length > 0 ? `\nAttachments:\n${emailData.attachments.ma
       formData.append('attachment', pdfBlob, emailData.attachments[0].filename);
     }
 
-    const response = await fetch('/api/send-email', {
+    const response = await authFetch('/api/send-email', {
       method: 'POST',
       body: formData
     });

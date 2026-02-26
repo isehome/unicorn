@@ -5,6 +5,7 @@ import Button from './ui/Button';
 import { supabase } from '../lib/supabase';
 import { useTheme } from '../contexts/ThemeContext';
 import { sharePointStorageService } from '../services/sharePointStorageService';
+import { authFetch } from '../lib/authenticatedFetch';
 
 /**
  * Component for managing documentation links on global parts
@@ -126,7 +127,7 @@ const GlobalPartDocumentationEditor = ({ part, onSave, onCancel }) => {
     setSearchResult(null);
 
     try {
-      const response = await fetch('/api/enrich-single-part-manus', {
+      const response = await authFetch('/api/enrich-single-part-manus', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ partId: part.id })

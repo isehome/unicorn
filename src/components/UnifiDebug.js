@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Wifi, Server, Shield } from 'lucide-react';
+import { authFetch } from '../lib/authenticatedFetch';
 
 const UnifiDebug = () => {
     const [ip, setIp] = useState('192.168.1.1');
@@ -43,7 +44,7 @@ const UnifiDebug = () => {
         };
 
         try {
-            const res = await fetch('/api/unifi-proxy', {
+            const res = await authFetch('/api/unifi-proxy', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
@@ -77,7 +78,7 @@ const UnifiDebug = () => {
         };
 
         try {
-            const res = await fetch('/api/unifi-proxy', {
+            const res = await authFetch('/api/unifi-proxy', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
@@ -109,7 +110,7 @@ const UnifiDebug = () => {
         };
 
         try {
-            const res = await fetch('/api/unifi-proxy', {
+            const res = await authFetch('/api/unifi-proxy', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
@@ -151,7 +152,7 @@ const UnifiDebug = () => {
             };
 
             addLog('Step 1: Fetching sites list...', 'info');
-            const res = await fetch('/api/unifi-proxy', {
+            const res = await authFetch('/api/unifi-proxy', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(sitesPayload)
@@ -184,7 +185,7 @@ const UnifiDebug = () => {
             };
 
             addLog(`Step 2: Fetching clients for Site ID ${siteId}...`, 'info');
-            const res = await fetch('/api/unifi-proxy', {
+            const res = await authFetch('/api/unifi-proxy', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(clientsPayload)
@@ -220,7 +221,7 @@ const UnifiDebug = () => {
                 method: 'GET'
             };
 
-            const res = await fetch('/api/unifi-proxy', {
+            const res = await authFetch('/api/unifi-proxy', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(sitesPayload)
@@ -245,7 +246,7 @@ const UnifiDebug = () => {
             };
 
             addLog(`Fetching devices for Site ID ${siteId}...`, 'info');
-            const res = await fetch('/api/unifi-proxy', {
+            const res = await authFetch('/api/unifi-proxy', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(devicesPayload)

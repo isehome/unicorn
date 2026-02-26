@@ -6,6 +6,7 @@
 
 import { supabase } from '../lib/supabase';
 import { compressImage } from '../lib/images';
+import { authFetch } from '../lib/authenticatedFetch';
 
 const MAX_RETRIES = 3;
 const INITIAL_RETRY_DELAY = 1000;
@@ -321,7 +322,7 @@ export const servicePhotoService = {
           fileSize: file.size
         });
 
-        const response = await fetch('/api/graph-upload', {
+        const response = await authFetch('/api/graph-upload', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -385,7 +386,7 @@ export const servicePhotoService = {
   async deleteFromSharePoint(driveId, itemId) {
     if (!driveId || !itemId) return false;
 
-    const response = await fetch('/api/graph-file', {
+    const response = await authFetch('/api/graph-file', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'delete', driveId, itemId })

@@ -6,6 +6,7 @@ import Button from '../ui/Button';
 import { projectShadeService } from '../../services/projectShadeService';
 import { supabase } from '../../lib/supabase';
 import { useShadeTools } from '../../hooks/useShadeTools';
+import { authFetch } from '../../lib/authenticatedFetch';
 
 // Headrail style options
 const HEADRAIL_STYLES = ['Pocket', 'Fascia', 'Fascia + Top Back Cover', 'Top Back Cover'];
@@ -881,7 +882,7 @@ const SharePointThumbnail = ({ photo, mode }) => {
             // If we have driveId and itemId, fetch thumbnail via API
             if (driveId && itemId) {
                 try {
-                    const response = await fetch('/api/graph-file', {
+                    const response = await authFetch('/api/graph-file', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
@@ -897,7 +898,7 @@ const SharePointThumbnail = ({ photo, mode }) => {
                         setThumbnailUrl(data.url);
                     } else {
                         // Fallback to download URL
-                        const contentResponse = await fetch('/api/graph-file', {
+                        const contentResponse = await authFetch('/api/graph-file', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({

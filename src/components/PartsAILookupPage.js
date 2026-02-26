@@ -27,6 +27,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { queryKeys } from '../lib/queryClient';
+import { authFetch } from '../lib/authenticatedFetch';
 
 // Skip patterns for prewire items (matches batch-enrich-parts.js)
 const SKIP_PATTERNS = [
@@ -257,7 +258,7 @@ const PartsAILookupPage = () => {
     setIsResyncing(true);
     setResyncResult(null);
     try {
-      const response = await fetch(`${getApiBase()}/api/manus-resync-tasks`, {
+      const response = await authFetch(`${getApiBase()}/api/manus-resync-tasks`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({}) // Check all pending/running/processing tasks
@@ -297,7 +298,7 @@ const PartsAILookupPage = () => {
             setLocalProcessingParts(prev => new Set([...prev, partId]));
 
             try {
-              const response = await fetch(`${getApiBase()}/api/enrich-single-part-manus`, {
+              const response = await authFetch(`${getApiBase()}/api/enrich-single-part-manus`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ partId }),

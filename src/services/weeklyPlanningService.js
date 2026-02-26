@@ -5,6 +5,7 @@
  */
 
 import { supabase } from '../lib/supabase';
+import { authFetch } from '../lib/authenticatedFetch';
 
 // Constants
 const BUFFER_MINUTES = 30;
@@ -1121,7 +1122,7 @@ export const weeklyPlanningService = {
 
     try {
       // Call the API endpoint to send customer invite
-      const response = await fetch('/api/schedule/send-customer-invite', {
+      const response = await authFetch('/api/schedule/send-customer-invite', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ scheduleId })
@@ -1152,7 +1153,7 @@ export const weeklyPlanningService = {
 
     try {
       // Call the API endpoint to mark as confirmed
-      const response = await fetch('/api/schedule/mark-customer-confirmed', {
+      const response = await authFetch('/api/schedule/mark-customer-confirmed', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ scheduleId, confirmedBy })

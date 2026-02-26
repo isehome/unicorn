@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Wifi, Server, Search, RefreshCw, ArrowRight, CheckCircle, Database, AlertCircle } from 'lucide-react';
 
 import { supabase } from '../lib/supabase';
+import { authFetch } from '../lib/authenticatedFetch';
 
 const UnifiClientImporter = () => {
   const [loading, setLoading] = useState(false);
@@ -57,7 +58,7 @@ const UnifiClientImporter = () => {
         method: 'GET'
       };
 
-      const sitesRes = await fetch('/api/unifi-proxy', {
+      const sitesRes = await authFetch('/api/unifi-proxy', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(sitesPayload)
@@ -78,7 +79,7 @@ const UnifiClientImporter = () => {
         networkApiKey: apiKey,
         method: 'GET'
       };
-      const clientsRes = await fetch('/api/unifi-proxy', {
+      const clientsRes = await authFetch('/api/unifi-proxy', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(clientsPayload)
@@ -95,7 +96,7 @@ const UnifiClientImporter = () => {
           networkApiKey: apiKey,
           method: 'GET'
         };
-        const devRes = await fetch('/api/unifi-proxy', {
+        const devRes = await authFetch('/api/unifi-proxy', {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(devPayload)
         });
         if (devRes.ok) {
@@ -179,7 +180,7 @@ const UnifiClientImporter = () => {
         networkApiKey: apiKey,
         method: 'GET'
       };
-      const sitesRes = await fetch('/api/unifi-proxy', {
+      const sitesRes = await authFetch('/api/unifi-proxy', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(sitesPayload)
       });
       const sitesData = await sitesRes.json();
@@ -192,7 +193,7 @@ const UnifiClientImporter = () => {
           networkApiKey: apiKey,
           method: 'GET'
         };
-        const res = await fetch('/api/unifi-proxy', {
+        const res = await authFetch('/api/unifi-proxy', {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(detailPayload)
         });
         if (res.ok) {

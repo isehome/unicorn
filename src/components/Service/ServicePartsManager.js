@@ -21,6 +21,7 @@ import { servicePartsService } from '../../services/serviceTicketService';
 import { partsService } from '../../services/partsService';
 import { useAuth } from '../../contexts/AuthContext';
 import { brandColors } from '../../styles/styleSystem';
+import { authFetch } from '../../lib/authenticatedFetch';
 
 const PART_STATUSES = {
   needed: { label: 'Needed', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.15)' },
@@ -288,7 +289,7 @@ const ServicePartsManager = ({ ticket, onUpdate }) => {
 
     try {
       setSendingEmail(true);
-      const response = await fetch('/api/service-parts-request', {
+      const response = await authFetch('/api/service-parts-request', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

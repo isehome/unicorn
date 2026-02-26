@@ -27,6 +27,7 @@ import {
   Network
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { authFetch } from '../lib/authenticatedFetch';
 
 const HANetworkClientSelector = ({
   equipment,
@@ -107,7 +108,7 @@ const HANetworkClientSelector = ({
       const apiBase = window.location.hostname === 'localhost'
         ? 'https://unicorn-one.vercel.app'
         : '';
-      const response = await fetch(`${apiBase}/api/ha/network-clients?project_id=${projectId}`);
+      const response = await authFetch(`${apiBase}/api/ha/network-clients?project_id=${projectId}`);
       const result = await response.json();
 
       if (!response.ok) {

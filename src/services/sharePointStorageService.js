@@ -11,6 +11,7 @@
 import { supabase } from '../lib/supabase';
 import { thumbnailCache } from '../lib/thumbnailCache';
 import { STANDARD_SUBFOLDERS, normalizeSharePointRootUrl } from './sharePointFolderService';
+import { authFetch } from '../lib/authenticatedFetch';
 
 // SharePoint thumbnail size configurations
 const THUMBNAIL_SIZES = {
@@ -476,7 +477,7 @@ class SharePointStorageService {
         });
 
         // Call the graph-upload API with cleaned URL
-        const response = await fetch('/api/graph-upload', {
+        const response = await authFetch('/api/graph-upload', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -641,7 +642,7 @@ class SharePointStorageService {
       return false;
     }
 
-    const response = await fetch('/api/graph-file', {
+    const response = await authFetch('/api/graph-file', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'delete', driveId, itemId })

@@ -1,5 +1,6 @@
 import { companySettingsService } from './companySettingsService';
 import { supabase } from '../lib/supabase';
+import { authFetch } from '../lib/authenticatedFetch';
 
 const NOTIFICATION_ENDPOINT = '/api/send-issue-notification';
 const SYSTEM_EMAIL = 'unicorn@isehome.com';
@@ -731,7 +732,7 @@ export const processPendingNotifications = async (issueId, options = {}) => {
   }
 
   try {
-    const response = await fetch('/api/process-pending-issue-notifications', {
+    const response = await authFetch('/api/process-pending-issue-notifications', {
       method: 'POST',
       headers,
       body: JSON.stringify({ issueId })
@@ -767,7 +768,7 @@ export const processPendingShadeNotifications = async (projectId, options = {}) 
   }
 
   try {
-    const response = await fetch('/api/process-pending-shade-notifications', {
+    const response = await authFetch('/api/process-pending-shade-notifications', {
       method: 'POST',
       headers,
       body: JSON.stringify({ projectId })

@@ -3,6 +3,7 @@
  * Handles all HA-related database operations and API calls
  */
 import { supabase } from '../lib/supabase';
+import { authFetch } from '../lib/authenticatedFetch';
 
 const homeAssistantService = {
   /**
@@ -113,7 +114,7 @@ const homeAssistantService = {
     if (options.domain) params.append('domain', options.domain);
     if (options.category) params.append('category', options.category);
 
-    const response = await fetch(`/api/ha/entities?${params}`);
+    const response = await authFetch(`/api/ha/entities?${params}`);
 
     // Get the response text first
     const responseText = await response.text();
@@ -144,7 +145,7 @@ const homeAssistantService = {
    * Execute a command on an HA entity
    */
   async executeCommand(projectId, domain, service, entityId, data = {}) {
-    const response = await fetch('/api/ha/command', {
+    const response = await authFetch('/api/ha/command', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

@@ -14,6 +14,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
 import homeAssistantService from '../services/homeAssistantService';
 import { supabase } from '../lib/supabase';
+import { authFetch } from '../lib/authenticatedFetch';
 import {
   Home,
   Wifi,

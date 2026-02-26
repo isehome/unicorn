@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { authFetch } from '../lib/authenticatedFetch';
 
 // Browser compatibility helper
 // const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -56,7 +57,7 @@ export const useVoiceMeasurement = ({ onFieldUpdate, initialContext = null }) =>
             setStatus('connecting');
 
             // ... (fetch key) ...
-            const response = await fetch('/api/voice-credentials');
+            const response = await authFetch('/api/voice-credentials');
             // Check content type
             const contentType = response.headers.get("content-type");
             if (!response.ok || !contentType || !contentType.includes("application/json")) {

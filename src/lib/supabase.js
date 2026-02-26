@@ -1,5 +1,6 @@
 // Unified Supabase client + helpers (auth + storage)
 import { createClient } from '@supabase/supabase-js'
+import { authFetch } from './authenticatedFetch';
 
 export const supabaseUrl = process.env.REACT_APP_SUPABASE_URL
 const supabaseAnonKey = process.env.REACT_APP_SUPABASE_ANON_KEY
@@ -223,7 +224,7 @@ export async function setSupabaseSessionFromMSAL(msalAccessToken) {
   if (!supabase || !msalAccessToken) return null
 
   try {
-    const res = await fetch('/api/auth/supabase-token', {
+    const res = await authFetch('/api/auth/supabase-token', {
       method: 'POST',
       headers: { Authorization: `Bearer ${msalAccessToken}` },
     })

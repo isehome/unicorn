@@ -11,6 +11,7 @@ import {
   Copy, Check, Image, Code, Download
 } from 'lucide-react';
 import { useTheme } from '../../contexts/ThemeContext';
+import { authFetch } from '../../lib/authenticatedFetch';
 
 const BugTodosTab = () => {
   const { mode } = useTheme();
@@ -65,7 +66,7 @@ const BugTodosTab = () => {
         status: filter,
         limit: '50'
       });
-      const response = await fetch(`/api/bugs/list?${params}`);
+      const response = await authFetch(`/api/bugs/list?${params}`);
       const data = await response.json();
 
       if (!response.ok) {
@@ -102,7 +103,7 @@ const BugTodosTab = () => {
     setDeleteConfirm(null); // Close modal
     setActionLoading(bugId);
     try {
-      const response = await fetch(`/api/bugs/${bugId}`, {
+      const response = await authFetch(`/api/bugs/${bugId}`, {
         method: 'DELETE'
       });
       console.log('[BugTodosTab] Delete response status:', response.status);
@@ -131,7 +132,7 @@ const BugTodosTab = () => {
     console.log('[BugTodosTab] handleReanalyze called with bugId:', bugId);
     setActionLoading(bugId);
     try {
-      const response = await fetch(`/api/bugs/${bugId}`, {
+      const response = await authFetch(`/api/bugs/${bugId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'reanalyze' })
@@ -163,7 +164,7 @@ const BugTodosTab = () => {
 
     setLoadingDetails(prev => ({ ...prev, [bugId]: true }));
     try {
-      const response = await fetch(`/api/bugs/${bugId}`);
+      const response = await authFetch(`/api/bugs/${bugId}`);
       if (response.ok) {
         const data = await response.json();
         setBugDetails(prev => ({ ...prev, [bugId]: data.bug }));

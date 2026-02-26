@@ -13,6 +13,7 @@ import { useNavigate } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
 import homeAssistantService from '../services/homeAssistantService';
+import { authFetch } from '../lib/authenticatedFetch';
 import {
   Home,
   Wifi,
@@ -208,7 +209,7 @@ function HomeAssistantSettings({ projectId }) {
 
       // Ensure the Home Assistant folder exists in SharePoint Knowledge library
       try {
-        const folderResponse = await fetch('/api/ha/ensure-knowledge-folder', {
+        const folderResponse = await authFetch('/api/ha/ensure-knowledge-folder', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' }
         });
@@ -223,7 +224,7 @@ function HomeAssistantSettings({ projectId }) {
 
       // Ensure the Home Assistant folder exists in the client's project SharePoint folder
       try {
-        const clientFolderResponse = await fetch('/api/ha/ensure-client-folder', {
+        const clientFolderResponse = await authFetch('/api/ha/ensure-client-folder', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ project_id: projectId })
@@ -398,7 +399,7 @@ function HomeAssistantSettings({ projectId }) {
   const loadBackups = useCallback(async () => {
     setLoadingBackups(true);
     try {
-      const response = await fetch(`/api/ha/list-backups?project_id=${projectId}`);
+      const response = await authFetch(`/api/ha/list-backups?project_id=${projectId}`);
       if (response.ok) {
         const result = await response.json();
         setBackups(result.backups || []);
@@ -491,7 +492,7 @@ function HomeAssistantSettings({ projectId }) {
       formData.append('file', file);
       formData.append('project_id', projectId);
 
-      const response = await fetch('/api/ha/upload-backup', {
+      const response = await authFetch('/api/ha/upload-backup', {
         method: 'POST',
         body: formData
       });

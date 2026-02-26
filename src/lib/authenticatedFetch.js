@@ -81,7 +81,8 @@ async function getAccessToken() {
  */
 export async function authFetch(url, options = {}) {
   // Only add auth to our own API endpoints
-  const isAPICall = typeof url === 'string' && url.startsWith('/api/');
+  // Handles both '/api/...' and '${baseUrl}/api/...' patterns
+  const isAPICall = typeof url === 'string' && (url.startsWith('/api/') || /^https?:\/\/[^/]+\/api\//.test(url));
 
   if (isAPICall) {
     const token = await getAccessToken();

@@ -33,6 +33,7 @@ import BugTodosTab from '../components/Admin/BugTodosTab';
 import SkillsManager from '../components/Admin/SkillsManager';
 import OrgStructureManager from '../components/Admin/OrgStructureManager';
 import PeopleManager from '../components/Admin/PeopleManager';
+import { authFetch } from '../lib/authenticatedFetch';
 
 // Role definitions with hierarchy
 const USER_ROLES = [
@@ -1583,7 +1584,7 @@ const AdminPage = () => {
       setImportStep('ai-processing');
       try {
         console.log('[AdminPage] Sending', mappedData.length, 'contacts to AI for processing');
-        const response = await fetch('/api/ai/parse-contacts', {
+        const response = await authFetch('/api/ai/parse-contacts', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ contacts: mappedData })

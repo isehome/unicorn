@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
 import Papa from 'papaparse';
+import { authFetch } from '../lib/authenticatedFetch';
 
 // Helper to normalize strings
 const normalizeString = (str) => {
@@ -51,7 +52,7 @@ const resolveHeaderMapping = async (headers) => {
     if (needsAI) {
         console.log('Static mapping failed for some keys, asking AI...', missingKeys);
         try {
-            const response = await fetch('/api/parse-lutron-headers', {
+            const response = await authFetch('/api/parse-lutron-headers', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ headers })
@@ -133,7 +134,7 @@ export const projectShadeService = {
 
         // Call Gemini API for matching
         try {
-            const response = await fetch('/api/match-rooms', {
+            const response = await authFetch('/api/match-rooms', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

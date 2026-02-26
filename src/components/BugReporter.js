@@ -3,6 +3,7 @@ import { X, Send, Camera, Bug, Loader2, CheckCircle, AlertCircle, Mic, MicOff } 
 import html2canvas from 'html2canvas';
 import { useAuth } from '../contexts/AuthContext';
 import { useLocation } from 'react-router-dom';
+import { authFetch } from '../lib/authenticatedFetch';
 
 // Shake detection threshold
 const SHAKE_THRESHOLD = 15;
@@ -297,7 +298,7 @@ export default function BugReporter() {
         headers['Authorization'] = `Bearer ${accessToken}`;
       }
 
-      const response = await fetch('/api/bug-report', {
+      const response = await authFetch('/api/bug-report', {
         method: 'POST',
         headers,
         body: JSON.stringify({

@@ -18,6 +18,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useAppState } from '../contexts/AppStateContext';
 import { brandColors } from '../styles/styleSystem';
 import { supabase } from '../lib/supabase';
+import { authFetch } from '../lib/authenticatedFetch';
 
 // Priority colors
 const priorityColors = {
@@ -407,7 +408,7 @@ const WeeklyPlanning = () => {
       // This updates schedule statuses in the database before we fetch
       if (checkResponses) {
         try {
-          const checkResult = await fetch('/api/system-account/check-responses', {
+          const checkResult = await authFetch('/api/system-account/check-responses', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({})

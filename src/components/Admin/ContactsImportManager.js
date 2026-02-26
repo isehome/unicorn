@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import Button from '../ui/Button';
+import { authFetch } from '../../lib/authenticatedFetch';
 
 // Available contact fields for mapping (matches contacts table schema)
 const CONTACT_FIELDS = [
@@ -253,7 +254,7 @@ const ContactsImportManager = () => {
     if (useAIProcessing) {
       setImportStep('ai-processing');
       try {
-        const response = await fetch('/api/ai/parse-contacts', {
+        const response = await authFetch('/api/ai/parse-contacts', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ contacts: mappedData })

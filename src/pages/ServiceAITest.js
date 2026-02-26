@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Phone, PhoneOff, Mic, MicOff, Volume2, AlertCircle, CheckCircle, Loader2, MessageSquare } from 'lucide-react';
+import { authFetch } from '../lib/authenticatedFetch';
 
 /**
  * ServiceAITest - Browser-based testing page for Retell AI voice agent
@@ -85,7 +86,7 @@ const ServiceAITest = () => {
     lastTranscriptRef.current = { agent: '', user: '' };
 
     try {
-      const response = await fetch('/api/retell/web-call', {
+      const response = await authFetch('/api/retell/web-call', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ test_phone: testPhone })

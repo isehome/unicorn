@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useTheme } from '../contexts/ThemeContext';
 import { enhancedStyles } from '../styles/styleSystem';
 import { Loader, AlertCircle, Info } from 'lucide-react';
+import { authFetch } from '../lib/authenticatedFetch';
 
 /**
  * LucidIframeEmbed - Displays Lucid Charts using various embed methods
@@ -43,7 +44,7 @@ const LucidIframeEmbed = ({
         setLoading(true);
         setTokenError(null);
         try {
-          const response = await fetch(`${process.env.REACT_APP_LUCID_PROXY_URL || ''}/api/lucid-proxy`, {
+          const response = await authFetch(`${process.env.REACT_APP_LUCID_PROXY_URL || ''}/api/lucid-proxy`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json'

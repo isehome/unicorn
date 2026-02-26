@@ -19,6 +19,7 @@ import {
 } from '../services/lucidApi';
 import LucidIframeEmbed from './LucidIframeEmbed';
 import LucidImageDisplay from './LucidImageDisplay';
+import { authFetch } from '../lib/authenticatedFetch';
 
 const LucidDiagnostic = () => {
   const { mode } = useTheme();
@@ -330,7 +331,7 @@ const LucidDiagnostic = () => {
                   }
                   setLoading(true);
                   try {
-                    const response = await fetch(`${process.env.REACT_APP_LUCID_PROXY_URL || ''}/api/lucid-proxy`, {
+                    const response = await authFetch(`${process.env.REACT_APP_LUCID_PROXY_URL || ''}/api/lucid-proxy`, {
                       method: 'POST',
                       headers: {
                         'Content-Type': 'application/json'

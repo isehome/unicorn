@@ -9,6 +9,7 @@ import * as equipmentConnectionService from '../services/equipmentConnectionServ
 import Button from '../components/ui/Button';
 import RackFrontView from '../components/Rack/RackFrontView';
 import RackBackView from '../components/Rack/RackBackView';
+import { authFetch } from '../lib/authenticatedFetch';
 
 /**
  * RackLayoutPage - Head-End rack layout management page
@@ -121,7 +122,7 @@ const RackLayoutPage = () => {
       const apiBase = window.location.hostname === 'localhost'
         ? 'https://unicorn-one.vercel.app'
         : '';
-      const response = await fetch(`${apiBase}/api/ha/network-clients?project_id=${projectId}`);
+      const response = await authFetch(`${apiBase}/api/ha/network-clients?project_id=${projectId}`);
       const result = await response.json();
 
       if (response.ok) {

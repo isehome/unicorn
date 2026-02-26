@@ -4,6 +4,7 @@
  */
 
 import { supabase } from '../lib/supabase';
+import { authFetch } from '../lib/authenticatedFetch';
 
 // Standard subfolder structure for all projects
 export const STANDARD_SUBFOLDERS = {
@@ -86,7 +87,7 @@ class SharePointFolderService {
         headers['Authorization'] = `Bearer ${authToken}`;
       }
 
-      const response = await fetch('/api/sharepoint-init-folders', {
+      const response = await authFetch('/api/sharepoint-init-folders', {
         method: 'POST',
         headers,
         body: JSON.stringify({
@@ -348,7 +349,7 @@ class SharePointFolderService {
         headers['Authorization'] = `Bearer ${authToken}`;
       }
 
-      const response = await fetch('/api/sharepoint-test-access', {
+      const response = await authFetch('/api/sharepoint-test-access', {
         method: 'POST',
         headers,
         body: JSON.stringify({ folderUrl })

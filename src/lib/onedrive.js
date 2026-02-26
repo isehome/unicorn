@@ -1,9 +1,10 @@
+const { authFetch } = require('./authenticatedFetch');
 // Client-side helper to upload to OneDrive via our serverless function
 
 export async function graphUploadViaApi({ rootUrl, subPath, file }) {
   const arrayBuffer = await file.arrayBuffer()
   const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)))
-  const resp = await fetch('/api/graph-upload', {
+  const resp = await authFetch('/api/graph-upload', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({

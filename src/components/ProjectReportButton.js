@@ -6,6 +6,7 @@
 import React, { useState } from 'react';
 import { Send, Eye, Loader2 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { authFetch } from '../lib/authenticatedFetch';
 
 const ProjectReportButton = ({ projectId, projectName }) => {
   const { user } = useAuth();
@@ -18,7 +19,7 @@ const ProjectReportButton = ({ projectId, projectName }) => {
     setLoading(true);
 
     try {
-      const response = await fetch('/api/project-report/generate', {
+      const response = await authFetch('/api/project-report/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

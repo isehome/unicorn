@@ -6,6 +6,7 @@ import { enhancedStyles } from '../styles/styleSystem';
 import { useContacts } from '../hooks/useSupabase';
 import Button from './ui/Button';
 import { Plus, Trash2, User, Building, Loader, Search, X, ChevronRight, CreditCard, Upload } from 'lucide-react';
+import { authFetch } from '../lib/authenticatedFetch';
 
 const PeopleManagement = () => {
   const navigate = useNavigate();
@@ -267,7 +268,7 @@ const PeopleManagement = () => {
 
     setScanningCard(true);
     try {
-      const response = await fetch('/api/ai/scan-business-card', {
+      const response = await authFetch('/api/ai/scan-business-card', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ image: capturedImage })

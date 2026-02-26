@@ -12,6 +12,7 @@ import Button from '../components/ui/Button';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
 import StatCard from '../components/ui/StatCard';
 import MilestoneGaugesDisplay from '../components/MilestoneGaugesDisplay';
+import { authFetch } from '../lib/authenticatedFetch';
 import {
   AlertTriangle,
   Users,
@@ -156,7 +157,7 @@ const ProjectReportsPage = () => {
     setProgressReportError(null);
 
     try {
-      const response = await fetch('/api/project-report/generate', {
+      const response = await authFetch('/api/project-report/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ projectId })

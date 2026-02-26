@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { authFetch } from '../lib/authenticatedFetch';
 
 const containerClasses = 'max-w-2xl mx-auto mt-10 p-6 rounded-2xl border shadow-sm bg-white space-y-6';
 const labelClasses = 'block text-sm font-medium text-gray-700 mb-1';
@@ -31,7 +32,7 @@ export default function NotificationTestPage() {
       setSending(true);
       const token = await acquireToken();
 
-      const response = await fetch('/api/send-issue-notification', {
+      const response = await authFetch('/api/send-issue-notification', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

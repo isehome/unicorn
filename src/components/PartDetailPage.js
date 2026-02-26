@@ -27,6 +27,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { partsService } from '../services/partsService';
 import { queryKeys } from '../lib/queryClient';
 import { sharePointStorageService } from '../services/sharePointStorageService';
+import { authFetch } from '../lib/authenticatedFetch';
 
 // Helper to ensure SharePoint URLs open in browser view mode (not download)
 const getViewableUrl = (url) => {
@@ -348,7 +349,7 @@ const PartDetailPage = () => {
 
     try {
       const apiBase = process.env.REACT_APP_LUCID_PROXY_URL || '';
-      const response = await fetch(`${apiBase}/api/enrich-single-part-manus`, {
+      const response = await authFetch(`${apiBase}/api/enrich-single-part-manus`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ partId: part.id }),
@@ -416,7 +417,7 @@ const PartDetailPage = () => {
     setFlaggingWrong(true);
     try {
       const apiBase = process.env.REACT_APP_LUCID_PROXY_URL || '';
-      await fetch(`${apiBase}/api/parts/${part.id}/flag`, {
+      await authFetch(`${apiBase}/api/parts/${part.id}/flag`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
