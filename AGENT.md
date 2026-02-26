@@ -2906,6 +2906,7 @@ QBO_ENVIRONMENT=sandbox         # 'sandbox' or 'production'
 | `/api/qbo/callback` | QuickBooks OAuth callback |
 | `/api/qbo/create-invoice` | Create invoice from service ticket |
 | `/api/qbo/customers` | Search/create QuickBooks customers |
+| `/api/service/notify-assignment` | Send email notification when technician is assigned to service ticket |
 
 ---
 
@@ -4276,6 +4277,53 @@ The application needs a proper user capabilities/roles system to control access 
 ---
 
 # PART 6: CHANGELOG
+
+## 2026-02-26
+
+### Bug Fix Provenance Tracking
+**What:** Added provenance fields to bug_reports so fix summaries show who/what fixed the bug, with a clickable commit SHA link.
+**Why:** Steve needed confidence that green fix summary boxes represent actual code changes, not speculative notes. The "Claude" badge + commit SHA = verified automated fix.
+**Details:**
+- DB migration: Added `fix_summary_source`, `fix_committed_sha`, `fix_branch`, `fix_verified_at`, `fix_verified_by`, `ai_analysis_model`, `ai_deep_analysis`, `ai_deep_analysis_model` columns to `bug_reports`
+- `api/bugs/list.js`: Now returns all provenance fields
+- `BugTodosTab.js`: Fix summary boxes show source badge (Claude/Auto/Unverified), clickable commit SHA linking to GitHub diff, fix details modal with full provenance info, amber warning for unverified fixes
+- `CLAUDE.md`: Updated bug fix workflow to require commit SHA before marking pending_review
+**Files:** `api/bugs/list.js`, `src/components/Admin/BugTodosTab.js`, `CLAUDE.md`
+
+### AI Model Upgrade — Gemini 3.1 Pro + Two-Step Pipeline
+**What:** Upgraded bug analysis AI from Gemini 2.5 to Gemini 3.1 Pro with a two-step triage pipeline.
+**Why:** Better accuracy on complex bugs. Flash model handles simple bugs fast and cheap; Pro model is reserved for high-severity, complex, or low-confidence cases.
+**Details:**
+- `shared/aiConfig.js`: Updated `gemini-pro` to `gemini-3.1-pro-preview`, added `BUG_ANALYZER_DEEP` service config
+- `api/bugs/analyze.js`: Added `shouldEscalateToDeepAnalysis()` — triggers on high/critical severity, complex labels, or confidence < 0.6. Returns `analysis_model`, `deep_analysis`, `deep_analysis_model` fields
+- `api/cron/process-bugs.js`: Stores `ai_analysis_model`, `ai_deep_analysis`, `ai_deep_analysis_model` in DB
+**Files:** `shared/aiConfig.js`, `api/bugs/analyze.js`, `api/cron/process-bugs.js`
+
+### authFetch Migration — 36 Files + QuickBooks
+**What:** Migrated all frontend `fetch()` calls to API routes to use `authFetch()` from `lib/authenticatedFetch`.
+**Why:** All `/api/*` routes use `requireAuth` middleware requiring MSAL Bearer tokens. Raw `fetch()` calls sent no auth headers → 401 errors everywhere.
+**Details:**
+- Session 1 (2026-02-26 AM): Migrated 36 files from raw `fetch()` to `authFetch()` — fixed widespread 401 errors
+- Session 2 (2026-02-26 PM): Found 5 remaining raw `fetch()` calls in `quickbooksService.js` causing QBO disconnect issues, migrated those too
+**Files:** 36+ files (see git log for commit `0c12f08`), `src/services/quickbooksService.js`
+
+### Service Dashboard — Search Debounce Fix
+**What:** Added 400ms debounce to search input to prevent per-keystroke data reloads.
+**Why:** Every keystroke in the search box triggered `loadDashboardData` + URL sync + AI state publish, causing the entire ticket list and stats to reload on each character typed.
+**Details:**
+- Added `debouncedSearch` state + `useRef` timer with 400ms delay
+- Changed `loadDashboardData` useCallback, URL sync useEffect, and AI state publishing to depend on `debouncedSearch` instead of raw `searchQuery`
+- `searchQuery` still updates the input immediately (no input lag), but data fetching waits for typing to stop
+**Files:** `src/components/Service/ServiceDashboard.js`
+
+### Technician Assignment Email Notification
+**What:** New API endpoint sends branded email notification when a technician is assigned to a service ticket.
+**Why:** Technicians had no way to know they'd been assigned to a ticket unless they checked the app. Steve wanted automatic email notification.
+**Details:**
+- New `api/service/notify-assignment.js`: POST endpoint using `sendGraphEmail()` from `_graphMail.js`. Sends violet-branded HTML email with ticket details and "View Ticket" button. Best-effort (never fails the assignment).
+- `serviceTicketService.js`: `assign()` method now calls notification API non-blocking after successful assignment
+- Email includes: ticket number, customer name, service address, assigned-by name
+**Files:** `api/service/notify-assignment.js`, `src/services/serviceTicketService.js`
 
 ## 2026-02-23
 
@@ -6034,14 +6082,20 @@ gh api "repos/isehome/unicorn/contents/bug-reports/<YEAR-MONTH>/<BUG_ID>.md" \
 3. **Follow the embedded instructions** in the bug report (they are prompts for you)
 4. **Implement the fix** on the main branch
 5. **Commit and push** the fix to main (one commit per bug preferred)
-6. **Mark pending_review in Supabase** (via Supabase MCP — NOT the Vercel API):
+6. **Mark pending_review in Supabase** with provenance (via Supabase MCP — NOT the Vercel API):
    ```sql
-   UPDATE bug_reports SET status = 'pending_review',
-     fix_summary = 'Description of what was fixed and how'
+   UPDATE bug_reports SET
+     status = 'pending_review',
+     fix_summary = 'Description of what was fixed and how',
+     fix_summary_source = 'claude_session',
+     fix_committed_sha = '<full_commit_sha>',
+     fix_branch = 'claude/YYYY-MM-DD-branch-name',
+     fixed_at = NOW()
    WHERE bug_report_id = 'BR-YYYY-MM-DD-NNNN';
    ```
+   ⚠️ **NEVER** mark pending_review without a real commit SHA. No speculative fixes.
 7. **Update AGENT.md changelog** (REQUIRED)
-8. Steve reviews and approves through the Unicorn UI
+8. Steve reviews and approves through the Unicorn UI (green fix summary box → modal with commit link → Approve)
 
 #### Fix a Bug Workflow (Manual — Admin UI)
 1. Admin opens **Bug Todos** tab
@@ -6081,7 +6135,9 @@ User Reports Bug (BugReporter.js)
         ↓
     /api/cron/process-bugs picks up pending bugs
         ↓
-    Gemini AI analyzes: screenshot + user description + console errors + code context
+    Gemini AI analyzes (two-step pipeline):
+      Step 1: Gemini Flash triage (fast, cheap)
+      Step 2: Gemini 3.1 Pro deep analysis (if high severity, complex, or low confidence)
         ↓
     Generates markdown report with YAML frontmatter
         ↓
@@ -6099,13 +6155,16 @@ User Reports Bug (BugReporter.js)
         ↓
     AI agent reads bug report → implements fix on main branch
         ↓
-    Updates Supabase directly: status → 'pending_review' + fix_summary
+    Updates Supabase: status → 'pending_review' + fix_summary + provenance (SHA, branch, source)
         ↓
-    Admin sees green fix summary box in Bug Todos UI
+    Admin sees green fix summary box with source badge:
+      - "Claude" badge (violet) = AI agent fix with commit SHA
+      - "Auto" badge (blue) = automated detection
+      - "Unverified" badge (amber) = legacy fix without provenance
         ↓
-    Admin clicks green box → reviews fix details in modal
+    Admin clicks green box → modal shows fix details + clickable commit SHA link to GitHub diff
         ↓
-    Admin clicks "Approve Fix" → closes PR, deletes branch, status → 'fixed'
+    Admin clicks "Approve Fix" → closes PR, deletes branch, status → 'fixed', records verified_at/by
 ```
 
 ### Key Files
@@ -6114,9 +6173,9 @@ User Reports Bug (BugReporter.js)
 |------|---------|
 | `src/components/BugReporter.js` | Frontend bug report modal (screenshot, voice input, console errors) |
 | `api/bug-report.js` | Initial submission endpoint - saves to queue, sends email via **system account** (never expires) |
-| `api/bugs/analyze.js` | Gemini AI analysis module (multimodal) |
+| `api/bugs/analyze.js` | Gemini AI analysis (two-step: Flash triage → Pro deep analysis for complex bugs) |
 | `api/bugs/github.js` | GitHub API integration (branches, commits, PRs) |
-| `api/bugs/list.js` | List bugs with filtering/pagination (includes fix_summary, fixed_at) |
+| `api/bugs/list.js` | List bugs with filtering/pagination (includes fix_summary, provenance fields, AI model info) |
 | `api/bugs/[id].js` | Get/Reanalyze single bug; DELETE marks as 'fixed' (soft delete) |
 | `api/cron/process-bugs.js` | Background processor (cron every 3 min) |
 | `src/components/Admin/BugTodosTab.js` | Admin UI for bug management |
@@ -6164,7 +6223,19 @@ CREATE TABLE bug_reports (
   fixed_at TIMESTAMPTZ,            -- When the bug was marked fixed
   auto_closed BOOLEAN DEFAULT false, -- Whether closed by automation vs manual
   fix_detection_log JSONB DEFAULT '[]', -- Audit trail of fix events
-  fix_summary TEXT                  -- AI-written summary of how the bug was fixed
+  fix_summary TEXT,                 -- AI-written summary of how the bug was fixed
+
+  -- Fix provenance (added 2026-02-26)
+  fix_summary_source TEXT,          -- 'claude_session' | 'auto' | NULL (unverified)
+  fix_committed_sha TEXT,           -- Git commit SHA containing the fix
+  fix_branch TEXT,                  -- Branch the fix was committed on
+  fix_verified_at TIMESTAMPTZ,     -- When admin approved the fix
+  fix_verified_by TEXT,             -- Admin who approved
+
+  -- AI analysis model tracking (added 2026-02-26)
+  ai_analysis_model TEXT,           -- Model used for initial analysis (e.g. 'gemini-flash-3')
+  ai_deep_analysis TEXT,            -- Deep analysis result from escalation
+  ai_deep_analysis_model TEXT       -- Model used for deep analysis (e.g. 'gemini-3.1-pro-preview')
 );
 ```
 
