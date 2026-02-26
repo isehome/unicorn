@@ -5,6 +5,7 @@
  */
 
 import { supabase } from '../lib/supabase';
+import { authFetch } from '../lib/authenticatedFetch';
 
 // QBO API endpoints via our Vercel serverless functions
 const QBO_API_BASE = '/api/qbo';
@@ -49,7 +50,7 @@ export const quickbooksService = {
    */
   async initiateOAuth() {
     try {
-      const response = await fetch(`${QBO_API_BASE}/auth`);
+      const response = await authFetch(`${QBO_API_BASE}/auth`);
       const data = await response.json();
 
       if (!response.ok) {
@@ -121,7 +122,7 @@ export const quickbooksService = {
    */
   async searchQBOCustomers(searchTerm) {
     try {
-      const response = await fetch(
+      const response = await authFetch(
         `${QBO_API_BASE}/customers?search=${encodeURIComponent(searchTerm)}`
       );
       const data = await response.json();
@@ -182,7 +183,7 @@ export const quickbooksService = {
    */
   async createQBOCustomer(contactId) {
     try {
-      const response = await fetch(`${QBO_API_BASE}/customers`, {
+      const response = await authFetch(`${QBO_API_BASE}/customers`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ contactId })
@@ -217,7 +218,7 @@ export const quickbooksService = {
         .eq('id', ticketId);
 
       // Call API to create invoice
-      const response = await fetch(`${QBO_API_BASE}/create-invoice`, {
+      const response = await authFetch(`${QBO_API_BASE}/create-invoice`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ticketId })
@@ -266,7 +267,7 @@ export const quickbooksService = {
    */
   async getInvoiceStatus(invoiceId) {
     try {
-      const response = await fetch(`${QBO_API_BASE}/invoice/${invoiceId}`);
+      const response = await authFetch(`${QBO_API_BASE}/invoice/${invoiceId}`);
       const data = await response.json();
 
       if (!response.ok) {

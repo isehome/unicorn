@@ -3,7 +3,7 @@
  * Main dashboard for Service CRM module with integrated ticket list
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Phone,
@@ -93,6 +93,8 @@ const ServiceDashboard = () => {
 
   // Search and filter state
   const [searchQuery, setSearchQuery] = useState(searchParams.get('search') || '');
+  const [debouncedSearch, setDebouncedSearch] = useState(searchQuery);
+  const searchDebounceRef = useRef(null);
   const [showFilters, setShowFilters] = useState(false);
   const [showMyTickets, setShowMyTickets] = useState(searchParams.get('my') === 'true');
   const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
@@ -101,6 +103,17 @@ const ServiceDashboard = () => {
     priority: searchParams.get('priority') || '',
     category: searchParams.get('category') || ''
   });
+
+  // Debounce search input — wait 400ms after last keystroke before triggering data fetch
+  useEffect(() => {
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    searchDebounceRef.current = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+    }, 400);
+    return () => {
+      if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    };
+  }, [searchQuery]);
 
   const loadDashboardData = useCallback(async () => {
     try {
@@ -118,8 +131,8 @@ const ServiceDashboard = () => {
       if (filters.category) {
         queryFilters.category = filters.category;
       }
-      if (searchQuery.trim()) {
-        queryFilters.search = searchQuery.trim();
+      if (debouncedSearch.trim()) {
+        queryFilters.search = debouncedSearch.trim();
       }
       if (showMyTickets && user?.id) {
         queryFilters.assignedTo = user.id;
@@ -145,7 +158,7 @@ const ServiceDashboard = () => {
     } finally {
       setLoading(false);
     }
-  }, [filters, searchQuery, showMyTickets, user?.id]);
+  }, [filters, debouncedSearch, showMyTickets, user?.id]);
 
   useEffect(() => {
     loadDashboardData();
@@ -173,16 +186,16 @@ const ServiceDashboard = () => {
     loadCategories();
   }, []);
 
-  // Update URL params when filters change
+  // Update URL params when filters change (uses debounced search to avoid URL churn on keystrokes)
   useEffect(() => {
     const params = new URLSearchParams();
     if (filters.status.length > 0) params.set('status', filters.status.join(','));
     if (filters.priority) params.set('priority', filters.priority);
     if (filters.category) params.set('category', filters.category);
-    if (searchQuery) params.set('search', searchQuery);
+    if (debouncedSearch) params.set('search', debouncedSearch);
     if (showMyTickets) params.set('my', 'true');
     setSearchParams(params, { replace: true });
-  }, [filters, searchQuery, showMyTickets, setSearchParams]);
+  }, [filters, debouncedSearch, showMyTickets, setSearchParams]);
 
   // Publish state for AI Brain
   useEffect(() => {
@@ -193,9 +206,9 @@ const ServiceDashboard = () => {
       openTickets: tickets.filter(t => !['work_complete_needs_invoice', 'closed'].includes(t.status)).length,
       todayAppointments: todaySchedule.length,
       filters,
-      searchQuery
+      searchQuery: debouncedSearch
     });
-  }, [stats, tickets, todaySchedule, filters, searchQuery, publishState]);
+  }, [stats, tickets, todaySchedule, filters, debouncedSearch, publishState]);
 
   // Register actions for AI Brain
   useEffect(() => {

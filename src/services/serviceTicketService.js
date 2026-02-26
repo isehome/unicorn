@@ -4,6 +4,7 @@
  */
 
 import { supabase } from '../lib/supabase';
+import { authFetch } from '../lib/authenticatedFetch';
 
 // ============================================================================
 // SERVICE TICKETS
@@ -289,6 +290,28 @@ export const serviceTicketService = {
         content: `Assigned to ${technicianName} by ${assignedByName}`,
         author_name: assignedByName
       });
+
+      // Send email notification to the assigned technician (best-effort, don't block on failure)
+      try {
+        const techData = await technicianService.getById(technicianId);
+        if (techData?.email) {
+          authFetch('/api/service/notify-assignment', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              ticketId: id,
+              technicianEmail: techData.email,
+              technicianName,
+              ticketNumber: ticket?.ticket_number,
+              customerName: ticket?.customer_name,
+              serviceAddress: ticket?.service_address,
+              assignedByName
+            })
+          }).catch(err => console.warn('[ServiceTicketService] Assignment email failed (non-blocking):', err.message));
+        }
+      } catch (emailErr) {
+        console.warn('[ServiceTicketService] Could not send assignment notification:', emailErr.message);
+      }
 
       return ticket;
     } catch (error) {
