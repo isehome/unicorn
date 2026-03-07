@@ -85,6 +85,60 @@ module.exports = function (app) {
         }
     });
 
+    // Cortex browser proxy — fetches external URLs and strips X-Frame-Options
+    app.use('/api/cortex/proxy', async (req, res) => {
+        if (req.method === 'OPTIONS') {
+            res.header('Access-Control-Allow-Origin', '*');
+            return res.status(200).end();
+        }
+
+        try {
+            const handler = require('../api/cortex/proxy');
+            await handler(req, res);
+        } catch (error) {
+            console.error('[setupProxy] cortex/proxy error:', error);
+            res.status(500).json({ error: 'Internal server error', message: error.message });
+        }
+    });
+
+    // Cortex chat — Claude API proxy
+    app.use('/api/cortex/chat', bodyParser, async (req, res) => {
+        res.header('Access-Control-Allow-Origin', '*');
+        res.header('Access-Control-Allow-Methods', 'POST, OPTIONS');
+        res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
+        if (req.method === 'OPTIONS') {
+            return res.status(200).end();
+        }
+
+        try {
+            const handler = require('../api/cortex/chat');
+            await handler(req, res);
+        } catch (error) {
+            console.error('[setupProxy] cortex/chat error:', error);
+            res.status(500).json({ error: 'Internal server error', message: error.message });
+        }
+    });
+
+    // Voice credentials endpoint
+    app.use('/api/voice-credentials', async (req, res) => {
+        res.header('Access-Control-Allow-Origin', '*');
+        res.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
+        res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
+        if (req.method === 'OPTIONS') {
+            return res.status(200).end();
+        }
+
+        try {
+            const handler = require('../api/voice-credentials');
+            await handler(req, res);
+        } catch (error) {
+            console.error('[setupProxy] voice-credentials error:', error);
+            res.status(500).json({ error: 'Internal server error', message: error.message });
+        }
+    });
+
     // We hijack the Vercel API path for local development
     // This allows 'npm start' to handle the proxying directly without 'vercel dev'
     app.use('/api/unifi-proxy', bodyParser, async (req, res) => {

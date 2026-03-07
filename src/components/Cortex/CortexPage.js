@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import HalEye from './HalEye';
 import CortexControlBar from './CortexControlBar';
 import DynamicCanvas from './DynamicCanvas';
 import { cortexService } from '../../services/cortexService';
+import { createUnicornVoiceAgent } from '../../voice-ai';
 
 const ALLOWED_EMAILS = [
   'stephe@isehome.com',
@@ -24,14 +25,136 @@ export default function CortexPage() {
   const [browserUrl, setBrowserUrl] = useState(null);
   const [browserHistory, setBrowserHistory] = useState([]);
   const canvasContentRef = useRef({ messages, tasks: [], text: '' });
+  const voiceAgentRef = useRef(null);
 
-  // Set document title on mount
+  // Set document title and initialize voice agent on mount
   useEffect(() => {
     document.title = 'Cortex';
+
+    // Initialize voice agent
+    const initializeVoiceAgent = async () => {
+      try {
+        const cortexSystemPrompt = `# Cortex - Personal AI Assistant
+
+You are Cortex, Stephe's personal AI assistant and virtual extension. You have access to powerful tools including deep reasoning, web browsing, and canvas interactions.
+
+## Core Capabilities
+1. Deep Thinking - Use deep_think for complex reasoning tasks
+2. Web Browsing - open_browser to search and browse the internet
+3. Canvas Actions - Navigate and control the Cortex canvas interface
+4. Contextual Awareness - Always call get_context first to understand current state
+5. Tool Execution - Execute_action to interact with the canvas
+
+## Personality
+- Intelligent and articulate, matching Stephe's sophistication
+- Direct and efficient; avoid unnecessary elaboration
+- Proactive in offering insights and solutions
+- Calm, authoritative presence fitting a personal AI assistant
+- Speak naturally—no robotic phrasing
+
+## Critical Rules
+1. ALWAYS call get_context as your first step
+2. For complex problems, use deep_think before responding
+3. If browsing is helpful, use open_browser without asking permission
+4. Use execute_action to perform canvas tasks
+5. Keep responses concise unless depth is requested
+6. When uncertain about capabilities, ask for clarification
+
+## Available Tools
+- get_context: Understand current canvas state and message history
+- deep_think: Complex reasoning and analysis
+- open_browser: Web search and browsing
+- execute_action: Interact with canvas (show projects, update settings, etc.)
+
+${user ? `\n## User Context\nYou're assisting ${user.email}. Use this context to personalize interactions.` : ''}`;
+
+        voiceAgentRef.current = createUnicornVoiceAgent({
+          model: 'gemini-2.5-flash-native',
+          voice: 'Charon',
+          systemPrompt: cortexSystemPrompt,
+        });
+
+        // Wire up event handlers
+        voiceAgentRef.current.on('transcript', ({ type, text }) => {
+          // type is 'user' or 'assistant'
+          const message = {
+            role: type === 'user' ? 'user' : 'assistant',
+            content: text,
+            source: 'voice',
+          };
+          setMessages((prev) => [...prev, message]);
+        });
+
+        voiceAgentRef.current.on('status', ({ status }) => {
+          // Map voice agent status to halState
+          switch (status) {
+            case 'listening':
+              setHalState('listening');
+              break;
+            case 'speaking':
+              setHalState('speaking');
+              break;
+            case 'connecting':
+            case 'processing':
+              setHalState('thinking');
+              break;
+            default:
+              setHalState('idle');
+          }
+        });
+
+        voiceAgentRef.current.on('error', (errorData) => {
+          console.error('[Voice Agent Error]', errorData);
+          const errorMessage = {
+            role: 'assistant',
+            content: `Voice error: ${errorData.message || 'Unknown error'}`,
+            source: 'voice',
+          };
+          setMessages((prev) => [...prev, errorMessage]);
+          setHalState('idle');
+        });
+
+        voiceAgentRef.current.on('tool_call', (toolCall) => {
+          // Handle tool calls from voice agent
+          if (toolCall.name === 'execute_action' && toolCall.args?.action === 'browser') {
+            if (toolCall.args?.url) {
+              openBrowser(toolCall.args.url);
+            }
+          }
+        });
+
+        voiceAgentRef.current.setContextProvider(() => ({
+          messages,
+          canvasMode,
+          browserUrl,
+          halState,
+        }));
+
+        voiceAgentRef.current.setActionExecutor(async (action, params) => {
+          // Handle canvas actions from voice
+          if (action === 'browser' && params?.url) {
+            openBrowser(params.url);
+            return { success: true, message: `Opening ${params.url}` };
+          }
+          return { success: false, message: 'Unknown action' };
+        });
+      } catch (err) {
+        console.error('[Cortex] Failed to initialize voice agent:', err);
+      }
+    };
+
+    initializeVoiceAgent();
+
     return () => {
       document.title = 'Unicorn';
+      // Cleanup voice agent on unmount
+      if (voiceAgentRef.current) {
+        voiceAgentRef.current.stop().catch((err) => {
+          console.warn('[Cortex] Error stopping voice agent:', err);
+        });
+      }
     };
-  }, []);
+  }, [user]);
 
   /**
    * Detect if a message is a URL/browse command
@@ -97,18 +220,21 @@ export default function CortexPage() {
     setCanvasMode(messages.length > 0 ? 'chat' : 'avatar');
   }, [messages]);
 
-  // Update canvas content ref whenever state changes
+  // Memoized canvas content — triggers re-render of DynamicCanvas when state changes
+  const canvasContent = useMemo(() => ({
+    messages,
+    tasks: [],
+    text: '',
+    url: browserUrl,
+    onBack: browserBack,
+    onRefresh: browserRefresh,
+    onClose: closeBrowser,
+  }), [messages, browserUrl, browserBack, browserRefresh, closeBrowser]);
+
+  // Keep ref in sync for voice agent context provider
   useEffect(() => {
-    canvasContentRef.current = {
-      messages,
-      tasks: [],
-      text: '',
-      url: browserUrl,
-      onBack: browserBack,
-      onRefresh: browserRefresh,
-      onClose: closeBrowser,
-    };
-  }, [messages, browserUrl, browserBack, browserRefresh, closeBrowser]);
+    canvasContentRef.current = canvasContent;
+  }, [canvasContent]);
 
   /**
    * Handle sending a message to Cortex
@@ -191,16 +317,48 @@ export default function CortexPage() {
   /**
    * Toggle microphone listening state
    */
-  const onToggleMic = useCallback(() => {
+  const onToggleMic = useCallback(async () => {
     const newListeningState = !isListening;
     setIsListening(newListeningState);
 
-    if (newListeningState) {
-      // Starting to listen
-      setHalState('listening');
-    } else {
-      // Stopped listening
+    try {
+      if (newListeningState) {
+        // Starting to listen - initialize audio context and start voice agent
+        if (!voiceAgentRef.current) {
+          console.error('Voice agent not initialized');
+          setIsListening(false);
+          return;
+        }
+
+        // Initialize audio context if not already done
+        if (!voiceAgentRef.current.audioContext) {
+          voiceAgentRef.current.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        }
+
+        // Request microphone permission and start recording
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        
+        // Start the voice agent
+        await voiceAgentRef.current.start();
+        
+        setHalState('listening');
+        setCanvasMode('chat');
+      } else {
+        // Stopped listening - stop voice agent
+        if (voiceAgentRef.current) {
+          await voiceAgentRef.current.stop();
+        }
+        setHalState('idle');
+      }
+    } catch (err) {
+      console.error('[Cortex] Microphone error:', err);
+      setIsListening(false);
       setHalState('idle');
+      const errorMessage = {
+        role: 'assistant',
+        content: `Microphone error: ${err.message || 'Unable to access microphone'}`,
+      };
+      setMessages((prev) => [...prev, errorMessage]);
     }
   }, [isListening]);
 
@@ -235,7 +393,7 @@ export default function CortexPage() {
   return (
     <div className="w-screen h-screen bg-zinc-900 flex flex-col overflow-hidden">
       {/* Dynamic Canvas - takes up remaining space */}
-      <DynamicCanvas mode={canvasMode} content={canvasContentRef.current}>
+      <DynamicCanvas mode={canvasMode} content={canvasContent}>
         <HalEye state={halState} />
       </DynamicCanvas>
 

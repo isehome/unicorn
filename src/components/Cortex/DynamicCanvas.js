@@ -111,10 +111,10 @@ export default function DynamicCanvas({ mode, content, children }) {
               ✕ Close
             </button>
           </div>
-          {/* Iframe */}
+          {/* Iframe — routed through proxy to strip X-Frame-Options */}
           {content?.url && (
             <iframe
-              src={content.url}
+              src={`/api/cortex/proxy?url=${encodeURIComponent(content.url)}`}
               title="Cortex Browser"
               className="flex-1 w-full bg-white"
               sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox"
