@@ -39,6 +39,22 @@
 
 ---
 
+## 🧠 CORTEX — Personal AI Assistant Module
+
+> **Cortex has its own intelligence file: `CORTEX.md`** (in the repo root)
+> It is a major module within Unicorn but documented separately to avoid bloating AGENT.md.
+
+- **Route:** `/cortex` (full-screen, hides all Unicorn chrome)
+- **Access:** Email whitelist only (Stephe's accounts)
+- **Brain:** Claude API (Anthropic) via `/api/cortex/chat.js`
+- **Interface:** HAL 9000 eye avatar + dynamic canvas + bottom control bar
+- **Files:** `src/components/Cortex/`, `src/services/cortexService.js`, `api/cortex/`
+- **Full docs:** Read `CORTEX.md` for architecture, design decisions, roadmap, and changelog
+
+**When working on Cortex, always read `CORTEX.md` — not this section.**
+
+---
+
 ## 🎨 BRAND COLORS - QUICK REFERENCE
 
 | Purpose | Hex | Usage |

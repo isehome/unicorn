@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-02-15T18:54:55.613Z",
+  "generated_at": "2026-03-07T15:49:34.293Z",
   "version": "1.0",
-  "total_routes": 58,
+  "total_routes": 59,
   "routes": {
     "/login": {
       "component": "Login",
@@ -329,6 +329,11 @@
     "/shade-portal/:token": {
       "component": "PublicShadePortal",
       "primary": "src/pages/PublicShadePortal.js",
+      "related": []
+    },
+    "/cortex": {
+      "component": "CortexPage",
+      "primary": "src/components/Cortex/CortexPage.js",
       "related": []
     }
   }

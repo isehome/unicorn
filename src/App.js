@@ -83,6 +83,9 @@ const AdminPage = lazy(() => import('./pages/AdminPage'));
 const CompanySettingsPage = lazy(() => import('./pages/CompanySettingsPage'));
 const EmailAgentPage = lazy(() => import('./pages/EmailAgentPage'));
 
+// Cortex - Personal AI Assistant
+const CortexPage = lazy(() => import('./components/Cortex/CortexPage'));
+
 // Career Development & HR
 const CareerDevelopmentPage = lazy(() => import('./pages/CareerDevelopmentPage'));
 const TeamReviewsPage = lazy(() => import('./pages/TeamReviewsPage'));
@@ -93,7 +96,8 @@ const AppRoutes = () => {
   const location = useLocation();
   const isPublicRoute = location.pathname.startsWith('/public') || location.pathname.startsWith('/shade-portal');
   const isEmbedded = location.search.includes('embed=true');
-  const hideChrome = ['/login', '/auth/callback'].includes(location.pathname) || isPublicRoute || isEmbedded;
+  const isCortex = location.pathname === '/cortex';
+  const hideChrome = ['/login', '/auth/callback'].includes(location.pathname) || isPublicRoute || isEmbedded || isCortex;
   const { isOnline } = useNetworkStatus();
   const { pendingCount, isSyncing, triggerSync } = useSyncStatus();
 
@@ -562,6 +566,15 @@ const AppRoutes = () => {
               <Route path="/public/issues/:token" element={<PublicIssuePortal />} />
               <Route path="/public/po/:token" element={<PublicPurchaseOrderPortal />} />
               <Route path="/shade-portal/:token" element={<PublicShadePortal />} />
+              {/* Cortex - Personal AI Assistant (full-screen, no chrome) */}
+              <Route
+                path="/cortex"
+                element={
+                  <ProtectedRoute>
+                    <CortexPage />
+                  </ProtectedRoute>
+                }
+              />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </Suspense>

@@ -39,6 +39,7 @@ Stack: React 18 + Supabase + Azure MSAL + Tailwind + Vercel
 | Voice AI | 2850-3230 | `Read AGENT.md offset=2850 limit=380` |
 | Email Agent | 1076-1210 | `Read AGENT.md offset=1076 limit=140` |
 | Changelog | 4270+ | `Read AGENT.md offset=4270 limit=200` |
+| **Cortex AI** | Separate file | `Read CORTEX.md` (full doc, ~200 lines) |
 
 ## After ANY Code Change
 
