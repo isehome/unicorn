@@ -227,15 +227,18 @@ ANTHROPIC_API_KEY=sk-ant-...  # Claude API key (add to Vercel env vars)
 
 ## PART 7: KNOWN ISSUES & TODOS
 
-### Current Status: Initial Build (2026-03-07)
-- [x] CortexPage with access gating
-- [x] HAL eye component with 4 color states
-- [x] Control bar with text input, mic toggle, quick keys
-- [x] Dynamic canvas with mode switching
-- [x] Claude API serverless endpoint
-- [x] cortexService.js frontend client
-- [x] Route added to App.js with hideChrome
-- [ ] ANTHROPIC_API_KEY needs to be added to Vercel env vars
+### Current Status: Initial Build — TESTED (2026-03-07)
+- [x] CortexPage with access gating (hooks-compliant, conditional render)
+- [x] HAL eye component with 4 color states — renders beautifully in amber idle
+- [x] Control bar with text input, mic toggle, quick keys — glassmorphism working
+- [x] Dynamic canvas with mode switching — avatar→chat→browser transitions verified
+- [x] Browser mode: "open apple.com" triggers iframe with toolbar (back/refresh/close)
+- [x] Chat mode: messages display correctly (user=purple right, cortex=left)
+- [x] Claude API serverless endpoint (api/cortex/chat.js)
+- [x] cortexService.js frontend client (named export, singleton)
+- [x] Route added to App.js with hideChrome — no Unicorn chrome on /cortex
+- [x] Feature branch pushed: `feature/cortex-v1`
+- [ ] ANTHROPIC_API_KEY needs to be added to Vercel env vars (chat returns 404 on npm start — expected, needs vercel dev)
 - [ ] Voice input integration (currently toggles state only)
 - [ ] Supabase tables for memory/conversation persistence
 - [ ] Actual task management (create, track, complete)
@@ -289,3 +292,18 @@ ANTHROPIC_API_KEY=sk-ant-...  # Claude API key (add to Vercel env vars)
 - Added lazy import for CortexPage
 - Added `/cortex` to `hideChrome` check (no AppHeader/BottomNav)
 - Added `/cortex` route inside ProtectedRoute
+
+**Bug fixes during build:**
+- Moved all React hooks above access gating conditional return (rules-of-hooks)
+- Changed cortexService import from default to named (`{ cortexService }`)
+- Dev server runs on PORT=3001 (Unicorn's package.json config)
+
+**Test results (Chrome, localhost:3001/cortex):**
+- HAL eye renders centered with amber pulse animation ✓
+- "Cortex Ready" status text shows below eye ✓
+- Control bar: text input, mic icon, Tasks/Notes/Schedule pills ✓
+- Sending message switches to chat mode, messages render correctly ✓
+- "open apple.com" triggers browser mode with toolbar + iframe ✓
+- iframe blocked by apple.com's X-Frame-Options (expected, not a bug)
+- Chat API returns 404 on npm start (expected — needs vercel dev for serverless functions)
+- Zero console errors ✓
